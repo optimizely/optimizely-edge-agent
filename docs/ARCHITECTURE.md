@@ -1,22 +1,3 @@
-To add the original document to the Detailed Architecture and Operational Guide page, you can create a markdown file named `ARCHITECTURE.md` in the `docs` directory of your repository and copy the original document's content into that file. Here’s how you can structure the `ARCHITECTURE.md` file:
-
-1. Create a `docs` directory in your repository if it doesn't already exist.
-2. Inside the `docs` directory, create a new file named `ARCHITECTURE.md`.
-3. Copy and paste the original document content into the `ARCHITECTURE.md` file.
-
-Here is a step-by-step guide with the original document content formatted for Markdown:
-
-### Step-by-Step Guide
-
-1. **Create the `docs` Directory:**
-   - In the root directory of your repository, create a new folder named `docs`.
-
-2. **Create the `ARCHITECTURE.md` File:**
-   - Inside the `docs` directory, create a new file named `ARCHITECTURE.md`.
-
-3. **Copy and Paste the Content:**
-   - Open the `ARCHITECTURE.md` file in a text editor and paste the following content:
-
 ```markdown
 # Hybrid Edge Serverless Agent: Detailed Architecture and Operational Guide
 
