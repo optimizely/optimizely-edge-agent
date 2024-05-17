@@ -19,7 +19,8 @@ Welcome to the Hybrid Edge Serverless Agent repository. This project leverages t
 
 - **OptimizelyProvider**: Manages interactions with the Optimizely FX SDK, handling decision-making, event dispatch, and other SDK operations.
 - **CoreLogic**: Central processing unit of the edge worker, managing request processing and coordinating with the OptimizelyProvider.
-- **CDN Adapters**: Modules tailored for each CDN provider, ensuring optimal integration and functionality.
+- **AbstractionHelper**: Provides helper functions and logic to abstract methods and CDN specific fucntionality between CDN providers
+- **CDN Adapters**: Modules tailored for each CDN provider, ensuring optimal integration and functionality, including KV Store abstraction.
 - **RequestConfig**: Manages and applies settings from request headers, query parameters, or POST body content.
 - **OptimizelyHelper**: Provides utility functions for cookie serialization, user profile management, and flag updates.
 
