@@ -1,4 +1,5 @@
-# Hybrid Edge Serverless Agent: Detailed Architecture and Operational Guide
+# Hybrid Edge Serverless Agent: 
+# Detailed Architecture and Operational Guide
 
 ## Introduction
 
