@@ -1,4 +1,3 @@
----
 
 # Hybrid Edge Serverless Agent
 
