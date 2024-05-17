@@ -1,4 +1,3 @@
-```markdown
 # Hybrid Edge Serverless Agent: Detailed Architecture and Operational Guide
 
 ## Introduction
