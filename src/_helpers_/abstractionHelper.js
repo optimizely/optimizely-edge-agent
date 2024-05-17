@@ -274,61 +274,95 @@ class AbstractionHelper {
 		return this.abstractResponse.createResponse(body, status, headers);
 	}
 
+	/**
+	 * Asynchronously reads and parses the body of a request based on its content type.
+	 * 
+	 * @param {Request} request - The request object whose body needs to be read.
+	 * @returns {Promise<any>} A promise resolving to the parsed body content.
+	 */
 	async readRequestBody(request) {
+		// Get the content type of the request
 		const contentType = request.headers.get('content-type');
 
 		try {
 			if (contentType) {
+				// If content type is JSON, parse the body as JSON
 				if (contentType.includes('application/json')) {
 					return await request.json();
-				} else if (contentType.includes('application/text') || contentType.includes('text/html')) {
+				}
+				// If content type is plain text or HTML, read the body as text
+				else if (contentType.includes('application/text') || contentType.includes('text/html')) {
 					return await request.text();
-				} else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+				}
+				// If content type is URL encoded or multipart form data, parse it and construct a JSON object
+				else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
 					const formData = await request.formData();
 					const body = {};
 					for (const [key, value] of formData.entries()) {
 						body[key] = value;
 					}
 					return JSON.stringify(body);
-				} else {
-					return 'a file';
+				}
+				// For unknown content types, return 'a file'
+				else {
+					return 'Uknown content type';
 				}
 			} else {
+				// If content type is not provided, return undefined
 				return undefined;
 			}
 		} catch (error) {
+			// Log and handle errors while reading the request body
 			console.error('Error reading request body:', error.message);
 			return undefined;
 		}
 	}
 
+	/**
+	 * Asynchronously reads and parses the body of a request based on its content type. (Static version)
+	 * 
+	 * @static
+	 * @param {Request} request - The request object whose body needs to be read.
+	 * @returns {Promise<any>} A promise resolving to the parsed body content.
+	 */
 	static async readRequestBody(request) {
+		// Get the content type of the request
 		const contentType = request.headers.get('content-type');
 
 		try {
 			if (contentType) {
+				// If content type is JSON, parse the body as JSON
 				if (contentType.includes('application/json')) {
 					return await request.json();
-				} else if (contentType.includes('application/text') || contentType.includes('text/html')) {
+				}
+				// If content type is plain text or HTML, read the body as text
+				else if (contentType.includes('application/text') || contentType.includes('text/html')) {
 					return await request.text();
-				} else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
+				}
+				// If content type is URL encoded or multipart form data, parse it and construct a JSON object
+				else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data')) {
 					const formData = await request.formData();
 					const body = {};
 					for (const [key, value] of formData.entries()) {
 						body[key] = value;
 					}
 					return JSON.stringify(body);
-				} else {
-					return 'a file';
+				}
+				// For unknown content types, return 'a file'
+				else {
+					return 'Uknown content type';
 				}
 			} else {
+				// If content type is not provided, return undefined
 				return undefined;
 			}
 		} catch (error) {
+			// Log and handle errors while reading the request body
 			console.error('Error reading request body:', error.message);
 			return undefined;
 		}
 	}
+
 	/**
 	 * Clones a request object asynchronously.
 	 * @static
@@ -427,8 +461,8 @@ class AbstractionHelper {
 }
 
 /**
- * Retrieves the singleton instance of AbstractionHelper.
- * If the instance doesn't exist, a new one is created.
+ * Retrieves an instance of AbstractionHelper.
+ * This cannot be a singleton, and must be created for each request.
  * @param {Request} request - The request object.
  * @param {Object} env - The environment object.
  * @param {Object} ctx - The context object.
@@ -439,3 +473,148 @@ export function getAbstractionHelper(request, env, ctx, loggerInstance) {
 	const instance = new AbstractionHelper(request, env, ctx);
 	return instance;
 }
+
+// /**
+//  * @file extractParameters.js
+//  * @description Utility to extract parameters from various CDN provider edge functions.
+//  */
+
+// /**
+//  * Extracts request, context, and environment from various CDN provider edge function signatures.
+//  * @param {object} args - Arguments passed to the edge function.
+//  * @returns {object} Extracted parameters.
+//  */
+// export function extractParameters(...args) {
+//     let request, context, env;
+
+//     args.forEach(arg => {
+//         if (arg && typeof arg === 'object') {
+//             if (arg.cf) {
+//                 // CloudFront Lambda@Edge
+//                 request = arg.Records ? arg.Records[0].cf.request : request;
+//                 context = arg.Records ? arg.Records[0].cf : context;
+//             } else if (arg.url && arg.method) {
+//                 // Fastly, Cloudflare, Vercel
+//                 request = arg;
+//             } else if (arg.requestContext) {
+//                 // Akamai
+//                 request = arg;
+//             } else if (arg.functionName || arg.memoryLimitInMB) {
+//                 // AWS Lambda Context
+//                 context = arg;
+//             } else if (typeof arg === 'object' && Object.keys(arg).length > 0) {
+//                 // Environment object
+//                 env = arg;
+//             }
+//         }
+//     });
+
+//     return { request, context, env };
+// }
+
+// // Usage examples for different CDNs:
+
+// // Cloudflare
+// export default {
+//     async fetch(request, env, ctx) {
+//         const { request: req, context, env: environment } = extractParameters(request, env, ctx);
+//         // Your logic here
+//     }
+// };
+
+// // Akamai
+// export async function onClientRequest(request) {
+//     const { request: req } = extractParameters(request);
+//     // Your logic here
+// }
+
+// // Vercel
+// export default async function handler(request, response) {
+//     const { request: req } = extractParameters(request);
+//     // Your logic here
+// }
+
+// // CloudFront Lambda@Edge
+// export async function handler(event, context) {
+//     const { request: req, context: ctx } = extractParameters(event, context);
+//     // Your logic here
+// }
+
+// Alternative logic
+// /**
+//  * Extracts the request, context/ctx, and environment variables in an agnostic manner based on the provided parameters.
+//  * @param {...any} args - The parameters passed to the method, which can include request, ctx, event, and context.
+//  * @returns {Object} An object containing the extracted request, context/ctx, and environment variables.
+//  */
+// function extractCDNParams(...args) {
+// 	let request, ctx, event, context, env;
+  
+// 	// Iterate through the arguments and assign them based on their type
+// 	for (const arg of args) {
+// 	  if (arg instanceof Request) {
+// 		request = arg;
+// 	  } else if (arg && typeof arg === 'object') {
+// 		if (arg.hasOwnProperty('request')) {
+// 		  // Cloudfront Lambda@Edge event object
+// 		  event = arg;
+// 		  request = event.Records[0].cf.request;
+// 		} else if (arg.hasOwnProperty('env')) {
+// 		  // Cloudflare Worker environment object
+// 		  env = arg.env;
+// 		  ctx = arg;
+// 		} else if (arg.hasOwnProperty('waitUntil')) {
+// 		  // Cloudflare Worker context object
+// 		  ctx = arg;
+// 		} else {
+// 		  // Assume it's the context object for other CDN providers
+// 		  context = arg;
+// 		}
+// 	  }
+// 	}
+  
+// 	// Extract the environment variables based on the CDN provider
+// 	if (!env) {
+// 	  if (event) {
+// 		// Cloudfront Lambda@Edge
+// 		env = process.env;
+// 	  } else if (context) {
+// 		// Vercel Edge Functions
+// 		env = context.env;
+// 	  } else {
+// 		// Akamai EdgeWorkers
+// 		env = {};
+// 	  }
+// 	}
+  
+// 	return { request, ctx, event, context, env };
+//   }
+
+//   // Cloudflare Worker
+// export default {
+// 	async fetch(request, env, ctx) {
+// 	  const { request: extractedRequest, ctx: extractedCtx, env: extractedEnv } = extractCDNParams(request, env, ctx);
+// 	  // Use the extracted parameters in your code
+// 	  // ...
+// 	}
+//   }
+  
+//   // Cloudfront Lambda@Edge
+//   export async function handler(event, context) {
+// 	const { request: extractedRequest, event: extractedEvent, context: extractedContext, env: extractedEnv } = extractCDNParams(event, context);
+// 	// Use the extracted parameters in your code
+// 	// ...
+//   }
+  
+//   // Vercel Edge Functions
+//   export default async function handler(request, response) {
+// 	const { request: extractedRequest, context: extractedContext, env: extractedEnv } = extractCDNParams(request, response);
+// 	// Use the extracted parameters in your code
+// 	// ...
+//   }
+  
+//   // Akamai EdgeWorkers
+//   export async function onClientRequest(request) {
+// 	const { request: extractedRequest, env: extractedEnv } = extractCDNParams(request);
+// 	// Use the extracted parameters in your code
+// 	// ...
+//   }

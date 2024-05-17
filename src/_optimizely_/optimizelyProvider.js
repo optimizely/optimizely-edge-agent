@@ -1,14 +1,13 @@
 import * as optlyHelper from '../_helpers_/optimizelyHelper';
 import Logger from '../_helpers_/logger';
 import EventListeners from '../_event_listeners_/eventListeners';
+import defaultSettings from '../_config_/defaultSettings';
 
 import {
 	createInstance,
 	enums as OptimizelyEnums,
 	OptimizelyDecideOption as optlyDecideOptions,
 } from '@optimizely/optimizely-sdk/dist/optimizely.lite.min.js';
-
-const CLOUDFLARE_CLIENT_ENGINE = 'javascript-sdk/cloudflare';
 
 export default class OptimizelyProvider {
 	constructor(request, env, ctx, requestConfig, abstractionHelper) {
@@ -154,7 +153,8 @@ export default class OptimizelyProvider {
 		const params = {
 			datafile,
 			logLevel: OptimizelyEnums.LOG_LEVEL.ERROR,
-			clientEngine: CLOUDFLARE_CLIENT_ENGINE,
+			clientEngine: defaultSettings.optlyClientEngine,
+			clientVersion: defaultSettings.optlyClientEngineVersion,
 			eventDispatcher: this.createEventDispatcher(defaultDecideOptions), // Add custom event dispatcher
 		};
 

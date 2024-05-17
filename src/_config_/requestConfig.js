@@ -23,7 +23,6 @@ export default class RequestConfig {
 
 		// Configuration settings derived from environment and request
 		this.settings = {
-			useIttyRouter: true,
 			cdnProvider: 'cloudflare', // Possible values: cloudflare, fastly, cloudfront, akamai
 			responseJsonKeyName: 'decisions',
 			enableResponseMetadata: true,

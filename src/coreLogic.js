@@ -452,7 +452,7 @@ export default class CoreLogic {
 	/**
 	 * Determines the flags to decide and handles stored decisions.
 	 * @param {RequestConfig} requestConfig - The request configuration object.
-	 * @returns {Promise<{flagsToForce: string[], filteredFlagsToDecide: string[], validStoredDecisions: Object[]}>}
+	 * @returns {Promise<{flagsToDecide: string[], validStoredDecisions: Object[]}>}
 	 */
 	async determineFlagsToDecide(requestConfig) {
 		try {
@@ -471,7 +471,8 @@ export default class CoreLogic {
 
 			const flagsToDecide = this.calculateFlagsToDecide(requestConfig, flagKeys, validStoredDecisions, activeFlags);
 
-			return { ...flagsToDecide, validStoredDecisions };
+			// spread operator for returning { flagsToForce, filteredFlagsToDecide };
+			return { ...flagsToDecide, validStoredDecisions }; 
 		} catch (error) {
 			this.logger.error('Error in determineFlagsToDecide:', error);
 			throw error;
