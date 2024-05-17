@@ -1,0 +1,15 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "optly-hybrid-agent"
+main = "src/index.js"
+compatibility_date = "2024-05-02"
+compatibility_flags = ["nodejs_compat"]
+account_id = "YOUR ACCOUNT ID HERE"
+workers_dev = true
+route = "YOUR ROUTE GOES HERE"
+kv_namespaces = [{ binding = "OPTLY_HYBRID_AGENT_KV", id = "KV NAMESPACE ID GOES HERE", preview_id = "KV PREVIEW NAMESPACE ID GOES HERE" }]
+
+[vars]
+ # Supported: "DEBUG, INFO, ERROR"
+ LOG_LEVEL = "debug" 
+ #TESTING_FLAG_DEBUG = "INDIVIDUAL FX FLAG KEY FOR TESTING GOES HERE"
+ 
