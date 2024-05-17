@@ -1,5 +1,3 @@
-Yes, you can copy and paste this content directly into a README file for your GitHub repository. It provides a detailed initial description of the repository and its code, based on the architecture and operational guide. Here's the formatted content for easy copying:
-
 ---
 
 # Hybrid Edge Serverless Agent
