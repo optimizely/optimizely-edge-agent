@@ -85,8 +85,8 @@ export default {
 
 		// Initialize the KV store based on the CDN provider
 		// ToDo - Check if KV support is enabled in headers and conditionally instantiate the KV store
-		// const kvInterfaceAdapter = new CloudflareKVInterface(env, defaultSettings.kv_namespace);
-		// const kvStore = abstractionHelper.initializeKVStore(defaultSettings.cdnProvider, kvInterfaceAdapter);
+		const kvInterfaceAdapter = new CloudflareKVInterface(env, defaultSettings.kv_namespace);
+		const kvStore = abstractionHelper.initializeKVStore(defaultSettings.cdnProvider, kvInterfaceAdapter);
 
 		// Use the KV store methods
 		// const value = await kvStore.get(defaultSettings.kv_key_optly_flagKeys);
@@ -121,7 +121,7 @@ export default {
 		if (!requestIsForAsset && matchedRouteForAPI) {
 			try {
 				if (handleRequest) {
-					const handlerResponse = handleRequest(_request, _env, _ctx, abstractionHelper, kvStore, logger, defaultSettings);
+					const handlerResponse = await handleRequest(_request, abstractionHelper, kvStore, logger, defaultSettings);
 					return handlerResponse;
 				} else {
 					// Handle any issues during the API request handling that were not captured by the custom router

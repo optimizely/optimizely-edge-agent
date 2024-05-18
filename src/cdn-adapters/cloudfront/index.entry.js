@@ -124,7 +124,7 @@ export async function handler(event, context) {
 	if (!requestIsForAsset && matchedRouteForAPI) {
 		try {
 			if (handleRequest) {
-				const handlerResponse = handleRequest(_request, _env, _ctx, abstractionHelper, kvStore, logger, defaultSettings);
+				const handlerResponse = handleRequest(_request, abstractionHelper, kvStore, logger, defaultSettings);
 				return handlerResponse;
 			} else {
 				// Handle any issues during the API request handling that were not captured by the custom router

@@ -1,10 +1,23 @@
+import defaultSettings from '../../_config_/defaultSettings';
+import * as optlyHelper from '../../_helpers_/optimizelyHelper';
+
 /**
  * Fetches and updates the Optimizely datafile based on the provided datafile key.
  * @param {Request} request - The incoming request object.
+ * @param {object} env - The environment object.
+ * @param {object} ctx - The context object.
+ * @param {object} abstractionHelper - The abstraction helper to create responses and read request body.
+ * @param {object} kvStore - The key-value store object.
+ * @param {object} logger - The logger object for logging errors.
  * @returns {Promise<Response>} - A promise that resolves to the response object.
  */
-const handleDatafile = async (request, env, ctx) => {
-	const datafileKey = request.params.key;
+const handleDatafile = async (request, abstractionHelper, kvStore, logger, defaultSettings, params = {}) => {
+	// Check if the incoming request is a POST method, return 405 if not allowed
+	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'POST') {
+		return abstractionHelper.createResponse('Method Not Allowed', 405);
+	}
+
+	const datafileKey = params.key;
 	const datafileUrl = `https://cdn.optimizely.com/datafiles/${datafileKey}.json`;
 
 	/**
@@ -13,35 +26,26 @@ const handleDatafile = async (request, env, ctx) => {
 	 * @returns {Promise<string>} - A promise that resolves to the stringified JSON or text content.
 	 */
 	async function processResponse(response) {
-		const { headers } = response;
-		const contentType = headers.get('content-type') || '';
-		if (contentType.includes('application/json')) {
-			return JSON.stringify(await response.json());
-		}
-		return response.text();
+		return abstractionHelper.getResponseContent(response);
 	}
 
-	const initJSON = {
-		headers: {
-			'content-type': 'application/json;charset=UTF-8',
-		},
-	};
+	if (!datafileKey) return abstractionHelper.createResponse('Datafile SDK key is required but it is missing from the request.', 400);
 
 	try {
-		const datafileResponse = await fetch(datafileUrl, initJSON);
+		const datafileResponse = await optlyHelper.fetchByRequestObject(datafileUrl);
 		const jsonString = await processResponse(datafileResponse);
-		await env.OPTLY_HYBRID_AGENT_KV.put('optly_sdk_datafile', jsonString);
-		const kvDatafile = await OPTLY_HYBRID_AGENT_KV.get('optly_sdk_datafile');
+		await kvStore.put('optly_sdk_datafile', jsonString);
+		const kvDatafile = await kvStore.get(defaultSettings.kv_key_optly_sdk_datafile);
 
-		const headers = {
-			'Access-Control-Allow-Origin': '*',
-			'Content-type': 'application/json',
+		const responseObject = {
+			message: `Datafile updated to Key: ${datafileKey}`,
+			datafile: kvDatafile,
 		};
 
-		return new Response(`Datafile updated to Key: ${datafileKey}\n\nDatafile JSON: ${kvDatafile}`, { headers });
+		return abstractionHelper.createResponse(responseObject, 200, { 'Content-Type': 'application/json' });
 	} catch (error) {
-		console.error('Error in handleDatafile:', error);
-		return new Response('Error updating datafile', { status: 500 });
+		logger.error('Error in handleDatafile:', error.message);
+		return abstractionHelper.createResponse(`Error updating datafile: ${JSON.stringify(error)}`, 500);
 	}
 };
 
@@ -49,34 +53,32 @@ const handleDatafile = async (request, env, ctx) => {
  * Retrieves the current Optimizely SDK datafile from KV storage.
  * This function handles GET requests to fetch the stored datafile and return it to the client.
  * @param {Request} request - The incoming request object.
+ * @param {object} env - The environment object.
+ * @param {object} ctx - The context object.
+ * @param {object} abstractionHelper - The abstraction helper to create responses.
+ * @param {object} kvStore - The key-value store object.
+ * @param {object} logger - The logger object for logging errors.
  * @returns {Promise<Response>} - A promise that resolves to the response containing the datafile.
  */
-const handleGetDatafile = async (request, env, ctx) => {
-	// Define the key under which the datafile is stored in KV storage
-	const datafileKey = 'optly_sdk_datafile';
+const handleGetDatafile = async (request, abstractionHelper, kvStore, logger, defaultSettings, params) => {
+	// Check if the incoming request is a GET method, return 405 if not allowed
+	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'GET') {
+		return abstractionHelper.createResponse('Method Not Allowed', 405);
+	}
 
 	try {
-		// Retrieve the datafile from KV storage
-		const datafile = await env.OPTLY_HYBRID_AGENT_KV.get(datafileKey);
+		const datafile = await kvStore.get(defaultSettings.kv_key_optly_sdk_datafile);
 
 		if (!datafile) {
-			// Handle the case where the datafile is not found in the storage
-			return new Response('Datafile not found', { status: 404 });
+			return abstractionHelper.createResponse('Datafile not found', 404);
 		}
 
-		// Set response headers to define content type
-		const headers = {
-			'Content-Type': 'application/json',
-			'Access-Control-Allow-Origin': '*',
-		};
-
-		// Return the datafile as a JSON response
-		return new Response(datafile, { headers });
+		return abstractionHelper.createResponse(datafile, 200, { 'Content-Type': 'application/json' });
 	} catch (error) {
-		// Log and handle any errors that occur during the process
-		console.error('Error retrieving the datafile:', error);
-		return new Response('Error retrieving datafile', { status: 500 });
+		logger.error('Error retrieving the datafile:', error.message);
+		return abstractionHelper.createResponse('Error retrieving datafile', 500);
 	}
 };
 
+// Export both functions using named exports
 export { handleDatafile, handleGetDatafile };

@@ -84,7 +84,7 @@ function handleFlagKeysResponse(combinedString, abstractionHelper) {
  * @param {object} defaultSettings - The default settings object containing configuration details.
  * @returns {Promise<Response>} - A promise that resolves to the API response.
  */
-const handleFlagKeys = async (request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) => {
+const handleFlagKeys = async (request, abstractionHelper, kvStore, logger, defaultSettings) => {
 	// Check if the incoming request is a POST method, return 405 if not allowed
 	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'POST') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
@@ -135,12 +135,11 @@ const handleFlagKeys = async (request, env, ctx, abstractionHelper, kvStore, log
  * @param {object} defaultSettings - The default settings object containing configuration details.
  * @returns {Promise<Response>} - A promise that resolves to the API response with the flag keys.
  */
-const handleGetFlagKeys = async (request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) => {
+const handleGetFlagKeys = async (request, abstractionHelper, kvStore, logger, defaultSettings) => {
 	// Optionally, you can add method checks if necessary
 	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'GET') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
 	}
-
 
 	try {
 		// Fetch the flag keys from the KV store

@@ -1,7 +1,8 @@
 // abstractionHelper.js
 // import Logger from './logger';
 import EventListeners from '../_event_listeners_/eventListeners';
-import CloudflareAdapter from '../cdn-adapters/cloudflare/cloudflareAdapter';
+import defaultSettings from '../_config_/defaultSettings';
+//
 let logger;
 
 /**
@@ -96,6 +97,12 @@ class AbstractRequest {
 		this.url = request.url;
 		this.method = request.method;
 		this.headers = request.headers;
+
+		// Extract search parameters and assign them to variables
+		this.searchParams = {};
+		for (const [key, value] of this.URL.searchParams.entries()) {
+			this.searchParams[key] = value;
+		}
 	}
 
 	/**
@@ -137,6 +144,15 @@ class AbstractRequest {
 	 */
 	getHeader(name) {
 		return this.headers.get(name);
+	}
+
+	/**
+	 * Get the value of a query parameter from the request URL.
+	 * @param {string} name - The name of the query parameter.
+	 * @returns {string|null} - The value of the query parameter, or null if not found.
+	 */
+	getParameterByName(name) {
+		return this.searchParams[name] || null;
 	}
 }
 
@@ -276,7 +292,7 @@ class AbstractionHelper {
 
 	/**
 	 * Asynchronously reads and parses the body of a request based on its content type.
-	 * 
+	 *
 	 * @param {Request} request - The request object whose body needs to be read.
 	 * @returns {Promise<any>} A promise resolving to the parsed body content.
 	 */
@@ -320,7 +336,7 @@ class AbstractionHelper {
 
 	/**
 	 * Asynchronously reads and parses the body of a request based on its content type. (Static version)
-	 * 
+	 *
 	 * @static
 	 * @param {Request} request - The request object whose body needs to be read.
 	 * @returns {Promise<any>} A promise resolving to the parsed body content.
@@ -360,6 +376,93 @@ class AbstractionHelper {
 			// Log and handle errors while reading the request body
 			console.error('Error reading request body:', error.message);
 			return undefined;
+		}
+	}
+	/**
+	 * Retrieves the value of a specific header from the response based on the CDN provider.
+	 * @param {Object} response - The response object from the CDN provider.
+	 * @param {string} headerName - The name of the header to retrieve.
+	 * @returns {string|null} - The value of the header, or null if the header is not found.
+	 * @throws {Error} - If an unsupported CDN provider is provided or if the response object is invalid.
+	 */
+	getHeaderValue(response, headerName) {
+		const cdnProvider = defaultSettings.cdnProvider;
+		try {
+			if (!response || typeof response !== 'object') {
+				throw new Error('Invalid response object provided.');
+			}
+
+			switch (cdnProvider) {
+				case 'cloudflare':
+				case 'akamai':
+				case 'vercel':
+				case 'fastly':
+					return response.headers.get(headerName) || null;
+
+				case 'cloudfront':
+					const headerValue = response.headers[headerName.toLowerCase()];
+					return headerValue ? headerValue[0].value : null;
+
+				default:
+					throw new Error('Unsupported CDN provider.');
+			}
+		} catch (error) {
+			console.error('Error retrieving header value:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Retrieves the response content as stringified JSON or text based on the CDN provider.
+	 * @param {string} cdnProvider - The CDN provider ("cloudflare", "cloudfront", "akamai", "vercel", or "fastly").
+	 * @param {Object} response - The response object from the CDN provider.
+	 * @returns {Promise<string>} - A promise that resolves to the response content as stringified JSON or text.
+	 * @throws {Error} - If an unsupported CDN provider is provided or if an error occurs during content retrieval.
+	 */
+	async getResponseContent(response) {
+		try {
+			if (!response || typeof response !== 'object') {
+				throw new Error('Invalid response object provided.');
+			}
+			const cdnProvider = defaultSettings.cdnProvider;
+			const contentType = this.getHeaderValue(response, 'Content-Type');
+			const isJson = contentType && contentType.includes('application/json');
+
+			switch (cdnProvider) {
+				case 'cloudflare':
+				case 'vercel':
+				case 'fastly':
+					if (isJson) {
+						const json = await response.json();
+						return JSON.stringify(json);
+					} else {
+						return await response.text();
+					}
+
+				case 'cloudfront':
+					if (isJson) {
+						const json = JSON.parse(response.body);
+						return JSON.stringify(json);
+					} else {
+						return response.body;
+					}
+
+				case 'akamai':
+					if (isJson) {
+						const body = await response.getBody();
+						const json = await new Response(body).json();
+						return JSON.stringify(json);
+					} else {
+						const body = await response.getBody();
+						return await new Response(body).text();
+					}
+
+				default:
+					throw new Error('Unsupported CDN provider.');
+			}
+		} catch (error) {
+			console.error('Error retrieving response content:', error);
+			throw error;
 		}
 	}
 
@@ -548,7 +651,7 @@ export function getAbstractionHelper(request, env, ctx, loggerInstance) {
 //  */
 // function extractCDNParams(...args) {
 // 	let request, ctx, event, context, env;
-  
+
 // 	// Iterate through the arguments and assign them based on their type
 // 	for (const arg of args) {
 // 	  if (arg instanceof Request) {
@@ -571,7 +674,7 @@ export function getAbstractionHelper(request, env, ctx, loggerInstance) {
 // 		}
 // 	  }
 // 	}
-  
+
 // 	// Extract the environment variables based on the CDN provider
 // 	if (!env) {
 // 	  if (event) {
@@ -585,7 +688,7 @@ export function getAbstractionHelper(request, env, ctx, loggerInstance) {
 // 		env = {};
 // 	  }
 // 	}
-  
+
 // 	return { request, ctx, event, context, env };
 //   }
 
@@ -597,21 +700,21 @@ export function getAbstractionHelper(request, env, ctx, loggerInstance) {
 // 	  // ...
 // 	}
 //   }
-  
+
 //   // Cloudfront Lambda@Edge
 //   export async function handler(event, context) {
 // 	const { request: extractedRequest, event: extractedEvent, context: extractedContext, env: extractedEnv } = extractCDNParams(event, context);
 // 	// Use the extracted parameters in your code
 // 	// ...
 //   }
-  
+
 //   // Vercel Edge Functions
 //   export default async function handler(request, response) {
 // 	const { request: extractedRequest, context: extractedContext, env: extractedEnv } = extractCDNParams(request, response);
 // 	// Use the extracted parameters in your code
 // 	// ...
 //   }
-  
+
 //   // Akamai EdgeWorkers
 //   export async function onClientRequest(request) {
 // 	const { request: extractedRequest, env: extractedEnv } = extractCDNParams(request);

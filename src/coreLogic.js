@@ -48,10 +48,10 @@ export default class CoreLogic {
 	 * @param {*} cdnAdapter - The CDN provider.
 	 * @param {*} optimizelyProvider - The Optimizely provider.
 	 */
-	constructor(optimizelyProvider, env, ctx, sdkKey, abstractionHelper) {
-		this.logger = new Logger('info');
+	constructor(optimizelyProvider, env, ctx, sdkKey, abstractionHelper, kvStore, logger) {
 		this.env = env;
 		this.ctx = ctx;
+		this.kvStore = kvStore || undefined;
 		this.sdkKey = sdkKey;
 		this.cdnAdapter = undefined;
 		this.optimizelyProvider = optimizelyProvider;
@@ -394,7 +394,7 @@ export default class CoreLogic {
 		try {
 			// Prioritize KV storage if enabled in settings
 			if (requestConfig.settings.datafileFromKV) {
-				const datafile = await this.cdnAdapter.getDatafileFromKV(requestConfig.sdkKey, env);
+				const datafile = await this.cdnAdapter.getDatafileFromKV(requestConfig.sdkKey, this.kvStore);
 				if (datafile) {
 					if (requestConfig.settings.enableResponseMetadata) {
 						requestConfig.configMetadata.datafileFrom = 'KV Storage';
@@ -594,8 +594,8 @@ export default class CoreLogic {
 			let flagKeys = [];
 
 			// Retrieve flags from KV storage if configured
-			if (requestConfig.settings.flagsFromKV || requestConfig.enableFlagsFromKV) {
-				const flagsFromKV = await this.cdnAdapter.getFlagsFromKV(requestConfig.settings.kvFlagKeyName);
+			if (this.kvStore && (requestConfig.settings.flagsFromKV || requestConfig.enableFlagsFromKV)) {
+				const flagsFromKV = await this.cdnAdapter.getFlagsFromKV(this.kvStore);
 				if (flagsFromKV) {
 					flagKeys = await optlyHelper.splitAndTrimArray(flagsFromKV);
 					if (requestConfig.settings.enableResponseMetadata) {

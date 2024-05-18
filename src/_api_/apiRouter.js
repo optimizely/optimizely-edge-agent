@@ -9,8 +9,8 @@ import handleVariationChanges from './handlers/variationChanges';
  * @param {Request} request - The incoming request.
  * @returns {Promise<Response>} - The response from the appropriate handler.
  */
-async function apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) {
-	const url = new URL(request.url);
+async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings) {
+	const url = abstractionHelper.abstractRequest.getNewURL(request.url);
 	const path = url.pathname;
 	const method = request.method;
 
@@ -37,10 +37,14 @@ async function apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, 
 	for (let route in routes) {
 		const routePattern = new RegExp('^' + route.replace(/:\w+/g, '([^/]+)') + '$');
 		const match = routePattern.exec(path);
-
 		if (match && routes[route][method]) {
-			const params = match.slice(1); // Extract dynamic segments as parameters
-            const result = routes[route][method](request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings, ...params);
+			const params = {};
+			const paramNames = route.match(/:\w+/g);
+			paramNames.forEach((paramName, index) => {
+				params[paramName.slice(1)] = match[index + 1];
+			});
+
+			const result = routes[route][method](request, abstractionHelper, kvStore, logger, defaultSettings, params);
 			return result;
 		}
 	}
@@ -54,7 +58,6 @@ async function apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, 
  * @param {Request} request - The incoming request object.
  * @returns {Promise<Response>} - A promise that resolves to the response.
  */
-//handleRequest(_request, _env, _ctx, abstractionHelper, kvStore, logger, defaultSettings);
 export default async function handleRequest(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) {
-	return apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings);
+	return await apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings);
 }

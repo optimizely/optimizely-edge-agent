@@ -3,7 +3,6 @@
 import * as optlyHelper from '../../_helpers_/optimizelyHelper';
 import * as cookieDefaultOptions from '../../_config_/cookieOptions';
 import defaultSettings from '../../_config_/defaultSettings';
-import Logger from '../../_helpers_/logger';
 import EventListeners from '../../_event_listeners_/eventListeners';
 
 /**
@@ -14,8 +13,10 @@ class FastlyAdapter {
 	 * Creates an instance of FastlyAdapter.
 	 * @param {Object} coreLogic - The core logic instance.
 	 */
-	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper) {
+	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger) {
 		this.sdkKey = sdkKey;
+		this.kvStore = kvStore || undefined;
+		this.logger = logger;
 		this.coreLogic = coreLogic;
 		this.abstractionHelper = abstractionHelper;
 		this.eventQueue = [];
@@ -56,7 +57,7 @@ class FastlyAdapter {
 			// Convert URL object back to string
 			originUrl = originUrl.toString();
 			const httpMethod = request.method;
-			const result = await this.coreLogic.processRequest(request, env, ctx);
+			const result = await this.coreLogic.processRequest(request, env, ctx, sdkKey, abstractionHelper, kvStore, logger);
 			const cdnSettings = result.cdnExperimentSettings;
 			const validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
 
@@ -516,8 +517,8 @@ class FastlyAdapter {
 	 * @param {string} sdkKey - The SDK key.
 	 * @returns {Promise<Object|null>} The parsed datafile object or null if not found.
 	 */
-	async getDatafileFromKV(sdkKey, env) {
-		const jsonString = await env.OPTLY_HYBRID_AGENT_KV.get(sdkKey); // Namespace must be updated manually
+	async getDatafileFromKV(sdkKey, kvStore) {
+		const jsonString = await kvStore.get(sdkKey); // Namespace must be updated manually
 		if (jsonString) {
 			try {
 				return JSON.parse(jsonString);
@@ -567,8 +568,8 @@ class FastlyAdapter {
 	 * @param {string} kvKeyName - The key name in KV storage.
 	 * @returns {Promise<string|null>} The flag keys string or null if not found.
 	 */
-	async getFlagsFromKV(kvKeyName) {
-		const flagsString = await OPTLY_HYBRID_AGENT_KV.get(kvKeyName); // Namespace must be updated manually
+	async getFlagsFromKV(kvStore) {
+		const flagsString = await kvStore.get(defaultSettings.kv_key_optly_flagKeys); // Namespace must be updated manually
 		return flagsString;
 	}
 	/**
