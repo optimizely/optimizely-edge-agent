@@ -42,6 +42,46 @@ let coreLogic;
 // let adapter = new AkamaiAdapter(coreLogic);
 let cdnAdapter;
 
+
+// import { AbstractContext } from './abstractionHelper';
+
+// export function onClientRequest(request) {
+// 	// Create a context-like object
+// 	const ctx = {
+// 		wait: (promise) => {
+// 			// Custom wait logic for Akamai
+// 			return promise;
+// 		},
+// 	};
+
+// 	// Create an instance of AbstractContext
+// 	const abstractContext = new AbstractContext(ctx);
+
+// 	// Example usage of abstractContext
+// 	abstractContext.waitUntil(new Promise((resolve) => setTimeout(resolve, 1000)));
+
+// 	// Your logic here
+// }
+
+
+// export function onClientResponse(request, response) {
+// 	// Create a context-like object
+// 	const ctx = {
+// 		wait: (promise) => {
+// 			// Custom wait logic for Akamai
+// 			return promise;
+// 		},
+// 	};
+
+// 	// Create an instance of AbstractContext
+// 	const abstractContext = new AbstractContext(ctx);
+
+// 	// Example usage of abstractContext
+// 	abstractContext.waitUntil(new Promise((resolve) => setTimeout(resolve, 1000)));
+
+// 	// Your logic here
+// }
+
 /**
  * Main handler for incoming requests.
  * @param {Object} request - The incoming request object.

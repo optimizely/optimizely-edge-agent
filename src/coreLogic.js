@@ -53,8 +53,11 @@ export default class CoreLogic {
 		this.ctx = ctx;
 		this.kvStore = kvStore || undefined;
 		this.sdkKey = sdkKey;
-		this.cdnAdapter = undefined;
+		this.logger = logger;
+		this.abstractionHelper = abstractionHelper;
 		this.optimizelyProvider = optimizelyProvider;
+		// undefined values
+		this.cdnAdapter = undefined;
 		this.allDecisions = undefined;
 		this.serializedDecisions = undefined;
 		this.cdnExperimentSettings = undefined;
@@ -72,7 +75,6 @@ export default class CoreLogic {
 		this.invalidCookieDecisions = undefined;
 		this.datafileOperation = false;
 		this.configOperation = false;
-		this.abstractionHelper = abstractionHelper;
 		this.request = undefined;
 		this.env = undefined;
 		this.ctx = undefined;
@@ -226,10 +228,10 @@ export default class CoreLogic {
 						const targetUrl = cdnUrl.origin + cdnNormalizedPathname;
 
 						// Log the comparison details
-						this.logger.debug('Comparing URL: ' + compareOriginAndPath + ' with ' + targetUrl);		
+						this.logger.debug('Comparing URL: ' + compareOriginAndPath + ' with ' + targetUrl);
 						// Compare the normalized URLs
 						if (compareOriginAndPath === targetUrl || (testFlagKey && testFlagKey === flagKey)) {
-							this.logger.debug("Flag Key: " + flagKey + " Variation Key: " + variationKey);
+							this.logger.debug('Flag Key: ' + flagKey + ' Variation Key: ' + variationKey);
 							this.setCdnConfigProperties(cdnConfig, flagKey, variationKey);
 							return cdnConfig;
 						}
@@ -276,7 +278,7 @@ export default class CoreLogic {
 			this.isGetMethod = this.httpMethod === 'GET';
 
 			// Clone the request
-			this.request = await this.abstractionHelper.cloneRequest(request);
+			this.request = this.abstractionHelper.abstractRequest.cloneRequest(request);
 
 			// Get visitor ID, datafile, and user agent
 			const visitorId = await this.getVisitorId(request, requestConfig);
@@ -322,7 +324,7 @@ export default class CoreLogic {
 				cdnExperimentSettings: this.cdnExperimentSettings,
 			};
 		} catch (error) {
-			// Handle any errors during the process, returning a server error response			
+			// Handle any errors during the process, returning a server error response
 			this.logger.error('Error processing request:', error);
 			return {
 				reqResponse: await this.cdnAdapter.getNewResponseObject(`Internal Server Error: ${error.message}`, 'text/html', false, 500),
@@ -347,13 +349,13 @@ export default class CoreLogic {
 			case '/v1/datafile':
 				const datafileObj = await this.optimizelyProvider.datafile();
 				this.datafileOperation = true;
-				if (requestConfig.settings.enableResponseMetadata) {
+				if (requestConfig.enableResponseMetadata) {
 					return { datafile: datafileObj, metadata: requestConfig.configMetadata };
 				}
 				return datafileObj;
 			case '/v1/config':
 				const configObj = await this.optimizelyProvider.config();
-				if (requestConfig.settings.enableResponseMetadata) {
+				if (requestConfig.enableResponseMetadata) {
 					return { config: configObj, metadata: requestConfig.configMetadata };
 				}
 				return { config: configObj };
@@ -393,10 +395,10 @@ export default class CoreLogic {
 	async retrieveDatafile(requestConfig, env) {
 		try {
 			// Prioritize KV storage if enabled in settings
-			if (requestConfig.settings.datafileFromKV) {
+			if (requestConfig.datafileFromKV) {
 				const datafile = await this.cdnAdapter.getDatafileFromKV(requestConfig.sdkKey, this.kvStore);
 				if (datafile) {
-					if (requestConfig.settings.enableResponseMetadata) {
+					if (requestConfig.enableResponseMetadata) {
 						requestConfig.configMetadata.datafileFrom = 'KV Storage';
 					}
 					return datafile;
@@ -407,7 +409,7 @@ export default class CoreLogic {
 			// Fallback to CDN if KV storage is not enabled or datafile is not found
 			const datafileFromCDN = await this.cdnAdapter.getDatafile(requestConfig.sdkKey, 600);
 			if (datafileFromCDN) {
-				if (requestConfig.settings.enableResponseMetadata) {
+				if (requestConfig.enableResponseMetadata) {
 					requestConfig.configMetadata.datafileFrom = 'CDN';
 				}
 				return datafileFromCDN;
@@ -472,7 +474,7 @@ export default class CoreLogic {
 			const flagsToDecide = this.calculateFlagsToDecide(requestConfig, flagKeys, validStoredDecisions, activeFlags);
 
 			// spread operator for returning { flagsToForce, filteredFlagsToDecide };
-			return { ...flagsToDecide, validStoredDecisions }; 
+			return { ...flagsToDecide, validStoredDecisions };
 		} catch (error) {
 			this.logger.error('Error in determineFlagsToDecide:', error);
 			throw error;
@@ -506,9 +508,7 @@ export default class CoreLogic {
 	 */
 	calculateFlagsToDecide(requestConfig, flagKeys, validStoredDecisions, activeFlags) {
 		const validFlagKeySet = new Set(flagKeys);
-		let flagsToForce = requestConfig.overrideVisitorId
-			? []
-			: validStoredDecisions.filter((decision) => validFlagKeySet.has(decision.flagKey));
+		let flagsToForce = requestConfig.overrideVisitorId ? [] : validStoredDecisions.filter((decision) => validFlagKeySet.has(decision.flagKey));
 		let filteredFlagsToDecide = flagKeys.filter((flag) => activeFlags.includes(flag));
 
 		if (requestConfig.decideAll || (flagKeys.length === 0 && flagsToForce.length === 0)) {
@@ -541,7 +541,7 @@ export default class CoreLogic {
 	 * @param {Object[]} validStoredDecisions - An array of valid stored decisions.
 	 */
 	updateMetadata(requestConfig, flagsToDecide, validStoredDecisions, cdnVariationSettings) {
-		if (requestConfig.settings.enableResponseMetadata) {
+		if (requestConfig.enableResponseMetadata) {
 			requestConfig.configMetadata.flagKeysDecided = flagsToDecide;
 			requestConfig.configMetadata.savedCookieDecisions = validStoredDecisions;
 			requestConfig.configMetadata.agentServerMode = requestConfig.method === 'POST';
@@ -598,7 +598,7 @@ export default class CoreLogic {
 				const flagsFromKV = await this.cdnAdapter.getFlagsFromKV(this.kvStore);
 				if (flagsFromKV) {
 					flagKeys = await optlyHelper.splitAndTrimArray(flagsFromKV);
-					if (requestConfig.settings.enableResponseMetadata) {
+					if (requestConfig.enableResponseMetadata) {
 						requestConfig.configMetadata.flagKeysFrom = 'KV Storage';
 					}
 				}
@@ -607,7 +607,7 @@ export default class CoreLogic {
 			// Fallback to URL query parameters if no valid flags from KV
 			if (!optlyHelper.arrayIsValid(flagKeys)) {
 				flagKeys = requestConfig.flagKeys || [];
-				if (requestConfig.settings.enableResponseMetadata && flagKeys.length > 0) {
+				if (requestConfig.enableResponseMetadata && flagKeys.length > 0) {
 					requestConfig.configMetadata.flagKeysFrom = 'Query Parameters';
 				}
 			}
@@ -615,7 +615,7 @@ export default class CoreLogic {
 			// Check for flag keys in request body if POST method and no valid flags from previous sources
 			if (requestConfig.method === 'POST' && !optlyHelper.arrayIsValid(flagKeys) && requestConfig.body?.flagKeys?.length > 0) {
 				flagKeys = await optlyHelper.trimStringArray(requestConfig.body.flagKeys);
-				if (requestConfig.settings.enableResponseMetadata) {
+				if (requestConfig.enableResponseMetadata) {
 					requestConfig.configMetadata.flagKeysFrom = 'Body';
 				}
 			}
@@ -670,7 +670,7 @@ export default class CoreLogic {
 	 * @returns {Promise<[string, string]>} - A tuple of the visitor ID and its source.
 	 */
 	async retrieveOrGenerateVisitorId(request, requestConfig) {
-		let visitorId = this.cdnAdapter.getCookie(request, requestConfig.settings.visitorIdCookieName);
+		let visitorId = this.cdnAdapter.getRequestCookie(request, requestConfig.settings.visitorIdCookieName);
 		let visitorIdSource = visitorId ? 'cookie-visitor' : 'cdn-generated-visitor';
 
 		if (!visitorId) {
@@ -687,7 +687,7 @@ export default class CoreLogic {
 	 * @param {string} visitorIdSource - The source from which the visitor ID was retrieved or generated.
 	 */
 	storeVisitorIdMetadata(requestConfig, visitorId, visitorIdSource) {
-		if (requestConfig.settings.enableResponseMetadata) {
+		if (requestConfig.enableResponseMetadata) {
 			requestConfig.configMetadata.visitorId = visitorId;
 			requestConfig.configMetadata.visitorIdFrom = visitorIdSource;
 		}
@@ -753,7 +753,7 @@ export default class CoreLogic {
 	async prepareLocalResponse(responseDecisions, visitorId, serializedDecisions, requestConfig) {
 		const jsonBody = {
 			[requestConfig.settings.responseJsonKeyName]: requestConfig.trimmedDecisions ? this.allDecisions : responseDecisions,
-			...(requestConfig.settings.enableResponseMetadata && { configMetadata: requestConfig.configMetadata }),
+			...(requestConfig.enableResponseMetadata && { configMetadata: requestConfig.configMetadata }),
 		};
 
 		let fetchResponse = await this.cdnAdapter.getNewResponseObject(jsonBody, 'application/json', true);

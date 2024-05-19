@@ -1,36 +1,4 @@
-/**
- * Reads the incoming request body using abstractionHelper.
- * Use await abstractionHelper.readRequestBody(request) in an async function to get the string.
- * @param {Request} request - The incoming request to read from.
- * @returns {Promise<Object|string|undefined>} - The parsed request body.
- */
-async function readRequestBody(request) {
-	const contentType = request.headers.get('content-type');
-
-	try {
-		if (contentType) {
-			if (contentType.includes('application/json')) {
-				return await request.json();
-			} else if (contentType.includes('application/text') || contentType.includes('text/html')) {
-				return await request.text();
-			} else if (contentType.includes('form')) {
-				const formData = await request.formData();
-				const body = {};
-				for (const [key, value] of formData.entries()) {
-					body[key] = value;
-				}
-				return JSON.stringify(body);
-			} else {
-				return 'a file';
-			}
-		} else {
-			return undefined;
-		}
-	} catch (error) {
-		logger.error('Unable to determine Content-Type:', error.message);
-		return undefined;
-	}
-}
+import { AbstractRequest } from '../../_helpers_/abstractionHelper';
 
 /**
  * Checks if the given object is a valid array.
@@ -86,13 +54,13 @@ function handleFlagKeysResponse(combinedString, abstractionHelper) {
  */
 const handleFlagKeys = async (request, abstractionHelper, kvStore, logger, defaultSettings) => {
 	// Check if the incoming request is a POST method, return 405 if not allowed
-	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'POST') {
+	if (abstractionHelper.abstractRequest.getHttpMethodFromRequest(request) !== 'POST') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
 	}
 
 	try {
 		// Read and parse the incoming request body
-		const requestBody = await abstractionHelper.readRequestBody(request);
+		const requestBody = await AbstractRequest.readRequestBody(request);
 
 		// Attempt to retrieve flag keys from the request body
 		let flagKeys = requestBody.flagKeys;
@@ -137,7 +105,7 @@ const handleFlagKeys = async (request, abstractionHelper, kvStore, logger, defau
  */
 const handleGetFlagKeys = async (request, abstractionHelper, kvStore, logger, defaultSettings) => {
 	// Optionally, you can add method checks if necessary
-	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'GET') {
+	if (abstractionHelper.abstractRequest.getHttpMethodFromRequest(request) !== 'GET') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
 	}
 

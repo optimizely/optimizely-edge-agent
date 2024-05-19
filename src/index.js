@@ -79,7 +79,7 @@ export default {
 		const requestIsForAsset = assetsRegex.test(pathName);
 		if (workerOperation || requestIsForAsset) {
 			logger.debug(`Request is for an asset or a edge worker operation: ${pathName}`);
-			const assetResult = await optlyHelper.fetchByRequestObject(_request);
+			const assetResult = await abstractionHelper.abstractRequest.fetchRequest(_request);
 			return assetResult;
 		}
 
@@ -146,8 +146,8 @@ export default {
 			if (!requestIsForAsset && optimizelyEnabled && !workerOperation && sdkKey) {
 				try {
 					// Initialize core logic with the provided SDK key
-					this.initializeCoreLogic(sdkKey, _abstractRequest, _env, _ctx, abstractionHelper);
-					return cdnAdapter._fetch(_request, _env, _ctx, abstractionHelper);
+					this.initializeCoreLogic(sdkKey, _abstractRequest, _env, _ctx, abstractionHelper, kvStore);					
+					return cdnAdapter._fetch(_request, _env, _ctx);
 				} catch (error) {
 					logger.error('Error during core logic initialization:', error);
 					return new Response(JSON.stringify({ module: 'index.js', error: error.message }), { status: 500 });
@@ -179,15 +179,15 @@ export default {
 	 * Initializes core logic with the provided SDK key.
 	 * @param {string} sdkKey - The SDK key used for initialization.
 	 */
-	initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper) {
+	initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore, ) {
 		if (!sdkKey) {
 			throw new Error('SDK Key is required for initialization.');
 		}
 		logger.debug(`Initializing core logic with SDK Key: ${sdkKey}`);
 		// Initialize the OptimizelyProvider, CoreLogic, and CDN instances
 		optimizelyProvider = new OptimizelyProvider(sdkKey, request, env, ctx, abstractionHelper);
-		coreLogic = new CoreLogic(optimizelyProvider, env, ctx, sdkKey, abstractionHelper);
-		cdnAdapter = new CloudflareAdapter(coreLogic, optimizelyProvider, abstractionHelper);
+		coreLogic = new CoreLogic(optimizelyProvider, env, ctx, sdkKey, abstractionHelper, kvStore, logger);
+		cdnAdapter = new CloudflareAdapter(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger);
 		optimizelyProvider.setCdnAdapter(cdnAdapter);
 		coreLogic.setCdnAdapter(cdnAdapter);
 	},

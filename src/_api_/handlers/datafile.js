@@ -1,5 +1,4 @@
-import defaultSettings from '../../_config_/defaultSettings';
-import * as optlyHelper from '../../_helpers_/optimizelyHelper';
+import { AbstractRequest } from '../../_helpers_/abstractionHelper';
 
 /**
  * Fetches and updates the Optimizely datafile based on the provided datafile key.
@@ -13,7 +12,7 @@ import * as optlyHelper from '../../_helpers_/optimizelyHelper';
  */
 const handleDatafile = async (request, abstractionHelper, kvStore, logger, defaultSettings, params = {}) => {
 	// Check if the incoming request is a POST method, return 405 if not allowed
-	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'POST') {
+	if (abstractionHelper.abstractRequest.getHttpMethodFromRequest(request) !== 'POST') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
 	}
 
@@ -32,10 +31,12 @@ const handleDatafile = async (request, abstractionHelper, kvStore, logger, defau
 	if (!datafileKey) return abstractionHelper.createResponse('Datafile SDK key is required but it is missing from the request.', 400);
 
 	try {
-		const datafileResponse = await optlyHelper.fetchByRequestObject(datafileUrl);
-		const jsonString = await processResponse(datafileResponse);
-		await kvStore.put('optly_sdk_datafile', jsonString);
-		const kvDatafile = await kvStore.get(defaultSettings.kv_key_optly_sdk_datafile);
+		const datafileResponse = await AbstractRequest.fetchRequest(datafileUrl);
+		const jsonString = await processResponse(datafileResponse);		
+		// await kvStore.put('optly_sdk_datafile', jsonString);
+		// const kvDatafile = await kvStore.get(defaultSettings.kv_key_optly_sdk_datafile);
+		await kvStore.put(datafileKey, jsonString);
+		const kvDatafile = await kvStore.get(datafileKey);
 
 		const responseObject = {
 			message: `Datafile updated to Key: ${datafileKey}`,
@@ -62,12 +63,15 @@ const handleDatafile = async (request, abstractionHelper, kvStore, logger, defau
  */
 const handleGetDatafile = async (request, abstractionHelper, kvStore, logger, defaultSettings, params) => {
 	// Check if the incoming request is a GET method, return 405 if not allowed
-	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'GET') {
+	if (abstractionHelper.abstractRequest.getHttpMethodFromRequest(request) !== 'GET') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
 	}
 
+	const datafileKey = params.key;
+
 	try {
-		const datafile = await kvStore.get(defaultSettings.kv_key_optly_sdk_datafile);
+		// const datafile = await kvStore.get(defaultSettings.kv_key_optly_sdk_datafile);
+		const datafile = await kvStore.get(datafileKey);
 
 		if (!datafile) {
 			return abstractionHelper.createResponse('Datafile not found', 404);

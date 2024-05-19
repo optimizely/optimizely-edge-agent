@@ -11,8 +11,8 @@ import handleVariationChanges from './handlers/variationChanges';
  */
 async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings) {
 	const url = abstractionHelper.abstractRequest.getNewURL(request.url);
-	const path = url.pathname;
-	const method = request.method;
+	const path = abstractionHelper.abstractRequest.getPathnameFromRequest(request);
+	const method = abstractionHelper.abstractRequest.getHttpMethodFromRequest(request);
 
 	// Define route patterns and corresponding handlers
 	const routes = {
@@ -40,9 +40,12 @@ async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSet
 		if (match && routes[route][method]) {
 			const params = {};
 			const paramNames = route.match(/:\w+/g);
-			paramNames.forEach((paramName, index) => {
-				params[paramName.slice(1)] = match[index + 1];
-			});
+
+			if (paramNames) {
+				paramNames.forEach((paramName, index) => {
+					params[paramName.slice(1)] = match[index + 1];
+				});
+			}
 
 			const result = routes[route][method](request, abstractionHelper, kvStore, logger, defaultSettings, params);
 			return result;

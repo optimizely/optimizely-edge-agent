@@ -3,6 +3,7 @@ import * as cookieDefaultOptions from "../_config_/cookieOptions";
 import defaultSettings from "../_config_/defaultSettings";
 import Logger from "./logger";
 import EventListeners from "../_event_listeners_/eventListeners";
+import { AbstractionHelper } from "./abstractionHelper";
 
 let https;
 if (defaultSettings.cdnProvider === "akamai") {
@@ -100,7 +101,7 @@ export async function fetchByRequestObject(request) {
         let clonedResponse = new Response(response.body, {
           status: response.status,
           statusText: response.statusText,
-          headers: new Headers(response.headers),
+          headers: AbstractionHelper.getNewHeaders(response),
         });
         return clonedResponse;
       } catch (error) {

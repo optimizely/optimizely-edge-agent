@@ -139,6 +139,9 @@ export default class RequestConfig {
 			ignoreUserProfileService: 'IGNORE_USER_PROFILE_SERVICE',
 			excludeVariables: 'EXCLUDE_VARIABLES',
 			overrideVisitorId: 'overrideVisitorId',
+			enableResponseMetadata: 'enableResponseMetadata',
+			enableDatafileFromKV: 'enableDatafileFromKV',
+			enableFlagsFromKV: 'enableFlagsFromKV',
 		};
 	}
 
@@ -208,6 +211,7 @@ export default class RequestConfig {
 		this.optimizelyEnabled = this.parseBoolean(this.getHeader(this.settings.enableOptimizelyHeader));
 		this.decideOptions = this.parseJson(this.getHeader(this.settings.decideOptionsHeader));
 		this.enableOptimizelyHeader = this.parseJson(this.getHeader(this.settings.enableOptimizelyHeader));
+		this.enableResponseMetadata = this.parseBoolean(this.getHeader(this.settings.enableRespMetadataHeader));
 		this.excludeVariables = this.decideOptions && this.decideOptions?.includes('EXCLUDE_VARIABLES');
 		this.enabledFlagsOnly = this.decideOptions && this.decideOptions?.includes('ENABLED_FLAGS_ONLY');
 		this.visitorId = this.getHeader(this.settings.visitorIdHeader);
@@ -221,7 +225,7 @@ export default class RequestConfig {
 			this.trimmedDecisions = undefined;
 		}
 		this.enableFlagsFromKV = this.parseBoolean(this.getHeader(this.settings.enableFlagsFromKV));
-		this.enableDatafileFromKV = this.parseBoolean(this.getHeader(this.settings.enableDatafileFromKV));
+		this.datafileFromKV = this.parseBoolean(this.getHeader(this.settings.enableDatafileFromKV));
 		this.enableRespMetadataHeader = this.parseBoolean(this.getHeader(this.settings.enableRespMetadataHeader));
 		this.setResponseCookies = this.parseBoolean(this.getHeader(this.settings.setResponseCookies));
 		this.setResponseHeaders = this.parseBoolean(this.getHeader(this.settings.setResponseHeaders));
@@ -239,6 +243,7 @@ export default class RequestConfig {
 		this.visitorId = qp.get(this.queryParameters.visitorId) || this.visitorId; // Fallback to header value if present
 		this.flagKeys = qp.getAll(this.queryParameters.keys);
 		this.sdkKey = qp.get(this.queryParameters.sdkKey) || this.sdkKey; // Fallback to header value if present
+		this.enableResponseMetadata = this.enableResponseMetadata || this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata));
 		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Query Parameters';
 		this.decideAll = this.parseBoolean(qp.get(this.queryParameters.decideAll));
 		//this.trimmedDecisions = this.trimmedDecisions || this.parseBoolean(qp.get(this.queryParameters.trimmedDecisions)) || this.settings.defaultTrimmedDecisions;
@@ -262,22 +267,14 @@ export default class RequestConfig {
 
 		if (!this.isPostMethod || this.isPostMethod === undefined) {
 			this.setRequestHeaders =
-				this.setRequestHeaders ||
-				this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)) ||
-				this.settings.defaultSetRequestHeaders;
+				this.setRequestHeaders || this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)) || this.settings.defaultSetRequestHeaders;
 			this.setRequestCookies =
-				this.setRequestCookies ||
-				this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)) ||
-				this.settings.defaultSetRequestCookies;
+				this.setRequestCookies || this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)) || this.settings.defaultSetRequestCookies;
 		}
 		this.setResponseHeaders =
-			this.setResponseHeaders ||
-			this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)) ||
-			this.settings.defaultSetResponseHeaders;
+			this.setResponseHeaders || this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)) || this.settings.defaultSetResponseHeaders;
 		this.setResponseCookies =
-			this.setResponseCookies ||
-			this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)) ||
-			this.settings.defaultSetResponseCookies;
+			this.setResponseCookies || this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)) || this.settings.defaultSetResponseCookies;
 	}
 
 	/**
@@ -294,9 +291,10 @@ export default class RequestConfig {
 			if (this.body.attributes && this.settings.enableResponseMetadata) this.configMetadata.attributesFrom = 'body';
 			this.eventTags = this.eventTags || this.body.eventTags;
 			if (this.body.eventTags && this.settings.enableResponseMetadata) this.configMetadata.eventTagsFrom = 'body';
+			this.enableResponseMetadata = this.enableResponseMetadata || this.body.enableResponseMetadata;
 			this.forcedDecisions = this.body.forcedDecisions;
 			this.enableFlagsFromKV = this.enableFlagsFromKV || this.body.enableFlagsFromKV;
-			this.enableDatafileFromKV = this.enableDatafileFromKV || this.body.enableDatafileFromKV;
+			this.datafileFromKV = this.datafileFromKV || this.body.datafileFromKV;
 			this.decideAll = this.decideAll || this.body.decideAll;
 			this.disableDecisionEvent = this.disableDecisionEvent || this.body.disableDecisionEvent;
 			this.enabledFlagsOnly = this.enabledFlagsOnly || this.body.enabledFlagsOnly;
