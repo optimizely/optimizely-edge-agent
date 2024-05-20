@@ -1,45 +1,22 @@
-/**
- * @module CloudflareAdapter
- */
+// akamaiAdapter.js
 
 import * as optlyHelper from '../../_helpers_/optimizelyHelper';
 import * as cookieDefaultOptions from '../../_config_/cookieOptions';
 import defaultSettings from '../../_config_/defaultSettings';
 import EventListeners from '../../_event_listeners_/eventListeners';
-import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
-import { AbstractResponse } from '../../_helpers_/abstraction-classes/abstractResponse';
 
 /**
- * Adapter class for Cloudflare Workers environment.
- * It implements the following methods:
- * - fetchHandler(request, env, ctx) - Processes incoming requests by either serving from cache or fetching from the origin,
- *   based on CDN settings. POST requests are handled directly without caching. Errors in fetching or caching are handled
- *   and logged, ensuring stability.
- * - fetchAndProcessRequest(originalRequest, originUrl, cdnSettings) - Fetches from the origin and processes the request
- *   based on caching and CDN settings.
- * - getOriginUrl(request, cdnSettings) - Determines the origin URL based on CDN settings.
- * - shouldFetchFromOrigin(cdnSettings) - Determines whether the request should fetch data from the origin based on CDN settings.
- * - handleFetchFromOrigin(request, originUrl, cdnSettings, ctx) - Handles the fetching from the origin and caching logic for GET requests.
- * - applyResponseSettings(response, cdnSettings) - Applies settings like headers and cookies to the response based on CDN settings.
- * - generateCacheKey(cdnSettings, originUrl) - Generates a cache key based on CDN settings, enhancing cache control by appending
- *   A/B test identifiers or using specific CDN URLs.
- * - fetchFromOriginOrCDN(input, options) - Fetches data from the origin or CDN based on the provided URL or Request object.
- * - fetchFromOrigin(cdnSettings, reqResponse) - Fetches content from the origin based on CDN settings.
- * - cacheResponse(ctx, cache, cacheKey, response) - Caches the fetched response, handling errors during caching to ensure the function's
- *   robustness.
- * - dispatchConsolidatedEvents(ctx, defaultSettings) - Asynchronously dispatches consolidated events to the Optimizely LOGX events endpoint.
- * - defaultFetch(request, env, ctx) - Performs a fetch request to the origin server without any caching logic.
- * - This class is designed to be extended by other classes to provide specific implementations for handling requests and responses.
+ * Adapter class for Akamai EdgeWorkers environment.
  */
-class CloudflareAdapter {
+class AkamaiAdapter {
 	/**
-	 * Creates an instance of CloudflareAdapter.
+	 * Creates an instance of AkamaiAdapter.
 	 * @param {Object} coreLogic - The core logic instance.
 	 */
-	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger) {
+	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelpe, kvStore, logger) {
 		this.sdkKey = sdkKey;
-		this.logger = logger;
 		this.kvStore = kvStore || undefined;
+		this.logger = logger;
 		this.coreLogic = coreLogic;
 		this.abstractionHelper = abstractionHelper;
 		this.eventQueue = [];
@@ -53,8 +30,7 @@ class CloudflareAdapter {
 		this.cookiesToSetResponse = [];
 		this.headersToSetResponse = {};
 		this.optimizelyProvider = optimizelyProvider;
-		this.cdnSettingsMessage =
-			'Failed to process the request. CDN settings are missing or require forwarding to origin.';
+		this.cdnSettingsMessage = 'Failed to process the request. CDN settings are missing or require forwarding to origin.';
 	}
 
 	/**
@@ -67,14 +43,13 @@ class CloudflareAdapter {
 	 * @param {Object} ctx - The context object, used here for passing along the waitUntil promise for caching.
 	 * @returns {Promise<Response>} - The processed response, either from cache or freshly fetched.
 	 */
-	async fetchHandler(request, env, ctx) {
+	async onClientRequest(request, env, ctx) {
 		let fetchResponse;
 		this.request = request;
 		this.env = env;
 		this.ctx = ctx;
 		try {
-			let originUrl = this.abstractionHelper.abstractRequest.getNewURL(request.url);
-			this.logger.debug(`Origin URL [fetchHandler]: ${originUrl}`);
+			let originUrl = new URL(request.url);
 			// Ensure the URL uses HTTPS
 			if (originUrl.protocol !== 'https:') {
 				originUrl.protocol = 'https:';
@@ -82,42 +57,34 @@ class CloudflareAdapter {
 			// Convert URL object back to string
 			originUrl = originUrl.toString();
 			const httpMethod = request.method;
-			const result = await this.coreLogic.processRequest(request, env, ctx, this.sdkKey);
+			const result = await this.coreLogic.processRequest(request, env, ctx, sdkKey, abstractionHelper, kvStore, logger);
 			const cdnSettings = result.cdnExperimentSettings;
 			const validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
 
 			// Adjust origin URL based on CDN settings
 			if (validCDNSettings) {
 				originUrl = cdnSettings.cdnResponseURL;
-				this.logger.debug(`CDN settings found [fetchHandler]: ${cdnSettings}`);
 			}
 
 			// Return response for POST requests without caching
 			if (httpMethod === 'POST') {
-				this.logger.debug('POST request detected. Returning response without caching [fetchHandler]');
+				this.logger().debug('POST request detected. Returning response without caching.');
 				return result.reqResponse;
 			}
 
 			// Handle specific GET requests immediately without caching
 			if (httpMethod === 'GET' && (this.coreLogic.datafileOperation || this.coreLogic.configOperation)) {
 				const fileType = this.coreLogic.datafileOperation ? 'datafile' : 'config file';
-				this.logger.debug(
-					`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey} [fetchHandler]`
-				);
+				this.logger().debug(`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`);
 				return result.reqResponse;
 			}
 
 			// Evaluate if we should fetch from the origin and/or cache
 			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
-				this.logger.debug(
-					'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]'
-				);
 				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings);
 			} else {
-				this.logger.debug(
-					'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.'
-				);
-				fetchResponse = await this.fetchFromOriginOrCDN(request);
+				this.logger().debug('No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.');
+				fetchResponse = await this.fetchDirectly(request);
 			}
 
 			return fetchResponse;
@@ -135,9 +102,6 @@ class CloudflareAdapter {
 	 * @returns {Promise<Response>} - The processed response.
 	 */
 	async fetchAndProcessRequest(originalRequest, originUrl, cdnSettings) {
-		this.logger.debug(
-			`Fetching and processing request [fetchAndProcessRequest]: ${originalRequest}, ${originUrl}, ${cdnSettings}`
-		);
 		let newRequest = this.cloneRequestWithNewUrl(originalRequest, originUrl);
 
 		// Set headers and cookies as necessary before sending the request
@@ -149,7 +113,7 @@ class CloudflareAdapter {
 			newRequest = this.setMultipleRequestHeaders(newRequest, this.headersToSetRequest);
 		}
 
-		let response = await this.fetchFromOriginOrCDN(newRequest);
+		let response = await fetch(newRequest);
 
 		// Apply cache-control if present in the response
 		if (response.headers.has('Cache-Control')) {
@@ -170,10 +134,20 @@ class CloudflareAdapter {
 			const cacheKey = this.generateCacheKey(cdnSettings, originUrl);
 			const cache = caches.default;
 			await cache.put(cacheKey, response.clone());
-			this.logger.debug(`Cache hit for: ${originUrl}.`);
+			this.logger().debug(`Cache hit for: ${originUrl}.`);
 		}
-		this.logger.debug(`Response processed and being returned [fetchAndProcessRequest]`);
+
 		return response;
+	}
+
+	/**
+	 * Fetches directly from the origin without any caching logic.
+	 * @param {Request} request - The original request.
+	 * @returns {Promise<Response>} - The response from the origin.
+	 */
+	async fetchDirectly(request) {
+		this.logger().debug('Fetching directly from origin: ' + request.url);
+		return await fetch(request);
 	}
 
 	/**
@@ -184,7 +158,7 @@ class CloudflareAdapter {
 	 */
 	getOriginUrl(request, cdnSettings) {
 		if (cdnSettings && cdnSettings.cdnResponseURL) {
-			this.logger.debug('Valid CDN settings detected.');
+			this.logger().debug('Valid CDN settings detected.');
 			return cdnSettings.cdnResponseURL;
 		}
 		return request.url;
@@ -196,9 +170,7 @@ class CloudflareAdapter {
 	 * @returns {Boolean} - True if the request should be forwarded to the origin, false otherwise.
 	 */
 	shouldFetchFromOrigin(cdnSettings) {
-		const result = !!(cdnSettings && !cdnSettings.forwardRequestToOrigin && this.request.method === 'GET');
-		this.logger.debug(`Should fetch from origin [shouldFetchFromOrigin]: ${result}`);
-		return result;
+		return !!(cdnSettings && !cdnSettings.forwardRequestToOrigin && this.request.method === 'GET');
 	}
 
 	/**
@@ -210,23 +182,18 @@ class CloudflareAdapter {
 	 * @returns {Promise<Response>} - The fetched or cached response.
 	 */
 	async handleFetchFromOrigin(request, originUrl, cdnSettings, ctx) {
-		this.logger.debug(`Handling fetch from origin [handleFetchFromOrigin]: ${originUrl}`);
-		const clonedRequest = this.cloneRequestWithNewUrl(request, originUrl);
+		const newRequest = this.cloneRequestWithNewUrl(request, originUrl);
 		const cacheKey = this.generateCacheKey(cdnSettings, originUrl);
-		this.logger.debug(`Generated cache key: ${cacheKey}`);
+		this.logger().debug(`Generated cache key: ${cacheKey}`);
 		const cache = caches.default;
 		let response = await cache.match(cacheKey);
 
 		if (!response) {
-			this.logger.debug(`Cache miss for ${originUrl}. Fetching from origin.`);
-			const newRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(originUrl, newRequest);
-			response = await this.fetchFromOriginOrCDN(newRequest);
-			if (response.ok) {
-				this.cacheResponse(ctx, cache, cacheKey, response);
-				this.logger.debug(`Response from origin was cached successfully. Cached Key: ${cacheKey}`);
-			}
+			this.logger().debug(`Cache miss for ${originUrl}. Fetching from origin.`);
+			response = await this.fetch(new Request(originUrl, newRequest));
+			if (response.ok) this.cacheResponse(ctx, cache, cacheKey, response);
 		} else {
-			this.logger.debug(`Cache hit for: ${originUrl}.`);
+			this.logger().debug(`Cache hit for: ${originUrl}.`);
 		}
 
 		return this.applyResponseSettings(response, cdnSettings);
@@ -253,9 +220,8 @@ class CloudflareAdapter {
 	 * @returns {string} - A fully qualified URL to use as a cache key.
 	 */
 	generateCacheKey(cdnSettings, originUrl) {
-		this.logger.debug(`Generating cache key [generateCacheKey]: ${cdnSettings}, ${originUrl}`);
 		try {
-			let cacheKeyUrl = this.abstractionHelper.abstractRequest.getNewURL(originUrl);
+			let cacheKeyUrl = new URL(originUrl);
 
 			// Ensure that the pathname ends properly before appending
 			let basePath = cacheKeyUrl.pathname.endsWith('/') ? cacheKeyUrl.pathname.slice(0, -1) : cacheKeyUrl.pathname;
@@ -265,27 +231,11 @@ class CloudflareAdapter {
 			} else {
 				cacheKeyUrl.pathname = `${basePath}/${cdnSettings.cacheKey}`;
 			}
-			this.logger.debug(`Cache key generated [generateCacheKey]: ${cacheKeyUrl.href}`);
+
 			return cacheKeyUrl.href;
 		} catch (error) {
 			this.logger.error('Error generating cache key:', error);
 			throw new Error('Failed to generate cache key.');
-		}
-	}
-
-	/**
-	 * Fetches data from the origin or CDN based on the provided URL or Request object.
-	 * @param {string|Request} input - The URL string or Request object.
-	 * @param {Object} [options={}] - Additional options for the request.
-	 * @returns {Promise<Response>} - The response from the fetch operation.
-	 */
-	async fetchFromOriginOrCDN(input, options = {}) {
-		try {
-			this.logger.debug(`Fetching from origin or CDN [fetchFromOriginOrCDN]: ${input}, ${options}`);
-			return await AbstractRequest.fetchRequest(input, options);
-		} catch (error) {
-			this.logger.error('Error fetching from origin or CDN:', error);
-			throw error;
 		}
 	}
 
@@ -298,9 +248,11 @@ class CloudflareAdapter {
 	 */
 	async fetchFromOrigin(cdnSettings, reqResponse) {
 		try {
-			this.logger.debug(`Fetching from origin [fetchFromOrigin]: ${cdnSettings}, ${reqResponse}`);
+			// for (const [key, value] of reqResponse.headers) { // Debugging headers
+			// 	this.logger().debug(`${key}: ${value}`);
+			// }
 			const urlToFetch = cdnSettings.forwardRequestToOrigin ? reqResponse.url : cdnSettings.cdnResponseURL;
-			return await this.fetchFromOriginOrCDN(urlToFetch);
+			return await fetch(urlToFetch);
 		} catch (error) {
 			this.logger.error('Error fetching from origin:', error);
 			throw new Error('Failed to fetch from origin.');
@@ -315,12 +267,10 @@ class CloudflareAdapter {
 	 * @param {Response} response - The response to cache.
 	 */
 	async cacheResponse(ctx, cache, cacheKey, response) {
-		this.logger.debug(`Caching response [cacheResponse]: ${cacheKey}`);
 		try {
-			this.logger.debug(`Caching response [cacheResponse]: ${ctx}, ${cache}, ${cacheKey}, ${response}`);
 			const responseToCache = response.clone();
-			this.abstractionHelper.abstractContext.waitUntil(cache.put(cacheKey, responseToCache));
-			this.logger.debug('Response from origin was cached successfully. Cached Key:', cacheKey);
+			ctx.waitUntil(cache.put(cacheKey, responseToCache));
+			this.logger().debug('Response from origin was cached successfully. Cached Key:', cacheKey);
 		} catch (error) {
 			this.logger.error('Error caching response:', error);
 			throw new Error('Failed to cache response.');
@@ -334,12 +284,7 @@ class CloudflareAdapter {
 	 * @returns {Promise<void>} - A Promise that resolves when the event dispatch process is complete.
 	 */
 	async dispatchConsolidatedEvents(ctx, defaultSettings) {
-		this.logger.debug(`Dispatching consolidated events [dispatchConsolidatedEvents]: ${ctx}, ${defaultSettings}`);
-		if (
-			optlyHelper.arrayIsValid(this.eventQueue) &&
-			this.optimizelyProvider &&
-			this.optimizelyProvider.optimizelyClient
-		) {
+		if (optlyHelper.arrayIsValid(this.eventQueue) && this.optimizelyProvider && this.optimizelyProvider.optimizelyClient) {
 			try {
 				const allEvents = await this.consolidateVisitorsInEvents(this.eventQueue);
 				ctx.waitUntil(
@@ -354,36 +299,82 @@ class CloudflareAdapter {
 	}
 
 	/**
-	 * Performs a fetch request to the origin server without any caching logic.
-	 * This method replicates the default Cloudflare fetch behavior for Workers.
-	 *
-	 * @param {Request} request - The incoming request to be forwarded.
-	 * @param {object} env - The environment bindings.
-	 * @param {object} ctx - The execution context.
-	 * @returns {Promise<Response>} - The response from the origin server, or an error response if fetching fails.
+	 * Performs a default fetch operation using httpRequest.
+	 * @param {Request} request - The request object to be fetched.
+	 * @param {object} env - The environment object.
+	 * @param {object} ctx - The context object.
+	 * @returns {Promise<Response>} A promise resolving to the fetched response.
 	 */
 	async defaultFetch(request, env, ctx) {
-		try {
-			this.logger.debug(`Fetching from origin [defaultFetch]`);
-			// check if the request is a string, then use the request as the url, otherwise use the request object url property
-			const _url = typeof request === 'string' ? request : request.url;
-			this.logger.debug(`Fetching from origin for: ${_url}`);
+		// Determine the HTTP method of the request
+		const httpMethod = request.method;
+		const isPostMethod = httpMethod === 'POST';
+		const isGetMethod = httpMethod === 'GET';
 
-			// Perform a standard fetch request using the original request details
-			const response = await this.fetchFromOriginOrCDN(_url);
+		try {
+			// Log the origin being fetched from
+			this.logger().debug(`Fetching from origin for: ${request.url}`);
+
+			// Create options for the HTTP request
+			const options = {
+				method: request.method,
+				headers: request.headers, // Copy headers from the original request
+				body: request.body, // Copy body from the original request (if applicable)
+			};
+
+			// Make the HTTP request using httpRequest
+			const response = await httpRequest.request(request.url, options);
+
+			// Check if response is not ok
+			if (!response.ok) {
+				throw new Error(`HTTP error! status: ${response.status}`);
+			}
+
+			// Create a new response to return to the client
+			const clonedResponse = new Response(response.body, {
+				status: response.status,
+				statusText: response.statusText,
+				headers: response.headers,
+			});
+
+			// Additional headers or response transformations can be added here
+			// clonedResponse.headers.set('X-Custom-Header', 'value');
+
+			return clonedResponse;
+		} catch (error) {
+			// Log and handle fetch failure
+			this.logger.error(`Failed to fetch: ${error.message}`);
+			return new Response(`An error occurred: ${error.message}`, {
+				status: 500,
+				statusText: 'Internal Server Error',
+			});
+		}
+	}
+
+	/**
+	 * Performs a fetch request to the origin server using provided options.
+	 * This method replicates the default Cloudflare fetch behavior for Workers but allows custom fetch options.
+	 *
+	 * @param {string} url - The URL of the request to be forwarded.
+	 * @param {object} options - Options object containing fetch parameters such as method, headers, body, etc.
+	 * @param {object} ctx - The execution context, if any context-specific actions need to be taken.
+	 * @returns {Promise<Response>} - The response from the origin server, or an error response if fetching fails.
+	 */
+	async fetch(url, options = {}) {
+		try {
+			// Perform a standard fetch request using the URL and provided options
+			const response = await fetch(url, options);
 
 			// Check if the response was successful
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
-			this.logger.debug(`Fetch fromn origin completed [defaultFetch]`);
 
 			// Clone the response to modify it if necessary
-			let clonedResponse = await AbstractResponse.createNewResponse(response.body, {
+			let clonedResponse = new Response(response.body, {
 				status: response.status,
 				statusText: response.statusText,
-				//headers: new Headers(response.headers),
-				headers: this.abstractionHelper.getNewHeaders(response),
+				headers: new Headers(response.headers),
 			});
 
 			// Here you can add any headers or perform any response transformations if necessary
@@ -395,13 +386,10 @@ class CloudflareAdapter {
 			this.logger.error(`Failed to fetch: ${error.message}`);
 
 			// Return a standardized error response
-			return AbstractResponse.createNewResponse(
-				`An internal error occurred during the request [defaultFetch]: ${error.message}`,
-				{
-					status: 500,
-					statusText: 'Internal Server Error',
-				}
-			);
+			return new Response(`An error occurred: ${error.message}`, {
+				status: 500,
+				statusText: 'Internal Server Error',
+			});
 		}
 	}
 
@@ -415,10 +403,9 @@ class CloudflareAdapter {
 	 * @throws {Error} Throws an error if the fetch operation is unsuccessful or the response is not OK.
 	 */
 	async getDatafile(sdkKey, ttl = 3600) {
-		this.logger.debugExt(`Getting datafile [getDatafile]: ${sdkKey}`);
 		const url = `https://cdn.optimizely.com/datafiles/${sdkKey}.json`;
 		try {
-			const response = await this.defaultFetch(url, { cf: { cacheTtl: ttl } });
+			const response = await this.fetch(url, { cf: { cacheTtl: ttl } });
 			if (!response.ok) {
 				throw new Error(`Failed to fetch datafile: ${response.statusText}`);
 			}
@@ -437,7 +424,6 @@ class CloudflareAdapter {
 	 * @returns {Object} - An object containing detailed error information.
 	 */
 	createErrorDetails(request, url, message, errorMessage = '', cdnSettingsVariable) {
-
 		const _errorMessage = errorMessage || 'An error occurred during request processing the request.';
 		return {
 			requestUrl: url || request.url,
@@ -474,7 +460,6 @@ class CloudflareAdapter {
 	 * @throws {Error} - Throws an error if the event queue is empty or improperly formatted.
 	 */
 	async consolidateVisitorsInEvents(eventQueue) {
-		this.logger.debug(`Consolidating events into single visitor [consolidateVisitorsInEvents]: ${eventQueue}`);
 		if (!Array.isArray(eventQueue) || eventQueue.length === 0) {
 			throw new Error('Event queue is empty or not an array.');
 		}
@@ -503,7 +488,6 @@ class CloudflareAdapter {
 	 * @throws {Error} - Throws an error if the fetch request fails, parameters are missing, or the URL is invalid.
 	 */
 	async dispatchAllEventsToOptimizely(url, events) {
-		this.logger.debug(`Dispatching all events to Optimizely [dispatchAllEventsToOptimizely]: ${url}, ${events}`);
 		if (!url) {
 			throw new Error('URL must be provided.');
 		}
@@ -512,7 +496,8 @@ class CloudflareAdapter {
 			throw new Error('Valid event data must be provided.');
 		}
 
-		const eventRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(url, {
+		// this.logger().debug(JSON.stringify(events));
+		const eventRequest = new Request(url, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
@@ -521,11 +506,10 @@ class CloudflareAdapter {
 		});
 
 		try {
-			const response = await this.fetchFromOriginOrCDN(eventRequest);
+			const response = await fetch(eventRequest);
 			if (!response.ok) {
 				throw new Error(`HTTP error! Status: ${response.status}`);
 			}
-			this.logger.debug(`Events were successfully dispatched to Optimizely [dispatchAllEventsToOptimizely]`);
 			return response;
 		} catch (error) {
 			this.logger.error('Failed to dispatch consolidated event to Optimizely:', error);
@@ -539,11 +523,9 @@ class CloudflareAdapter {
 	 * @returns {Promise<Object|null>} The parsed datafile object or null if not found.
 	 */
 	async getDatafileFromKV(sdkKey, kvStore) {
-		this.logger.debug(`Getting datafile from KV [getDatafileFromKV]`);
 		const jsonString = await kvStore.get(sdkKey); // Namespace must be updated manually
 		if (jsonString) {
 			try {
-				this.logger.debug(`Datafile retrieved from KV [getDatafileFromKV]`);
 				return JSON.parse(jsonString);
 			} catch {
 				throw new Error('Invalid JSON for datafile from KV storage.');
@@ -592,20 +574,18 @@ class CloudflareAdapter {
 	 * @returns {Promise<string|null>} The flag keys string or null if not found.
 	 */
 	async getFlagsFromKV(kvStore) {
-		this.logger.debug(`Getting flags from KV [getFlagsFromKV]`);
 		const flagsString = await kvStore.get(defaultSettings.kv_key_optly_flagKeys); // Namespace must be updated manually
-		this.logger.debugExt(`Flags retrieved from KV [getFlagsFromKV]: ${flagsString}`);
 		return flagsString;
 	}
 	/**
 
-    /**
-     * Clones a request object with a new URL, ensuring that GET and HEAD requests do not include a body.
-     * @param {Request} request - The original request object to be cloned.
-     * @param {string} newUrl - The new URL to be set for the cloned request.
-     * @returns {Request} - The cloned request object with the new URL.
-     * @throws {TypeError} - If the provided request is not a valid Request object or the new URL is not a valid string.
-     */
+/**
+ * Clones a request object with a new URL, ensuring that GET and HEAD requests do not include a body.
+ * @param {Request} request - The original request object to be cloned.
+ * @param {string} newUrl - The new URL to be set for the cloned request.
+ * @returns {Request} - The cloned request object with the new URL.
+ * @throws {TypeError} - If the provided request is not a valid Request object or the new URL is not a valid string.
+ */
 	cloneRequestWithNewUrl(request, newUrl) {
 		try {
 			// Validate the request and new URL
@@ -616,8 +596,27 @@ class CloudflareAdapter {
 				throw new TypeError('Invalid URL provided.');
 			}
 
-			// Use the abstraction helper to create a new request with the new URL
-			return this.abstractionHelper.abstractRequest.createNewRequest(request, newUrl);
+			// Prepare the properties for the new request
+			const requestOptions = {
+				method: request.method,
+				headers: new Headers(request.headers),
+				mode: request.mode,
+				credentials: request.credentials,
+				cache: request.cache,
+				redirect: request.redirect,
+				referrer: request.referrer,
+				integrity: request.integrity,
+			};
+
+			// Ensure body is not assigned for GET or HEAD methods
+			if (request.method !== 'GET' && request.method !== 'HEAD' && request.bodyUsed === false) {
+				requestOptions.body = request.body;
+			}
+
+			// Create the new request with the specified URL and options
+			const clonedRequest = new Request(newUrl, requestOptions);
+
+			return clonedRequest;
 		} catch (error) {
 			this.logger.error('Error cloning request with new URL:', error);
 			throw error;
@@ -633,7 +632,13 @@ class CloudflareAdapter {
 	 * @throws {Error} - If an error occurs during the cloning process.
 	 */
 	static cloneRequest(request) {
-		return this.abstractionHelper.abstractRequest.cloneRequest(request);
+		try {
+			const clonedRequest = request.clone();
+			return clonedRequest;
+		} catch (error) {
+			this.logger.error('Error cloning request:', error);
+			throw error;
+		}
 	}
 
 	/**
@@ -644,7 +649,13 @@ class CloudflareAdapter {
 	 * @throws {Error} - If an error occurs during the cloning process.
 	 */
 	cloneRequest(request) {
-		return this.abstractionHelper.abstractRequest.cloneRequest(request);
+		try {
+			const clonedRequest = request.clone();
+			return clonedRequest;
+		} catch (error) {
+			this.logger.error('Error cloning request:', error);
+			throw error;
+		}
 	}
 
 	/**
@@ -655,28 +666,78 @@ class CloudflareAdapter {
 	 * @throws {Error} - If an error occurs during the cloning process.
 	 */
 	cloneResponse(response) {
-		return this.abstractionHelper.abstractResponse.cloneResponse(response);
+		try {
+			const clonedResponse = response.clone();
+			return clonedResponse;
+		} catch (error) {
+			this.logger.error('Error cloning response:', error);
+			throw error;
+		}
 	}
 
 	/**
-	 * Static method to retrieve JSON payload using AbstractRequest.
+	 * Retrieves the JSON payload from a request, ensuring the request method is POST.
+	 * This method clones the request for safe reading and handles errors in JSON parsing,
+	 * returning null if the JSON is invalid or the method is not POST.
 	 *
 	 * @static
-	 * @param {Request} request - The incoming HTTP request object.
+	 * @param {Request} _request - The incoming HTTP request object.
 	 * @returns {Promise<Object|null>} - A promise that resolves to the JSON object parsed from the request body, or null if the body isn't valid JSON or method is not POST.
 	 */
-	static async getJsonPayload(request) {
-		return await this.abstractionHelper.abstractRequest.getJsonPayload(request);
+	static async getJsonPayload(_request) {
+		const request = this.cloneRequest(_request);
+		if (request.method !== 'POST') {
+			this.logger.error('Request is not an HTTP POST method.');
+			return null;
+		}
+
+		try {
+			const clonedRequest = await this.cloneRequest(request);
+
+			// Check if the body is empty before parsing
+			const bodyText = await clonedRequest.text(); // Get the body as text first
+			if (!bodyText.trim()) {
+				return null; // Empty body, return null gracefully
+			}
+
+			const json = JSON.parse(bodyText);
+			return json;
+		} catch (error) {
+			this.logger.error('Error parsing JSON:', error);
+			return null;
+		}
 	}
 
 	/**
-	 * Instance method to retrieve JSON payload using AbstractRequest.
+	 * Retrieves the JSON payload from a request, ensuring the request method is POST.
+	 * This method clones the request for safe reading and handles errors in JSON parsing,
+	 * returning null if the JSON is invalid or the method is not POST.
 	 *
-	 * @param {Request} request - The incoming HTTP request object.
+	 * @param {Request} _request - The incoming HTTP request object.
 	 * @returns {Promise<Object|null>} - A promise that resolves to the JSON object parsed from the request body, or null if the body isn't valid JSON or method is not POST.
 	 */
-	async getJsonPayload(request) {
-		return await this.abstractionHelper.abstractRequest.getJsonPayload(request);
+	async getJsonPayload(_request) {
+		const request = this.cloneRequest(_request);
+		if (request.method !== 'POST') {
+			this.logger.error('Request is not an HTTP POST method.');
+			return null;
+		}
+
+		try {
+			const clonedRequest = await this.cloneRequest(request);
+
+			// Check if the body is empty before parsing
+			const bodyText = await clonedRequest.text(); // Get the body as text first
+			if (!bodyText.trim()) {
+				return null; // Empty body, return null gracefully
+			}
+
+			const json = JSON.parse(bodyText);
+			return json;
+		} catch (error) {
+			this.logger.error('Error parsing JSON:', error);
+			return null;
+		}
 	}
 
 	/**
@@ -686,19 +747,34 @@ class CloudflareAdapter {
 	 * @returns {Request} The modified request object to be used as the cache key.
 	 */
 	createCacheKey(request, env) {
-		this.logger.debugExt(`Creating cache key [createCacheKey]`);
 		// Including a variation logic that determines the cache key based on some attributes
-		const url = this.abstractionHelper.abstractRequest.getNewURL(request.url);
+		const url = new URL(request.url);
 		const variation = this.coreLogic.determineVariation(request, env);
 		url.pathname += `/${variation}`;
 		// Modify the URL to include variation
 		// Optionally add search params or headers as cache key modifiers
-		const result = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(url.toString(), {
+		// url.searchParams.set('variation', variation);
+		return new Request(url.toString(), {
 			method: request.method,
 			headers: request.headers,
 		});
-		this.logger.debug(`Cache key created [createCacheKey]: ${result}`);
-		return result;
+	}
+
+	/**
+	 * Retrieves the value of a cookie from the request.
+	 * @param {Request} request - The incoming request.
+	 * @param {string} name - The name of the cookie.
+	 * @returns {string|null} The value of the cookie or null if not found.
+	 */
+	getCookie(request, name) {
+		const cookieHeader = request.headers.get('Cookie');
+		if (!cookieHeader) return null;
+		const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+			const [key, value] = cookie.trim().split('=');
+			acc[key] = decodeURIComponent(value);
+			return acc;
+		}, {});
+		return cookies[name];
 	}
 
 	/**
@@ -720,7 +796,6 @@ class CloudflareAdapter {
 	 */
 	setResponseCookie(response, name, value, options = cookieDefaultOptions) {
 		try {
-			this.logger.debugExt(`Setting cookie [setResponseCookie]: ${name}, ${value}, ${options}`);
 			if (!(response instanceof Response)) {
 				throw new TypeError('Invalid response object');
 			}
@@ -747,8 +822,7 @@ class CloudflareAdapter {
 				.join('; ');
 
 			const cookieValue = `${name}=${encodeURIComponent(value)}; ${optionsString}`;
-			this.abstractionHelper.abstractResponse.appendCookieToResponse(response, cookieValue);
-			this.logger.debug(`Cookie set to value [setResponseCookie]: ${cookieValue}`);
+			response.headers.append('Set-Cookie', cookieValue);
 		} catch (error) {
 			this.logger.error('An error occurred while setting the cookie:', error);
 			throw error;
@@ -774,7 +848,6 @@ class CloudflareAdapter {
 	 * @throws {TypeError} If the request, name, or value parameter is not provided or has an invalid type.
 	 */
 	setRequestCookie(request, name, value, options = cookieDefaultOptions) {
-		this.logger.debugExt(`Setting cookie [setRequestCookie]: ${name}, ${value}, ${options}`);
 		if (!(request instanceof Request)) {
 			throw new TypeError('Invalid request object');
 		}
@@ -788,10 +861,28 @@ class CloudflareAdapter {
 		// Merge default options with provided options
 		const finalOptions = { ...cookieDefaultOptions, ...options };
 
-		// Use the abstraction helper to set the cookie in the request
-		this.abstractionHelper.abstractRequest.setCookieRequest(request, name, value, finalOptions);
-		this.logger.debug(`Cookie set to value [setRequestCookie]: ${name}, ${value}, ${finalOptions}`);
-		return request;
+		// Construct the cookie string
+		const optionsString = Object.entries(finalOptions)
+			.map(([key, val]) => {
+				if (key === 'expires' && val instanceof Date) {
+					return `${key}=${val.toUTCString()}`;
+				} else if (typeof val === 'boolean') {
+					return val ? key : ''; // For boolean options, append only the key if true
+				}
+				return `${key}=${val}`;
+			})
+			.filter(Boolean) // Remove any empty strings (from false boolean values)
+			.join('; ');
+
+		const cookieValue = `${name}=${encodeURIComponent(value)}; ${optionsString}`;
+
+		// Clone the original request and update the 'Cookie' header
+		const newRequest = new Request(request, { headers: new Headers(request.headers) });
+		const existingCookies = newRequest.headers.get('Cookie') || '';
+		const updatedCookies = existingCookies ? `${existingCookies}; ${cookieValue}` : cookieValue;
+		newRequest.headers.set('Cookie', updatedCookies);
+
+		return newRequest;
 	}
 
 	/**
@@ -813,14 +904,13 @@ class CloudflareAdapter {
 	 * const modifiedRequest = setMultipleRequestCookies(originalRequest, cookiesToSet);
 	 */
 	setMultipleRequestCookies(request, cookies) {
-		this.logger.debugExt(`Setting multiple cookies [setMultipleRequestCookies]: ${cookies}`);
 		if (!(request instanceof Request)) {
 			throw new TypeError('Invalid request object');
 		}
 
 		// Clone the original request
-		const clonedRequest = this.abstractionHelper.abstractRequest.cloneRequest(request);
-		let existingCookies = this.abstractionHelper.abstractRequest.getHeaderFromRequest(clonedRequest, 'Cookie') || '';
+		const clonedRequest = new Request(request);
+		let existingCookies = clonedRequest.headers.get('Cookie') || '';
 
 		try {
 			const cookieStrings = Object.entries(cookies).map(([name, { value, options }]) => {
@@ -843,8 +933,7 @@ class CloudflareAdapter {
 			});
 
 			existingCookies = existingCookies ? `${existingCookies}; ${cookieStrings.join('; ')}` : cookieStrings.join('; ');
-			this.abstractionHelper.abstractRequest.setHeaderFromRequest(clonedRequest, 'Cookie', existingCookies);
-			this.logger.debug(`Cookies set in request [setMultipleRequestCookies]: ${existingCookies}`);
+			clonedRequest.headers.set('Cookie', existingCookies);
 		} catch (error) {
 			this.logger.error('Error setting cookies:', error);
 			throw new Error('Failed to set cookies in the request.');
@@ -870,21 +959,18 @@ class CloudflareAdapter {
 	 * const modifiedRequest = setMultipleReqSerializedCookies(originalRequest, cookiesToSet);
 	 */
 	setMultipleReqSerializedCookies(request, cookies) {
-		this.logger.debugExt('Setting multiple serialized cookies [setMultipleReqSerializedCookies]: ', cookies);
 		if (!(request instanceof Request)) {
 			throw new TypeError('Invalid request object');
 		}
 
 		// Clone the original request
-		const clonedRequest = this.abstractionHelper.abstractRequest.cloneRequest(request);
-		const existingCookies = this.abstractionHelper.abstractRequest.getHeaderFromRequest(clonedRequest, 'Cookie') || '';
+		const clonedRequest = this.cloneRequest(request);
+		const existingCookies = clonedRequest.headers.get('Cookie') || '';
 
 		// Append each serialized cookie to the existing cookie header
-		const updatedCookies = existingCookies
-			? `${existingCookies}; ${Object.values(cookies).join('; ')}`
-			: Object.values(cookies).join('; ');
-		this.abstractionHelper.abstractRequest.setHeaderInRequest(clonedRequest, 'Cookie', updatedCookies);
-		this.logger.debug(`Cookies set in request [setMultipleReqSerializedCookies]: ${updatedCookies}`);
+		const updatedCookies = existingCookies ? `${existingCookies}; ${Object.values(cookies).join('; ')}` : Object.values(cookies).join('; ');
+		clonedRequest.headers.set('Cookie', updatedCookies);
+
 		return clonedRequest;
 	}
 
@@ -905,7 +991,6 @@ class CloudflareAdapter {
 	 * const modifiedResponse = setMultipleRespSerializedCookies(originalResponse, cookiesToSet);
 	 */
 	setMultipleRespSerializedCookies(response, cookies) {
-		this.logger.debugExt('Setting multiple serialized cookies [setMultipleRespSerializedCookies]: ', cookies);
 		if (!(response instanceof Response)) {
 			throw new TypeError('Invalid response object');
 		}
@@ -913,7 +998,7 @@ class CloudflareAdapter {
 		// Clone the original response to avoid modifying it directly
 		const clonedResponse = new Response(response.body, response);
 		// Retrieve existing Set-Cookie headers
-		let existingCookies = this.getResponseHeader(clonedResponse, 'Set-Cookie') || [];
+		let existingCookies = clonedResponse.headers.get('Set-Cookie') || [];
 		// Existing cookies may not necessarily be an array
 		if (!Array.isArray(existingCookies)) {
 			existingCookies = existingCookies ? [existingCookies] : [];
@@ -926,10 +1011,8 @@ class CloudflareAdapter {
 		clonedResponse.headers.delete('Set-Cookie');
 		// Set all cookies anew
 		existingCookies.forEach((cookie) => {
-			this.abstractionHelper.abstractResponse.appendCookieToResponse(clonedResponse, cookie);
+			clonedResponse.headers.append('Set-Cookie', cookie);
 		});
-		this.logger.debug(`Cookies set in response [setMultipleRespSerializedCookies]`);
-		this.logger.debugExt(`Cookies set in response [setMultipleRespSerializedCookies] - Values: ${existingCookies}`);
 
 		return clonedResponse;
 	}
@@ -941,9 +1024,12 @@ class CloudflareAdapter {
 	 * @param {string} value - The value of the header.
 	 */
 	setRequestHeader(request, name, value) {
-		// Use the abstraction helper to set the header in the request
-		this.logger.debugExt(`Setting header [setRequestHeader]: ${name}, ${value}`);
-		this.abstractionHelper.abstractRequest.setHeaderInRequest(request, name, value);
+		// Clone the request and update the headers on the cloned object
+		const newRequest = new Request(request, {
+			headers: new Headers(request.headders),
+		});
+		newRequest.headers.set(name, value);
+		return newRequest;
 	}
 
 	/**
@@ -964,12 +1050,12 @@ class CloudflareAdapter {
 	 * const newRequest = setMultipleRequestHeaders(originalRequest, updatedHeaders);
 	 */
 	setMultipleRequestHeaders(request, headers) {
-		this.logger.debugExt(`Setting multiple headers [setMultipleRequestHeaders]: ${headers}`);
-		const newRequest = this.abstractionHelper.abstractRequest.cloneRequest(request);
+		const newRequest = new Request(request, {
+			headers: new Headers(request.headers),
+		});
 		for (const [name, value] of Object.entries(headers)) {
-			this.abstractionHelper.abstractRequest.setHeaderInRequest(newRequest, name, value);
+			newRequest.headers.set(name, value);
 		}
-		this.logger.debug(`Headers set in request [setMultipleRequestHeaders]`);
 		return newRequest;
 	}
 
@@ -991,15 +1077,18 @@ class CloudflareAdapter {
 	 * const newResponse = setMultipleResponseHeaders(originalResponse, updatedHeaders);
 	 */
 	setMultipleResponseHeaders(response, headers) {
-		this.logger.debug(`Setting multiple headers [setMultipleResponseHeaders]: ${headers}`);
-		// Clone the original response
-		const newResponse = this.abstractionHelper.abstractResponse.cloneResponse(response);
+		// Clone the original response with its body and status
+		const newResponse = new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: new Headers(response.headers),
+		});
 
 		// Update the headers with new values
 		Object.entries(headers).forEach(([name, value]) => {
-			this.abstractionHelper.abstractResponse.setHeaderInResponse(newResponse, name, value);
+			newResponse.headers.set(name, value);
 		});
-		this.logger.debug(`Headers set in response [setMultipleResponseHeaders]`);
+
 		return newResponse;
 	}
 
@@ -1010,8 +1099,7 @@ class CloudflareAdapter {
 	 * @returns {string|null} The value of the header or null if not found.
 	 */
 	getRequestHeader(name, request) {
-		this.logger.debugExt(`Getting header [getRequestHeader]: ${name}`);
-		return this.abstractionHelper.abstractRequest.getHeaderFromRequest(request, name);
+		return request.headers.get(name);
 	}
 
 	/**
@@ -1021,8 +1109,7 @@ class CloudflareAdapter {
 	 * @param {string} value - The value of the header.
 	 */
 	setResponseHeader(response, name, value) {
-		this.logger.debugExt(`Setting header [setResponseHeader]: ${name}, ${value}`);
-		this.abstractionHelper.abstractResponse.setHeaderInResponse(response, name, value);
+		response.headers.set(name, value);
 	}
 
 	/**
@@ -1032,8 +1119,7 @@ class CloudflareAdapter {
 	 * @returns {string|null} The value of the header or null if not found.
 	 */
 	getResponseHeader(response, name) {
-		this.logger.debugExt(`Getting header [getResponseHeader]: ${name}`);
-		return this.abstractionHelper.abstractResponse.getHeaderFromResponse(response, name);
+		return response.headers.get(name);
 	}
 
 	/**
@@ -1043,10 +1129,8 @@ class CloudflareAdapter {
 	 * @returns {string|null} The value of the cookie or null if not found.
 	 */
 	getRequestCookie(request, name) {
-		this.logger.debugExt(`Getting cookie [getRequestCookie]: ${name}`);
-		// Assuming there's a method in AbstractRequest to get cookies
-		return this.abstractionHelper.abstractRequest.getCookieFromRequest(name);
+		return this.getCookie(request, name);
 	}
 }
 
-export default CloudflareAdapter;
+export default AkamaiAdapter;

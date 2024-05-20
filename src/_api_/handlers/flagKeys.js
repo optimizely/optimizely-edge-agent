@@ -1,36 +1,15 @@
 /**
- * Reads the incoming request body using abstractionHelper.
- * Use await abstractionHelper.readRequestBody(request) in an async function to get the string.
- * @param {Request} request - The incoming request to read from.
- * @returns {Promise<Object|string|undefined>} - The parsed request body.
+ * @module FlagKeys
+ * 
+ * The FlagKeys module is responsible for handling the flag keys API.
+ * It will get or put the flag keys in the KV store of the CDN provider.
+ * 
+ * The following methods are implemented:
+ * - handleFlagKeys(request, abstractionHelper, kvStore, logger, defaultSettings) - Handles the flag keys API request.
+ * - handleGetFlagKeys(request, abstractionHelper, kvStore, logger, defaultSettings) - Retrieves flag keys stored in the KV store under the namespace 'optly_flagKeys'.
  */
-async function readRequestBody(request) {
-	const contentType = request.headers.get('content-type');
 
-	try {
-		if (contentType) {
-			if (contentType.includes('application/json')) {
-				return await request.json();
-			} else if (contentType.includes('application/text') || contentType.includes('text/html')) {
-				return await request.text();
-			} else if (contentType.includes('form')) {
-				const formData = await request.formData();
-				const body = {};
-				for (const [key, value] of formData.entries()) {
-					body[key] = value;
-				}
-				return JSON.stringify(body);
-			} else {
-				return 'a file';
-			}
-		} else {
-			return undefined;
-		}
-	} catch (error) {
-		logger.error('Unable to determine Content-Type:', error.message);
-		return undefined;
-	}
-}
+import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
 
 /**
  * Checks if the given object is a valid array.
@@ -59,7 +38,8 @@ async function trimStringArray(stringArray) {
  * @param {object} abstractionHelper - The abstraction helper to create responses.
  * @returns {Response} - A Response object with JSON content.
  */
-function handleFlagKeysResponse(combinedString, abstractionHelper) {
+function handleFlagKeysResponse(combinedString, abstractionHelper, logger) {
+	logger.debug('Handling flag keys response');
 	// Split the string into an array of flag keys
 	const flagKeys = combinedString.split(',');
 
@@ -84,21 +64,22 @@ function handleFlagKeysResponse(combinedString, abstractionHelper) {
  * @param {object} defaultSettings - The default settings object containing configuration details.
  * @returns {Promise<Response>} - A promise that resolves to the API response.
  */
-const handleFlagKeys = async (request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) => {
+const handleFlagKeys = async (request, abstractionHelper, kvStore, logger, defaultSettings) => {
+	logger.debug('API Router - Handling flag keys via POST [flagKeys]');
 	// Check if the incoming request is a POST method, return 405 if not allowed
-	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'POST') {
+	if (abstractionHelper.abstractRequest.getHttpMethodFromRequest(request) !== 'POST') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
 	}
 
 	try {
 		// Read and parse the incoming request body
-		const requestBody = await abstractionHelper.readRequestBody(request);
+		const requestBody = await AbstractRequest.readRequestBody(request);
 
 		// Attempt to retrieve flag keys from the request body
 		let flagKeys = requestBody.flagKeys;
 
 		// Trim each string in the array of flag keys to remove extraneous whitespace
-		flagKeys = await trimStringArray(flagKeys);
+		flagKeys = await trimStringArray(flagKeys);		
 
 		// Validate the array to ensure it contains valid, non-empty data
 		if (!isValidArray(flagKeys)) {
@@ -108,12 +89,15 @@ const handleFlagKeys = async (request, env, ctx, abstractionHelper, kvStore, log
 
 		// Join the flag keys into a single string separated by commas
 		const combinedString = flagKeys.join(',');
+		logger.debugExt('API Router - Flag keys:', combinedString);
 
 		// Store the combined string of flag keys in the KV store under the specified namespace
+		logger.debug('API Router - Storing flag keys in KV store');
 		await kvStore.put(defaultSettings.kv_key_optly_flagKeys, combinedString);
+		logger.debug('API Router - Flag keys stored in KV store');
 
 		// Return a success response indicating the flag keys were stored correctly
-		return handleFlagKeysResponse(combinedString, abstractionHelper);
+		return handleFlagKeysResponse(combinedString, abstractionHelper, logger);
 	} catch (error) {
 		// Log and handle any errors that occur during the process
 		logger.error('Error in handleFlagKeys:', error.message);
@@ -135,25 +119,28 @@ const handleFlagKeys = async (request, env, ctx, abstractionHelper, kvStore, log
  * @param {object} defaultSettings - The default settings object containing configuration details.
  * @returns {Promise<Response>} - A promise that resolves to the API response with the flag keys.
  */
-const handleGetFlagKeys = async (request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) => {
+const handleGetFlagKeys = async (request, abstractionHelper, kvStore, logger, defaultSettings) => {
+	logger.debug('API Router - Handling flag keys via GET [flagKeys]');
 	// Optionally, you can add method checks if necessary
-	if (abstractionHelper.abstractRequest.getHttpMethod(request) !== 'GET') {
+	if (abstractionHelper.abstractRequest.getHttpMethodFromRequest(request) !== 'GET') {
 		return abstractionHelper.createResponse('Method Not Allowed', 405);
 	}
 
-
 	try {
 		// Fetch the flag keys from the KV store
+		logger.debug('API Router - Fetching flag keys from KV store');
 		const storedFlagKeys = await kvStore.get(defaultSettings.kv_key_optly_flagKeys);
+		logger.debug('API Router - Flag keys fetched from KV store');
 		if (!storedFlagKeys) {
 			return abstractionHelper.createResponse('No flag keys found', 404);
 		}
 
 		// Split the stored string by commas into an array
-		const flagKeysArray = storedFlagKeys.split(',');
+		const flagKeysArray = storedFlagKeys.split(',');		
 
-		// Optionally, trim each flag key and filter out any empty strings if there are unintended commas
+		// Trim each flag key and filter out any empty strings if there are unintended commas
 		const trimmedFlagKeys = flagKeysArray.map((key) => key.trim()).filter((key) => key !== '');
+		logger.debugExt('API Router - Flag keys array:', trimmedFlagKeys);
 
 		// Return the flag keys as a JSON response
 		return abstractionHelper.createResponse(trimmedFlagKeys, 200, { 'Content-Type': 'application/json' });

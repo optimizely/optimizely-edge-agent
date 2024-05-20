@@ -1,4 +1,10 @@
 /**
+ * @module VariationChanges
+ */
+
+import { logger } from '../../_helpers_/optimizelyHelper.js';
+
+/**
  * Fetches and updates the variation changes from the Optimizely API.
  * @param {Request} request - The incoming request object.
  * @returns {Promise<Response>} - A promise that resolves to the response object.
@@ -45,7 +51,7 @@ const handleVariationChanges = async (request) => {
   
       return new Response(`Variation changes updated to:\n\n${changes}`, { headers });
     } catch (error) {
-      console.error("Error in handleVariationChanges:", error);
+      logger().error("Error in handleVariationChanges:", error);
       return new Response("Error updating variation changes", { status: 500 });
     }
   };

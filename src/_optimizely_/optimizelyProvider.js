@@ -1,6 +1,11 @@
+/**
+ * @module OptimizelyProvider
+ */
+
 import * as optlyHelper from '../_helpers_/optimizelyHelper';
-import Logger from '../_helpers_/logger';
+import { logger } from '../_helpers_/optimizelyHelper';
 import EventListeners from '../_event_listeners_/eventListeners';
+import defaultSettings from '../_config_/defaultSettings';
 
 import {
 	createInstance,
@@ -8,10 +13,33 @@ import {
 	OptimizelyDecideOption as optlyDecideOptions,
 } from '@optimizely/optimizely-sdk/dist/optimizely.lite.min.js';
 
-const CLOUDFLARE_CLIENT_ENGINE = 'javascript-sdk/cloudflare';
-
+/**
+ * The OptimizelyProvider class is a class that provides a common interface for handling Optimizely operations.
+ * It is designed to be extended by other classes to provide specific implementations for handling Optimizely operations.
+ * It implements the following methods:
+ * - constructor(request, env, ctx, requestConfig, abstractionHelper) - Initializes the OptimizelyProvider instance with the
+ *   request, environment, context, requestConfig, and abstractionHelper objects.
+ * - setCdnAdapter(adapter) - Sets the CDN adapter.
+ * - getCdnAdapter() - Gets the CDN adapter.
+ * - validateParameters(attributes, eventTags, defaultDecideOptions, userAgent, datafileAccessToken) - Validates the types of
+ *   various parameters required for initializing Optimizely.
+ * - initializeOptimizely(datafile, visitorId, defaultDecideOptions, attributes, eventTags, datafileAccessToken, userAgent)
+ *   Initializes the Optimizely client with provided configuration.
+ * - createEventDispatcher(decideOptions, ctx) - Constructs the custom event dispatcher if decision events are not disabled.
+ * - buildInitParameters(datafile, datafileAccessToken, defaultDecideOptions) - Builds the initialization parameters for the Optimizely client.
+ * - getAttributes(attributes, userAgent) - Retrieves the user attributes.
+ * - buildDecideOptions(decideOptions) - Builds the decision options for the Optimizely client.
+ * - getActiveFlags() - Retrieves the active feature flags.
+ * - decide(flagKeys, flagsToForce, forcedDecisionKeys) - Makes a decision for the specified feature flag keys.
+ * - isForcedDecision(flagKey, forcedDecisions) - Checks if a flag key must be handled as a forced decision.
+ * - getDecisionForFlag(flagObj, doForceDecision) - Retrieves the decision for a flag.
+ * - track(eventKey, attributes, eventTags) - Tracks an event.
+ * - datafile() - Retrieves the Optimizely datafile.
+ * - config() - Retrieves the Optimizely configuration.
+ */
 export default class OptimizelyProvider {
 	constructor(request, env, ctx, requestConfig, abstractionHelper) {
+		logger().debug('Initializing OptimizelyProvider');
 		this.optimizelyClient = undefined;
 		this.optimizelyUserContext = undefined;
 		this.cdnAdapter = undefined;
@@ -56,6 +84,7 @@ export default class OptimizelyProvider {
 	 * @throws {TypeError} - Throws a TypeError if any parameter does not match its expected type.
 	 */
 	validateParameters(attributes, eventTags, defaultDecideOptions, userAgent, datafileAccessToken) {
+		logger().debug('Validating parameters [validateParameters]');
 		if (typeof attributes !== 'object') {
 			throw new TypeError('Attributes must be a valid object.');
 		}
@@ -96,6 +125,7 @@ export default class OptimizelyProvider {
 		datafileAccessToken = '',
 		userAgent = ''
 	) {
+		logger().debug('Initializing Optimizely [initializeOptimizely]');
 		try {
 			this.validateParameters(attributes, eventTags, defaultDecideOptions, userAgent, datafileAccessToken);
 
@@ -109,12 +139,14 @@ export default class OptimizelyProvider {
 			const params = this.buildInitParameters(datafile, datafileAccessToken, defaultDecideOptions);
 			attributes = await this.getAttributes(attributes, userAgent);
 
+			logger().debug('Creating Optimizely client [initializeOptimizely]');
 			this.optimizelyClient = createInstance(params);
+			logger().debug('Creating Optimizely user context [initializeOptimizely]');
 			this.optimizelyUserContext = this.optimizelyClient.createUserContext(visitorId, attributes);
 
 			return true;
 		} catch (error) {
-			console.error('Error initializing Optimizely:', error);
+			logger().error('Error initializing Optimizely:', error);
 			throw error; // Rethrow the error for further handling
 		}
 	}
@@ -127,17 +159,19 @@ export default class OptimizelyProvider {
 	 * @returns {Object|null} - Custom event dispatcher or null if disabled.
 	 */
 	createEventDispatcher(decideOptions, ctx) {
+		logger().debug('Creating event dispatcher [createEventDispatcher]');
 		if (decideOptions.includes('DISABLE_DECISION_EVENT')) {
+			logger().debug('Event dispatcher disabled [createEventDispatcher]');
 			return null; // Disable the event dispatcher if specified in decide options.
 		}
 		return {
 			dispatchEvent: (optimizelyEvent) => {
 				try {
 					this.cdnAdapter.dispatchEventToOptimizely(optimizelyEvent).catch((err) => {
-						console.error('Failed to dispatch event:', err);
+						logger().error('Failed to dispatch event:', err);
 					});
 				} catch (error) {
-					console.error('Error in custom event dispatcher:', error);
+					logger().error('Error in custom event dispatcher:', error);
 				}
 			},
 		};
@@ -151,10 +185,12 @@ export default class OptimizelyProvider {
 	 * @returns {Object} - The initialization parameters with a custom event dispatcher if applicable.
 	 */
 	buildInitParameters(datafile, datafileAccessToken, defaultDecideOptions = []) {
+		logger().debug('Building initialization parameters [buildInitParameters]');
 		const params = {
 			datafile,
 			logLevel: OptimizelyEnums.LOG_LEVEL.ERROR,
-			clientEngine: CLOUDFLARE_CLIENT_ENGINE,
+			clientEngine: defaultSettings.optlyClientEngine,
+			clientVersion: defaultSettings.optlyClientEngineVersion,
 			eventDispatcher: this.createEventDispatcher(defaultDecideOptions), // Add custom event dispatcher
 		};
 
@@ -166,6 +202,7 @@ export default class OptimizelyProvider {
 			params.access_token = datafileAccessToken;
 		}
 
+		logger().debugExt('Initialization parameters built [buildInitParameters]: ', params);
 		return params;
 	}
 
@@ -176,6 +213,7 @@ export default class OptimizelyProvider {
 	 * @returns {Promise<Object>} - A promise that resolves to the user attributes.
 	 */
 	async getAttributes(attributes = {}, userAgent) {
+		logger().debug('Retrieving user attributes [getAttributes]');
 		let result = {};
 
 		if (attributes) {
@@ -184,8 +222,10 @@ export default class OptimizelyProvider {
 
 		if (userAgent) {
 			result['$opt_user_agent'] = userAgent;
-			return attributes;
 		}
+
+		logger().debugExt('User attributes retrieved [getAttributes]: ', result);
+		return result;
 	}
 
 	/**
@@ -194,7 +234,9 @@ export default class OptimizelyProvider {
 	 * @returns {OptimizelyDecideOption[]} - The built decision options.
 	 */
 	buildDecideOptions(decideOptions) {
-		return decideOptions.map((option) => optlyDecideOptions[option]);
+		const result = decideOptions.map((option) => optlyDecideOptions[option]);
+		logger().debugExt('Decide options built [buildDecideOptions]: ', result);
+		return result;
 	}
 
 	/**
@@ -207,7 +249,9 @@ export default class OptimizelyProvider {
 		}
 
 		const config = await this.optimizelyClient.getOptimizelyConfig();
-		return Object.keys(config.featuresMap);
+		const result = Object.keys(config.featuresMap);
+		logger().debugExt('Active feature flags retrieved [getActiveFlags]: ', result);
+		return result;
 	}
 
 	/**
@@ -218,6 +262,7 @@ export default class OptimizelyProvider {
 	 * @returns {Promise<Object[]>} - A promise that resolves to an array of decision objects.
 	 */
 	async decide(flagKeys, flagsToForce, forcedDecisionKeys = []) {
+		logger().debug('Executing Optimizely decide operation in OptimizelyProvider [decide]');
 		const decisions = [];
 		let forcedDecisions = [];
 
@@ -234,6 +279,7 @@ export default class OptimizelyProvider {
 			forcedDecisions = forcedDecisionKeys;
 		} // If both are invalid, forcedDecisions remains an empty array
 
+		logger().debugExt('Processing non-forced decisions [decide]: ', flagKeys);
 		// Process non-forced decisions
 		for (const flagKey of flagKeys) {
 			if (!this.isForcedDecision(flagKey, forcedDecisions)) {
@@ -245,6 +291,7 @@ export default class OptimizelyProvider {
 		}
 
 		// Process forced decisions
+		logger().debugExt('Processing forced decisions [decide]: ', forcedDecisions);
 		for (const forcedDecision of forcedDecisions) {
 			const decision = await this.getDecisionForFlag(forcedDecision, true);
 			if (decision) {
@@ -252,6 +299,7 @@ export default class OptimizelyProvider {
 			}
 		}
 
+		logger().debugExt('Decisions made [decide]: ', decisions);
 		return decisions;
 	}
 
@@ -290,7 +338,17 @@ export default class OptimizelyProvider {
 	 * @returns {Promise<Object>} - A promise that resolves to the tracking result.
 	 */
 	async track(eventKey, attributes = {}, eventTags = {}) {
-		return this.optimizelyUserContext.trackEvent(eventKey, attributes, eventTags);
+		logger().debug(
+			'Tracking an event [track]:',
+			'Event Key:',
+			eventKey,
+			'Attributes:',
+			attributes,
+			'Event Tags:',
+			eventTags
+		);
+		const result = this.optimizelyUserContext.trackEvent(eventKey, attributes, eventTags);
+		return result;
 	}
 
 	/**
@@ -298,6 +356,7 @@ export default class OptimizelyProvider {
 	 * @returns {Promise<Object>} - A promise that resolves to the datafile.
 	 */
 	async datafile() {
+		logger().debug('Retrieving datafile in OptimizelyProvider [datafile]');
 		return optlyHelper.jsonParseSafe(this.optimizelyClient.getOptimizelyConfig().getDatafile());
 	}
 
@@ -306,6 +365,48 @@ export default class OptimizelyProvider {
 	 * @returns {Promise<Object>} - A promise that resolves to the Optimizely configuration.
 	 */
 	async config() {
+		logger().debug('Retrieving config in OptimizelyProvider [config]');
 		return this.optimizelyClient.getOptimizelyConfig();
+	}
+
+	/**
+	 * Sends an ODP (Optimizely Data Platform) event.
+	 * @param {string} eventType - The type of the event.
+	 * @param {Object} [eventData={}] - The data associated with the event.
+	 * @returns {Promise<void>} - A promise that resolves when the event is sent.
+	 * @throws {Error} - Throws an error if the Optimizely client or user context is not initialized.
+	 */
+	async sendOdpEvent(odpEvent = {}) {
+		logger().debug('Sending ODP event [sendOdpEvent]:', 'Event Type:', eventType, 'Event Data:', eventData);
+
+		if (!this.optimizelyClient || !this.optimizelyUserContext) {
+			throw new Error('Optimizely Client or User Context is not initialized.');
+		}
+
+		try {
+			// TODO: Implement the method sendOdpEvent
+			logger().debug('ODP event sent successfully [sendOdpEvent]:', '');
+		} catch (error) {
+			logger().error('Error sending ODP event [sendOdpEvent]:', error);
+			throw error;
+		}
+	}
+
+	/**
+	 * Batches multiple events to be sent together.
+	 * @returns {Promise<void>} - A promise that resolves when the batch is processed.
+	 * @throws {Error} - Throws an error if the Optimizely client is not initialized.
+	 */
+	async batch(batchOperations) {
+		logger().debug('Executing Optimizely batch operation in OptimizelyProvider [batch]');
+
+
+		try {
+			// TODO: Implement the method  batch
+			logger().debug('Batch operation completed successfully [batch]');
+		} catch (error) {
+			logger().error('Error batching events [batch]:', error);
+			throw error;
+		}
 	}
 }

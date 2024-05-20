@@ -1,3 +1,14 @@
+/**
+ * @module ApiRouter
+ * 
+ * The ApiRouter module is responsible for routing the incoming requests to the appropriate handlers. The APIRouter only handles requests
+ * that are related to the API. Specifically for updating and retrieving datafiles and flag keys in the KV store of the CDN provider.
+ * 
+ * The following methods are implemented:
+ * - apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings) - Manually handle routing based on URL and method.
+ * - handleRequest(request, abstractionHelper, kvStore, logger, defaultSettings) - Handle incoming requests using the manual routing function.
+ */
+
 // Define your route handlers as before
 import { handleDatafile, handleGetDatafile } from './handlers/datafile';
 import { handleFlagKeys, handleGetFlagKeys } from './handlers/flagKeys';
@@ -9,10 +20,10 @@ import handleVariationChanges from './handlers/variationChanges';
  * @param {Request} request - The incoming request.
  * @returns {Promise<Response>} - The response from the appropriate handler.
  */
-async function apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) {
-	const url = new URL(request.url);
-	const path = url.pathname;
-	const method = request.method;
+async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings) {
+	const url = abstractionHelper.abstractRequest.getNewURL(request.url);
+	const path = abstractionHelper.abstractRequest.getPathnameFromRequest(request);
+	const method = abstractionHelper.abstractRequest.getHttpMethodFromRequest(request);
 
 	// Define route patterns and corresponding handlers
 	const routes = {
@@ -37,10 +48,18 @@ async function apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, 
 	for (let route in routes) {
 		const routePattern = new RegExp('^' + route.replace(/:\w+/g, '([^/]+)') + '$');
 		const match = routePattern.exec(path);
-
 		if (match && routes[route][method]) {
-			const params = match.slice(1); // Extract dynamic segments as parameters
-            const result = routes[route][method](request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings, ...params);
+			const params = {};
+			const paramNames = route.match(/:\w+/g);
+
+			if (paramNames) {
+				paramNames.forEach((paramName, index) => {
+					params[paramName.slice(1)] = match[index + 1];
+				});
+			}
+
+			const result = routes[route][method](request, abstractionHelper, kvStore, logger, defaultSettings, params);
+			logger.debug('ApiRouter: Handled request for URL ', url.href, '- Method:', method);
 			return result;
 		}
 	}
@@ -54,7 +73,7 @@ async function apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, 
  * @param {Request} request - The incoming request object.
  * @returns {Promise<Response>} - A promise that resolves to the response.
  */
-//handleRequest(_request, _env, _ctx, abstractionHelper, kvStore, logger, defaultSettings);
-export default async function handleRequest(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) {
-	return apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings);
+export default async function handleRequest(request, abstractionHelper, kvStore, logger, defaultSettings) {
+	logger.debug('Api Router: Handling API request.');
+	return await apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings);
 }
