@@ -1,5 +1,24 @@
+/**
+ * @module RequestConfig
+ * 
+ * The RequestConfig is responsible for extracting and parsing the configuration settings from the request.
+ * It prioritizes values from the headers, query parameters, and body of the request in this order. If a value is not found in the headers,
+ * the query parameters, or the body, the default values are used. Some settings are shared between the headers, query parameters, and body.
+ * 
+ * It implements the following methods:
+ * - initialize(request) - Initializes the request configuration based on headers, query parameters, and possibly the body for POST requests.
+ * - defineQueryParameters() - Defines the set of query parameters used for configuration.
+ * - initializeConfigMetadata() - Initializes metadata configuration for logging and debugging purposes.
+ * - loadRequestBody(request) - Loads the request body and initializes configuration from it if the method is POST and content type is JSON.
+ * - initializeFromHeaders() - Initializes configuration settings from HTTP headers.
+ * - initializeFromQueryParams() - Initializes configuration settings from URL query parameters.
+ * - initializeFromBody() - Initializes configuration settings from the request body if available. Only POST requests are considered.
+ * 
+ */
+
 import Logger from '../_helpers_/logger';
 import EventListeners from '../_event_listeners_/eventListeners';
+import { logger } from '../_helpers_/optimizelyHelper';
 
 /**
  * Manages the configuration settings for a request, including headers, query parameters, and body content.
@@ -10,6 +29,7 @@ export default class RequestConfig {
 	 * @param {Request} request - The HTTP request from which to derive initial configuration.
 	 */
 	constructor(request, env, ctx, cdnAdapter, abstractionHelper) {
+		logger().debug('RequestConfig constructor called');
 		this.abstractionHelper = abstractionHelper;
 		this.request = this.abstractionHelper.request;
 		this.cdnAdapter = cdnAdapter;
@@ -56,6 +76,7 @@ export default class RequestConfig {
 			enableFlagsFromKV: 'X-Optimizely-Flags-KV',
 			enableDatafileFromKV: 'X-Optimizely-Datafile-KV',
 			enableRespMetadataHeader: 'X-Optimizely-Enable-Response-Metadata',
+			eventKeyHeader: 'X-Optimizely-Event-Key',
 			kvFlagKeyName: 'optly_flagKeys',
 			kvDatafileKeyName: 'optly_sdk_datafile',
 			cookieExpirationInDays: 400,
@@ -71,6 +92,8 @@ export default class RequestConfig {
 	 */
 	async initialize(request) {
 		// Define query parameters and initialize metadata from configurations.
+		logger().debugExt('RequestConfig - Initializing [initialize]');
+
 		this.queryParameters = await this.defineQueryParameters();
 		this.configMetadata = await this.initializeConfigMetadata();
 
@@ -122,6 +145,7 @@ export default class RequestConfig {
 	 * @returns {Object} A mapping of query parameter keys to their respective settings.
 	 */
 	async defineQueryParameters() {
+		logger().debugExt('RequestConfig - Defining query parameters [defineQueryParameters]');
 		return {
 			serverMode: 'serverMode',
 			visitorId: 'visitorId',
@@ -142,6 +166,7 @@ export default class RequestConfig {
 			enableResponseMetadata: 'enableResponseMetadata',
 			enableDatafileFromKV: 'enableDatafileFromKV',
 			enableFlagsFromKV: 'enableFlagsFromKV',
+			eventKey: 'eventKey',
 		};
 	}
 
@@ -150,6 +175,7 @@ export default class RequestConfig {
 	 * @returns {Object} The initial metadata configuration object.
 	 */
 	async initializeConfigMetadata() {
+		logger().debugExt('RequestConfig - Initializing config metadata [initializeConfigMetadata]');
 		return {
 			visitorId: '',
 			visitorIdFrom: '',
@@ -178,6 +204,7 @@ export default class RequestConfig {
 	 * Loads the request body and initializes configuration from it if the method is POST and content type is JSON.
 	 */
 	async loadRequestBody(request) {
+		logger().debugExt('RequestConfig - Loading request body [loadRequestBody]');
 		if (this.isPostMethod && this.getHeader('content-type')?.includes('application/json')) {
 			if (request) {
 				try {
@@ -185,11 +212,11 @@ export default class RequestConfig {
 					this.body = jsonBody;
 					await this.initializeFromBody();
 				} catch (error) {
-					console.error('Failed to parse JSON body:', error);
+					logger().error('Failed to parse JSON body:', error);
 					this.body = null;
 				}
 			} else {
-				console.log('Request body is empty or contains only whitespace.');
+				logger().debug('Request body is empty or contains only whitespace [loadRequestBody]');
 				//  ToDo - handle cases where no body is provided?
 				this.body = null;
 			}
@@ -200,6 +227,7 @@ export default class RequestConfig {
 	 * Initializes configuration settings from HTTP headers.
 	 */
 	async initializeFromHeaders() {
+		logger().debugExt('RequestConfig - Initializing from headers [initializeFromHeaders]');
 		this.sdkKey = this.getHeader(this.settings.sdkKeyHeader);
 		this.overrideVisitorId = this.parseBoolean(this.getHeader(this.settings.overrideVisitorIdHeader));
 		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Headers';
@@ -215,7 +243,6 @@ export default class RequestConfig {
 		this.excludeVariables = this.decideOptions && this.decideOptions?.includes('EXCLUDE_VARIABLES');
 		this.enabledFlagsOnly = this.decideOptions && this.decideOptions?.includes('ENABLED_FLAGS_ONLY');
 		this.visitorId = this.getHeader(this.settings.visitorIdHeader);
-		//this.trimmedDecisions = this.parseBoolean(this.getHeader(this.settings.trimmedDecisionsHeader)) || this.settings.defaultTrimmedDecisions;
 		const trimmedDecisionsHeader = this.getHeader(this.settings.trimmedDecisionsHeader);
 		if (trimmedDecisionsHeader === 'false') {
 			this.trimmedDecisions = false;
@@ -225,6 +252,7 @@ export default class RequestConfig {
 			this.trimmedDecisions = undefined;
 		}
 		this.enableFlagsFromKV = this.parseBoolean(this.getHeader(this.settings.enableFlagsFromKV));
+		this.eventKey = this.getHeader(this.settings.eventKeyHeader);
 		this.datafileFromKV = this.parseBoolean(this.getHeader(this.settings.enableDatafileFromKV));
 		this.enableRespMetadataHeader = this.parseBoolean(this.getHeader(this.settings.enableRespMetadataHeader));
 		this.setResponseCookies = this.parseBoolean(this.getHeader(this.settings.setResponseCookies));
@@ -237,12 +265,14 @@ export default class RequestConfig {
 	 * Initializes configuration settings from URL query parameters.
 	 */
 	async initializeFromQueryParams() {
+		logger().debugExt('RequestConfig - Initializing from query parameters [initializeFromQueryParams]');
 		const qp = this.url.searchParams;
 		this.overrideVisitorId = this.overrideVisitorId || qp.get(this.queryParameters.overrideVisitorId) === 'true' ? true : false || false;
 		this.serverMode = qp.get(this.queryParameters.serverMode);
-		this.visitorId = qp.get(this.queryParameters.visitorId) || this.visitorId; // Fallback to header value if present
+		this.visitorId = this.visitorId || qp.get(this.queryParameters.visitorId); 
 		this.flagKeys = qp.getAll(this.queryParameters.keys);
-		this.sdkKey = qp.get(this.queryParameters.sdkKey) || this.sdkKey; // Fallback to header value if present
+		this.sdkKey = this.sdkKey || qp.get(this.queryParameters.sdkKey);
+		this.eventKey = this.eventKey || qp.get(this.queryParameters.eventKey); 
 		this.enableResponseMetadata = this.enableResponseMetadata || this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata));
 		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Query Parameters';
 		this.decideAll = this.parseBoolean(qp.get(this.queryParameters.decideAll));
@@ -281,11 +311,13 @@ export default class RequestConfig {
 	 * Initializes configuration settings from the request body if available.
 	 */
 	async initializeFromBody() {
+		logger().debugExt('RequestConfig - Initializing from body [initializeFromBody]');
 		if (this.body) {
 			this.visitorId = this.visitorId || this.body.visitorId;
 			this.overrideVisitorId = this.overrideVisitorId || this.body.overrideVisitorId || false;
 			this.flagKeys = this.flagKeys.length > 0 ? this.flagKeys : this.body.flagKeys;
 			this.sdkKey = this.sdkKey || this.body.sdkKey;
+			this.eventKey = this.eventKey || this.body.eventKey;
 			if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'body';
 			this.attributes = this.attributes || this.body.attributes;
 			if (this.body.attributes && this.settings.enableResponseMetadata) this.configMetadata.attributesFrom = 'body';
@@ -349,7 +381,7 @@ export default class RequestConfig {
 		try {
 			return JSON.parse(value);
 		} catch (error) {
-			console.error('Failed to parse JSON:', error);
+			logger().error('Failed to parse JSON:', error);
 			return error;
 		}
 	}

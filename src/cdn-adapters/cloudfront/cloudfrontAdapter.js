@@ -67,14 +67,14 @@ class CloudfrontAdapter {
 
 			// Return response for POST requests without caching
 			if (httpMethod === 'POST') {
-				console.log('POST request detected. Returning response without caching.');
+				this.logger.debug('POST request detected. Returning response without caching.');
 				return this.buildResponse(result.reqResponse);
 			}
 
 			// Handle specific GET requests immediately without caching
 			if (httpMethod === 'GET' && (this.coreLogic.datafileOperation || this.coreLogic.configOperation)) {
 				const fileType = this.coreLogic.datafileOperation ? 'datafile' : 'config file';
-				console.log(`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`);
+				this.logger.debug(`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`);
 				return this.buildResponse(result.reqResponse);
 			}
 
@@ -82,13 +82,13 @@ class CloudfrontAdapter {
 			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
 				fetchResponse = await this.fetchAndProcessRequest(this.request, originUrl, cdnSettings);
 			} else {
-				console.log('No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.');
+				this.logger.debug('No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.');
 				fetchResponse = await this.fetchDirectly(this.request);
 			}
 
 			return this.buildResponse(fetchResponse);
 		} catch (error) {
-			console.error('Error processing request:', error);
+			this.logger.error('Error processing request:', error);
 			return this.buildResponse({ status: '500', body: `Internal Server Error: ${error.toString()}` });
 		}
 	}
@@ -140,7 +140,7 @@ class CloudfrontAdapter {
 			const cacheKey = this.generateCacheKey(cdnSettings, originUrl);
 			// Note: Caching in Lambda@Edge requires using the CloudFront API
 			// You would need to make a separate request to the CloudFront API to cache the response
-			console.log(`Cache hit for: ${originUrl}.`);
+			this.logger.debug(`Cache hit for: ${originUrl}.`);
 		}
 
 		return response;
@@ -152,7 +152,7 @@ class CloudfrontAdapter {
 	 * @returns {Promise<Object>} - The response from the origin.
 	 */
 	async fetchDirectly(request) {
-		console.log('Fetching directly from origin: ' + request.uri);
+		this.logger.debug('Fetching directly from origin: ' + request.uri);
 		return await this.fetch(request);
 	}
 
@@ -164,7 +164,7 @@ class CloudfrontAdapter {
 	 */
 	getOriginUrl(request, cdnSettings) {
 		if (cdnSettings && cdnSettings.cdnResponseURL) {
-			console.log('Valid CDN settings detected.');
+			this.logger.debug('Valid CDN settings detected.');
 			return cdnSettings.cdnResponseURL;
 		}
 		return request.uri;
@@ -201,7 +201,7 @@ class CloudfrontAdapter {
 
 			return cacheKeyUrl.href;
 		} catch (error) {
-			console.error('Error generating cache key:', error);
+			this.logger.error('Error generating cache key:', error);
 			throw new Error('Failed to generate cache key.');
 		}
 	}
@@ -218,7 +218,7 @@ class CloudfrontAdapter {
 			const urlToFetch = cdnSettings.forwardRequestToOrigin ? reqResponse.uri : cdnSettings.cdnResponseURL;
 			return await this.fetch({ uri: urlToFetch });
 		} catch (error) {
-			console.error('Error fetching from origin:', error);
+			this.logger.error('Error fetching from origin:', error);
 			throw new Error('Failed to fetch from origin.');
 		}
 	}
@@ -234,10 +234,10 @@ class CloudfrontAdapter {
 			try {
 				const allEvents = await this.consolidateVisitorsInEvents(this.eventQueue);
 				await this.dispatchAllEventsToOptimizely(defaultSettings.optimizelyEventsEndpoint, allEvents).catch((err) => {
-					console.error('Failed to dispatch event:', err);
+					this.logger.error('Failed to dispatch event:', err);
 				});
 			} catch (error) {
-				console.error('Error during event consolidation or dispatch:', error);
+				this.logger.error('Error during event consolidation or dispatch:', error);
 			}
 		}
 	}
@@ -257,7 +257,7 @@ class CloudfrontAdapter {
 		const isGetMethod = httpMethod === 'GET';
 
 		try {
-			console.log(`Fetching from origin for: ${request.uri}`);
+			this.logger.debug(`Fetching from origin for: ${request.uri}`);
 
 			// Create a new request object for the origin fetch
 			const originRequest = {
@@ -293,7 +293,7 @@ class CloudfrontAdapter {
 
 			return originResponse;
 		} catch (error) {
-			console.error(`Failed to fetch: ${error.message}`);
+			this.logger.error(`Failed to fetch: ${error.message}`);
 
 			// Return a standardized error response
 			return {
@@ -325,7 +325,7 @@ class CloudfrontAdapter {
 			// Return the response object
 			return response;
 		} catch (error) {
-			console.error(`Failed to fetch: ${error.message}`);
+			this.logger.error(`Failed to fetch: ${error.message}`);
 
 			// Return a standardized error response
 			return {
@@ -354,7 +354,7 @@ class CloudfrontAdapter {
 			}
 			return response.body;
 		} catch (error) {
-			console.error(`Error fetching datafile for SDK key ${sdkKey}: ${error}`);
+			this.logger.error(`Error fetching datafile for SDK key ${sdkKey}: ${error}`);
 			throw new Error('Error fetching datafile.');
 		}
 	}
@@ -455,7 +455,7 @@ class CloudfrontAdapter {
 			}
 			return response;
 		} catch (error) {
-			console.error('Failed to dispatch consolidated event to Optimizely:', error);
+			this.logger.error('Failed to dispatch consolidated event to Optimizely:', error);
 			throw new Error('Failed to dispatch consolidated event to Optimizely.');
 		}
 	}
@@ -478,7 +478,7 @@ class CloudfrontAdapter {
 				return JSON.parse(result.Item.datafile);
 			}
 		} catch (error) {
-			console.error(`Error retrieving datafile from DynamoDB for SDK key ${sdkKey}:`, error);
+			this.logger.error(`Error retrieving datafile from DynamoDB for SDK key ${sdkKey}:`, error);
 		}
 		return null;
 	}
@@ -556,7 +556,7 @@ class CloudfrontAdapter {
 				return result.Item.flags;
 			}
 		} catch (error) {
-			console.error(`Error retrieving flags from DynamoDB for SDK key ${sdkKey}:`, error);
+			this.logger.error(`Error retrieving flags from DynamoDB for SDK key ${sdkKey}:`, error);
 		}
 		return null;
 	}
@@ -597,7 +597,7 @@ class CloudfrontAdapter {
 
 			return clonedRequest;
 		} catch (error) {
-			console.error('Error cloning request with new URI:', error);
+			this.logger.error('Error cloning request with new URI:', error);
 			throw error;
 		}
 	}
@@ -612,7 +612,7 @@ class CloudfrontAdapter {
 		try {
 			return { ...request };
 		} catch (error) {
-			console.error('Error cloning request:', error);
+			this.logger.error('Error cloning request:', error);
 			throw error;
 		}
 	}
@@ -627,7 +627,7 @@ class CloudfrontAdapter {
 		try {
 			return { ...response };
 		} catch (error) {
-			console.error('Error cloning response:', error);
+			this.logger.error('Error cloning response:', error);
 			throw error;
 		}
 	}
@@ -642,7 +642,7 @@ class CloudfrontAdapter {
 	 */
 	async getJsonPayload(request) {
 		if (request.method !== 'POST') {
-			console.error('Request is not an HTTP POST method.');
+			this.logger.error('Request is not an HTTP POST method.');
 			return null;
 		}
 
@@ -657,7 +657,7 @@ class CloudfrontAdapter {
 			const json = JSON.parse(clonedRequest.body);
 			return json;
 		} catch (error) {
-			console.error('Error parsing JSON:', error);
+			this.logger.error('Error parsing JSON:', error);
 			return null;
 		}
 	}
@@ -745,7 +745,7 @@ class CloudfrontAdapter {
 				},
 			];
 		} catch (error) {
-			console.error('An error occurred while setting the cookie:', error);
+			this.logger.error('An error occurred while setting the cookie:', error);
 			throw error;
 		}
 	}
@@ -856,7 +856,7 @@ class CloudfrontAdapter {
 			existingCookies = existingCookies ? `${existingCookies}; ${cookieStrings.join('; ')}` : cookieStrings.join('; ');
 			clonedRequest.headers.cookie = existingCookies;
 		} catch (error) {
-			console.error('Error setting cookies:', error);
+			this.logger.error('Error setting cookies:', error);
 			throw new Error('Failed to set cookies in the request.');
 		}
 

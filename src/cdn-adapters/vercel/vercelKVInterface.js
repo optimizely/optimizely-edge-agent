@@ -1,4 +1,15 @@
-// vercelKVInterface.js
+/**
+ * @module VercelKVInterface
+ * 
+ * The VercelKVInterface module is responsible for interacting with the Vercel Edge Functions KV store.
+ * 
+ * The following methods are implemented:
+ * - get(key) - Retrieves a value by key from the Vercel Edge Functions KV store.
+ * - put(key, value) - Puts a value into the Vercel Edge Functions KV store.
+ * - delete(key) - Deletes a key from the Vercel Edge Functions KV store.
+ */
+
+import { logger } from '../../_helpers_/optimizelyHelper.js';
 
 /**
  * Class representing the Vercel Edge Functions KV store interface.
@@ -23,7 +34,7 @@ class VercelKVInterface {
 			const value = await EDGE_KV.get(`${this.kvNamespace}:${key}`);
 			return value !== null ? value.toString() : null;
 		} catch (error) {
-			console.error(`Error getting value for key ${key}:`, error);
+			logger().error(`Error getting value for key ${key}:`, error);
 			return null;
 		}
 	}
@@ -38,7 +49,7 @@ class VercelKVInterface {
 		try {
 			await EDGE_KV.put(`${this.kvNamespace}:${key}`, value);
 		} catch (error) {
-			console.error(`Error putting value for key ${key}:`, error);
+			logger().error(`Error putting value for key ${key}:`, error);
 		}
 	}
 
@@ -51,7 +62,7 @@ class VercelKVInterface {
 		try {
 			await EDGE_KV.remove(`${this.kvNamespace}:${key}`);
 		} catch (error) {
-			console.error(`Error deleting key ${key}:`, error);
+			logger().error(`Error deleting key ${key}:`, error);
 		}
 	}
 }

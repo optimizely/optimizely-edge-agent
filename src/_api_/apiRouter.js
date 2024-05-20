@@ -1,3 +1,14 @@
+/**
+ * @module ApiRouter
+ * 
+ * The ApiRouter module is responsible for routing the incoming requests to the appropriate handlers. The APIRouter only handles requests
+ * that are related to the API. Specifically for updating and retrieving datafiles and flag keys in the KV store of the CDN provider.
+ * 
+ * The following methods are implemented:
+ * - apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings) - Manually handle routing based on URL and method.
+ * - handleRequest(request, abstractionHelper, kvStore, logger, defaultSettings) - Handle incoming requests using the manual routing function.
+ */
+
 // Define your route handlers as before
 import { handleDatafile, handleGetDatafile } from './handlers/datafile';
 import { handleFlagKeys, handleGetFlagKeys } from './handlers/flagKeys';
@@ -48,6 +59,7 @@ async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSet
 			}
 
 			const result = routes[route][method](request, abstractionHelper, kvStore, logger, defaultSettings, params);
+			logger.debug('ApiRouter: Handled request for URL ', url.href, '- Method:', method);
 			return result;
 		}
 	}
@@ -61,6 +73,7 @@ async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSet
  * @param {Request} request - The incoming request object.
  * @returns {Promise<Response>} - A promise that resolves to the response.
  */
-export default async function handleRequest(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings) {
-	return await apiRouter(request, env, ctx, abstractionHelper, kvStore, logger, defaultSettings);
+export default async function handleRequest(request, abstractionHelper, kvStore, logger, defaultSettings) {
+	logger.debug('Api Router: Handling API request.');
+	return await apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings);
 }

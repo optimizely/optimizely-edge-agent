@@ -1,4 +1,10 @@
-// defaultSettings.js
+/**
+ * @module DefaultSettings
+ * 
+ * The DefaultSettings module contains default settings define default values required during the initialization of the edge worker.
+ * 
+ */
+
 const defaultSettings = {
 	cdnProvider: 'cloudflare', // Default to Cloudflare - Possible values: cloudflare, fastly, cloudfront, akamai,
 	/* Possible values:
@@ -23,6 +29,7 @@ const defaultSettings = {
 	kv_key_optly_variation_changes: 'optly_variation_changes',
     kv_cloudfront_dyanmodb_table: 'OptlyHybridAgentKV',
     kv_cloudfront_dyanmodb_options: {},
+	logLevel: 'debug',
 };
 
 export default defaultSettings;

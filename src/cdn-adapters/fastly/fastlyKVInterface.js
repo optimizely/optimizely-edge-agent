@@ -1,4 +1,15 @@
-// fastlyKVInterface.js
+/**
+ * @module FastlyKVInterface
+ * 
+ * The FastlyKVInterface module is responsible for interacting with the Fastly EdgeWorkers KV store.
+ * 
+ * The following methods are implemented:
+ * - get(key) - Retrieves a value by key from the Fastly EdgeWorkers KV store.
+ * - put(key, value) - Puts a value into the Fastly EdgeWorkers KV store.
+ * - delete(key) - Deletes a key from the Fastly EdgeWorkers KV store.
+ */
+
+import { logger } from '../../_helpers_/optimizelyHelper.js';
 
 /**
  * Class representing the Fastly EdgeWorkers KV store interface.
@@ -23,7 +34,7 @@ class FastlyKVInterface {
         const value = await fastly.getKVAsString(this.kvNamespace, key);
         return value !== null ? value : null;
       } catch (error) {
-        console.error(`Error getting value for key ${key}:`, error);
+        logger().error(`Error getting value for key ${key}:`, error);
         return null;
       }
     }
@@ -38,7 +49,7 @@ class FastlyKVInterface {
       try {
         await fastly.writeKV(this.kvNamespace, key, value);
       } catch (error) {
-        console.error(`Error putting value for key ${key}:`, error);
+        logger().error(`Error putting value for key ${key}:`, error);
       }
     }
   
@@ -51,7 +62,7 @@ class FastlyKVInterface {
       try {
         await fastly.deleteKV(this.kvNamespace, key);
       } catch (error) {
-        console.error(`Error deleting key ${key}:`, error);
+        logger().error(`Error deleting key ${key}:`, error);
       }
     }
   }

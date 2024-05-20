@@ -68,14 +68,14 @@ class FastlyAdapter {
 
 			// Return response for POST requests without caching
 			if (httpMethod === 'POST') {
-				console.log('POST request detected. Returning response without caching.');
+				this.logger.debug('POST request detected. Returning response without caching.');
 				return result.reqResponse;
 			}
 
 			// Handle specific GET requests immediately without caching
 			if (httpMethod === 'GET' && (this.coreLogic.datafileOperation || this.coreLogic.configOperation)) {
 				const fileType = this.coreLogic.datafileOperation ? 'datafile' : 'config file';
-				console.log(`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`);
+				this.logger.debug(`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`);
 				return result.reqResponse;
 			}
 
@@ -83,13 +83,13 @@ class FastlyAdapter {
 			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
 				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings);
 			} else {
-				console.log('No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.');
+				this.logger.debug('No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.');
 				fetchResponse = await this.fetchDirectly(request);
 			}
 
 			return fetchResponse;
 		} catch (error) {
-			console.error('Error processing request:', error);
+			this.logger.error('Error processing request:', error);
 			return new Response(`Internal Server Error: ${error.toString()}`, { status: 500 });
 		}
 	}
@@ -134,7 +134,7 @@ class FastlyAdapter {
 			const cacheKey = this.generateCacheKey(cdnSettings, originUrl);
 			const cache = caches.default;
 			await cache.put(cacheKey, response.clone());
-			console.log(`Cache hit for: ${originUrl}.`);
+			this.logger.debug(`Cache hit for: ${originUrl}.`);
 		}
 
 		return response;
@@ -146,7 +146,7 @@ class FastlyAdapter {
 	 * @returns {Promise<Response>} - The response from the origin.
 	 */
 	async fetchDirectly(request) {
-		console.log('Fetching directly from origin: ' + request.url);
+		this.logger.debug('Fetching directly from origin: ' + request.url);
 		return await fetch(request);
 	}
 
@@ -158,7 +158,7 @@ class FastlyAdapter {
 	 */
 	getOriginUrl(request, cdnSettings) {
 		if (cdnSettings && cdnSettings.cdnResponseURL) {
-			console.log('Valid CDN settings detected.');
+			this.logger.debug('Valid CDN settings detected.');
 			return cdnSettings.cdnResponseURL;
 		}
 		return request.url;
@@ -184,16 +184,16 @@ class FastlyAdapter {
 	async handleFetchFromOrigin(request, originUrl, cdnSettings, ctx) {
 		const newRequest = this.cloneRequestWithNewUrl(request, originUrl);
 		const cacheKey = this.generateCacheKey(cdnSettings, originUrl);
-		console.log(`Generated cache key: ${cacheKey}`);
+		this.logger.debug(`Generated cache key: ${cacheKey}`);
 		const cache = caches.default;
 		let response = await cache.match(cacheKey);
 
 		if (!response) {
-			console.log(`Cache miss for ${originUrl}. Fetching from origin.`);
+			this.logger.debug(`Cache miss for ${originUrl}. Fetching from origin.`);
 			response = await this.fetch(new Request(originUrl, newRequest));
 			if (response.ok) this.cacheResponse(ctx, cache, cacheKey, response);
 		} else {
-			console.log(`Cache hit for: ${originUrl}.`);
+			this.logger.debug(`Cache hit for: ${originUrl}.`);
 		}
 
 		return this.applyResponseSettings(response, cdnSettings);
@@ -234,7 +234,7 @@ class FastlyAdapter {
 
 			return cacheKeyUrl.href;
 		} catch (error) {
-			console.error('Error generating cache key:', error);
+			this.logger.error('Error generating cache key:', error);
 			throw new Error('Failed to generate cache key.');
 		}
 	}
@@ -249,12 +249,12 @@ class FastlyAdapter {
 	async fetchFromOrigin(cdnSettings, reqResponse) {
 		try {
 			// for (const [key, value] of reqResponse.headers) { // Debugging headers
-			// 	console.log(`${key}: ${value}`);
+			// 	this.logger.debug(`${key}: ${value}`);
 			// }
 			const urlToFetch = cdnSettings.forwardRequestToOrigin ? reqResponse.url : cdnSettings.cdnResponseURL;
 			return await fetch(urlToFetch);
 		} catch (error) {
-			console.error('Error fetching from origin:', error);
+			this.logger.error('Error fetching from origin:', error);
 			throw new Error('Failed to fetch from origin.');
 		}
 	}
@@ -270,9 +270,9 @@ class FastlyAdapter {
 		try {
 			const responseToCache = response.clone();
 			ctx.waitUntil(cache.put(cacheKey, responseToCache));
-			console.log('Response from origin was cached successfully. Cached Key:', cacheKey);
+			this.logger.debug('Response from origin was cached successfully. Cached Key:', cacheKey);
 		} catch (error) {
-			console.error('Error caching response:', error);
+			this.logger.error('Error caching response:', error);
 			throw new Error('Failed to cache response.');
 		}
 	}
@@ -289,11 +289,11 @@ class FastlyAdapter {
 				const allEvents = await this.consolidateVisitorsInEvents(this.eventQueue);
 				ctx.waitUntil(
 					this.dispatchAllEventsToOptimizely(defaultSettings.optimizelyEventsEndpoint, allEvents).catch((err) => {
-						console.error('Failed to dispatch event:', err);
+						this.logger.error('Failed to dispatch event:', err);
 					})
 				);
 			} catch (error) {
-				console.error('Error during event consolidation or dispatch:', error);
+				this.logger.error('Error during event consolidation or dispatch:', error);
 			}
 		}
 	}
@@ -313,7 +313,7 @@ class FastlyAdapter {
 		const isGetMethod = httpMethod === 'GET';
 
 		try {
-			console.log(`Fetching from origin for: ${request.url}`);
+			this.logger.debug(`Fetching from origin for: ${request.url}`);
 
 			// Perform a standard fetch request using the original request details
 			const response = await fetch(request);
@@ -336,7 +336,7 @@ class FastlyAdapter {
 
 			return clonedResponse;
 		} catch (error) {
-			console.error(`Failed to fetch: ${error.message}`);
+			this.logger.error(`Failed to fetch: ${error.message}`);
 
 			// Return a standardized error response
 			return new Response(`An error occurred: ${error.message}`, {
@@ -378,7 +378,7 @@ class FastlyAdapter {
 
 			return clonedResponse;
 		} catch (error) {
-			console.error(`Failed to fetch: ${error.message}`);
+			this.logger.error(`Failed to fetch: ${error.message}`);
 
 			// Return a standardized error response
 			return new Response(`An error occurred: ${error.message}`, {
@@ -406,7 +406,7 @@ class FastlyAdapter {
 			}
 			return await response.text();
 		} catch (error) {
-			console.error(`Error fetching datafile for SDK key ${sdkKey}: ${error}`);
+			this.logger.error(`Error fetching datafile for SDK key ${sdkKey}: ${error}`);
 			throw new Error('Error fetching datafile.');
 		}
 	}
@@ -491,7 +491,7 @@ class FastlyAdapter {
 			throw new Error('Valid event data must be provided.');
 		}
 
-		// console.log(JSON.stringify(events));
+		// this.logger.debug(JSON.stringify(events));
 		const eventRequest = new Request(url, {
 			method: 'POST',
 			headers: {
@@ -507,7 +507,7 @@ class FastlyAdapter {
 			}
 			return response;
 		} catch (error) {
-			console.error('Failed to dispatch consolidated event to Optimizely:', error);
+			this.logger.error('Failed to dispatch consolidated event to Optimizely:', error);
 			throw new Error('Failed to dispatch consolidated event to Optimizely.');
 		}
 	}
@@ -613,7 +613,7 @@ class FastlyAdapter {
 
 			return clonedRequest;
 		} catch (error) {
-			console.error('Error cloning request with new URL:', error);
+			this.logger.error('Error cloning request with new URL:', error);
 			throw error;
 		}
 	}
@@ -631,7 +631,7 @@ class FastlyAdapter {
 			const clonedRequest = request.clone();
 			return clonedRequest;
 		} catch (error) {
-			console.error('Error cloning request:', error);
+			this.logger.error('Error cloning request:', error);
 			throw error;
 		}
 	}
@@ -648,7 +648,7 @@ class FastlyAdapter {
 			const clonedRequest = request.clone();
 			return clonedRequest;
 		} catch (error) {
-			console.error('Error cloning request:', error);
+			this.logger.error('Error cloning request:', error);
 			throw error;
 		}
 	}
@@ -665,7 +665,7 @@ class FastlyAdapter {
 			const clonedResponse = response.clone();
 			return clonedResponse;
 		} catch (error) {
-			console.error('Error cloning response:', error);
+			this.logger.error('Error cloning response:', error);
 			throw error;
 		}
 	}
@@ -682,7 +682,7 @@ class FastlyAdapter {
 	static async getJsonPayload(_request) {
 		const request = this.cloneRequest(_request);
 		if (request.method !== 'POST') {
-			console.error('Request is not an HTTP POST method.');
+			this.logger.error('Request is not an HTTP POST method.');
 			return null;
 		}
 
@@ -698,7 +698,7 @@ class FastlyAdapter {
 			const json = JSON.parse(bodyText);
 			return json;
 		} catch (error) {
-			console.error('Error parsing JSON:', error);
+			this.logger.error('Error parsing JSON:', error);
 			return null;
 		}
 	}
@@ -714,7 +714,7 @@ class FastlyAdapter {
 	async getJsonPayload(_request) {
 		const request = this.cloneRequest(_request);
 		if (request.method !== 'POST') {
-			console.error('Request is not an HTTP POST method.');
+			this.logger.error('Request is not an HTTP POST method.');
 			return null;
 		}
 
@@ -730,7 +730,7 @@ class FastlyAdapter {
 			const json = JSON.parse(bodyText);
 			return json;
 		} catch (error) {
-			console.error('Error parsing JSON:', error);
+			this.logger.error('Error parsing JSON:', error);
 			return null;
 		}
 	}
@@ -819,7 +819,7 @@ class FastlyAdapter {
 			const cookieValue = `${name}=${encodeURIComponent(value)}; ${optionsString}`;
 			response.headers.append('Set-Cookie', cookieValue);
 		} catch (error) {
-			console.error('An error occurred while setting the cookie:', error);
+			this.logger.error('An error occurred while setting the cookie:', error);
 			throw error;
 		}
 	}
@@ -930,7 +930,7 @@ class FastlyAdapter {
 			existingCookies = existingCookies ? `${existingCookies}; ${cookieStrings.join('; ')}` : cookieStrings.join('; ');
 			clonedRequest.headers.set('Cookie', existingCookies);
 		} catch (error) {
-			console.error('Error setting cookies:', error);
+			this.logger.error('Error setting cookies:', error);
 			throw new Error('Failed to set cookies in the request.');
 		}
 

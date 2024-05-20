@@ -1,3 +1,23 @@
+/**
+ * @module optimizelyHelper
+ * 
+ * The optimizelyHelper module provides a collection of helper functions for working with CDN implementations.
+ * The following methods are implemented:
+ * - routeMatches(requestPath) - Checks if the given request path matches any of the defined Rest API routes.
+ * - getResponseJsonKeyName(urlPath) - Retrieves the response JSON key name based on the URL path.
+ * - cloneResponseObject(responseObject) - Clones a response object.
+ * - arrayIsValid(array) - Checks if an array is valid (non-empty and contains elements).
+ * - jsonObjectIsValid(json) - Checks if a JSON string represents a valid object.
+ * - generateUUID() - Generates a UUID.
+ * - getDaysInSeconds(days) - Converts days to seconds.
+ * - parseCookies(cookieHeader) - Parses a cookie header string into an object where each property is a cookie name and its value is the cookie's value.
+ * - getCookieValueByName(cookies, name) - Retrieves the value of a cookie by name.
+ * - createCookie(name, value, options) - Creates a cookie string with the specified name, value, and options.
+ * - fetchByRequestObject(request) - Generic fetch method that delegates to specific fetch implementations based on the CDN provider.
+ * - fetchByUrl(url, options) - Generic fetch method that delegates to specific fetch implementations based on the CDN provider.
+ *  
+ */
+
 import * as cookie from "cookie";
 import * as cookieDefaultOptions from "../_config_/cookieOptions";
 import defaultSettings from "../_config_/defaultSettings";
@@ -6,22 +26,17 @@ import EventListeners from "../_event_listeners_/eventListeners";
 import { AbstractionHelper } from "./abstractionHelper";
 
 let https;
-if (defaultSettings.cdnProvider === "akamai") {
-  // https = require('https');
-}
-
 const DELIMITER = "&";
 const FLAG_VAR_DELIMITER = ":";
 const KEY_VALUE_DELIMITER = ",";
 
+
 /**
- * Logs a message and an optional object to the console.
- * @param {string} message - The message to log.
- * @param {Object} [object] - The object to log.
+ * Returns the logger instance.
+ * @returns {Logger} The logger instance.
  */
-export function log(message, object) {
-  const logPrefix = "Optly-CF: ";
-  console.log(logPrefix + message, object ? JSON.stringify(object) : "");
+export function logger() {
+  return Logger.getInstance();
 }
 
 /**
@@ -38,7 +53,7 @@ async function akamaiFetch(url, options) {
     }
     return response;
   } catch (error) {
-    console.error("Request failed:", error);
+    logger().error("Request failed:", error);
     throw error;
   }
 }
@@ -105,7 +120,7 @@ export async function fetchByRequestObject(request) {
         });
         return clonedResponse;
       } catch (error) {
-        console.error("Request failed:", error);
+        logger().error("Request failed:", error);
         throw error;
       }
     default:
@@ -144,7 +159,7 @@ export async function fetchByUrl(url, options) {
         }
         return response;
       } catch (error) {
-        console.error("Request failed:", error);
+        logger().error("Request failed:", error);
         throw error;
       }
     default:
@@ -208,26 +223,6 @@ export async function cloneResponseObject(responseObject) {
   return result;
 }
 
-// /**
-//  * Dispatches an event to the specified URL.
-//  * @param {Object} options - The event options.
-//  * @param {string} options.url - The URL to dispatch the event to.
-//  * @param {Object} options.params - The event parameters.
-//  * @returns {Promise<Object>} The response data.
-//  */
-// export async function dispatchEventToOptimizely({ url, params }) {
-// 	const options = {
-// 		method: 'POST',
-// 		body: JSON.stringify(params),
-// 		headers: { 'Content-Type': 'application/json' },
-// 	};
-// 	const response = await _fetch(url, options);
-// 	if (!response.ok) {
-// 		throw new Error(`Failed to dispatch event: ${response.statusText}`);
-// 	}
-// 	return response.json();
-// }
-
 /**
  * Checks if an array is valid (non-empty and contains elements).
  * @param {Array} array - The array to check.
@@ -271,15 +266,6 @@ export async function generateUUID() {
 export function getDaysInSeconds(days) {
   return Math.max(Number(days), 0) * 86400;
 }
-
-// /**
-//  * Parses cookies from a cookie header string.
-//  * @param {string} cookieHeader - The cookie header string.
-//  * @returns {Object} The parsed cookies.
-//  */
-// export function parseCookies(cookieHeader) {
-// 	return cookie.parse(cookieHeader || '');
-// }
 
 /**
  * Parses a cookie header string into an object where each property is a cookie name and its value is the cookie's value.
@@ -540,7 +526,7 @@ export function jsonStringifySafe(data) {
   try {
     return JSON.stringify(data);
   } catch (error) {
-    console.error("Failed to stringify JSON:", error);
+    logger().error("Failed to stringify JSON:", error);
     return "{}";
   }
 }
@@ -554,13 +540,13 @@ export function jsonParseSafe(jsonString) {
   try {
     return JSON.parse(jsonString);
   } catch (error) {
-    console.error("Failed to parse JSON:", error);
+    logger().error("Failed to parse JSON:", error);
     return null;
   }
 }
 
 /**
- * Checks if a string represents a valid JSON object.
+ * Checks if a string represents a valid JSON object, and is not empty {}, it must have at least one property.
  *
  * @param {string} obj - The string to check.
  * @returns {boolean} True if the string represents a valid non-empty object, false otherwise.
@@ -591,12 +577,12 @@ export function isValidJsonObject(obj) {
     if (error instanceof SyntaxError) {
       return false;
     }
-    console.error("An error occurred while validating the JSON object:", error);
+    logger().error("An error occurred while validating the JSON object:", error);
     throw error;
   }
 }
 /**
- * Checks if the given parameter is a valid non-empty JavaScript object.
+ * Checks if the given parameter is a valid non-empty JavaScript object {}. It must have at least one property.
  * @param {*} obj - The parameter to be checked.
  * @returns {boolean} - Returns true if the parameter is a valid non-empty object, false otherwise.
  * @throws {Error} - If an error occurs during the validation process.
@@ -612,7 +598,7 @@ export function isValidObject(obj) {
     }
     return false;
   } catch (error) {
-    console.error("Error validating object:", error);
+    logger().error("Error validating object:", error);
     throw new Error("An error occurred while validating the object.");
   }
 }

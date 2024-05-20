@@ -1,5 +1,17 @@
-// awsDynamoDBInterface.js
+/**
+ * @module CloudfrontKVInterface
+ * 
+ * The CloudfrontKVInterface module is responsible for interacting with the AWS CloudFront Lambda@Edge KV store.
+ * Since CloudFront Lambda@Edge does not provide a built-in key-value (KV) store like Cloudflare Workers 
+ * or other edge computing platforms, the module is implemented using AWS DynamoDB.
+ * The following methods are implemented:
+ * - get(key) - Retrieves a value by key from the AWS CloudFront Lambda@Edge KV store.
+ * - put(key, value) - Puts a value into the AWS CloudFront Lambda@Edge KV store.
+ * - delete(key) - Deletes a key from the AWS CloudFront Lambda@Edge KV store.
+ */
+
 import { DynamoDB } from 'aws-sdk';
+import { logger } from '../../_helpers_/optimizelyHelper.js';
 
 /**
  * AWS CloudFront Lambda@Edge does not provide a built-in key-value (KV) store like Cloudflare Workers 
@@ -34,7 +46,7 @@ class AWSDynamoDBInterface {
       const result = await this.dynamodb.get(params).promise();
       return result.Item ? result.Item.value : null;
     } catch (error) {
-      console.error(`Error getting value for key ${key}:`, error);
+      logger().error(`Error getting value for key ${key}:`, error);
       return null;
     }
   }
@@ -56,7 +68,7 @@ class AWSDynamoDBInterface {
       };
       await this.dynamodb.put(params).promise();
     } catch (error) {
-      console.error(`Error putting value for key ${key}:`, error);
+      logger().error(`Error putting value for key ${key}:`, error);
     }
   }
 
@@ -73,7 +85,7 @@ class AWSDynamoDBInterface {
       };
       await this.dynamodb.delete(params).promise();
     } catch (error) {
-      console.error(`Error deleting key ${key}:`, error);
+      logger().error(`Error deleting key ${key}:`, error);
     }
   }
 }

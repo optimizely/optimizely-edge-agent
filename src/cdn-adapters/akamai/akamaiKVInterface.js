@@ -1,8 +1,12 @@
 // akamaiKVInterface.js
 
 /**
- * Class representing the Akamai EdgeWorkers KV store interface.
- * @class
+ * The AkamaiKVInterface module is responsible for interacting with the Akamai EdgeWorkers KV store.
+ * 
+ * The following methods are implemented:
+ * - get(key) - Retrieves a value by key from the Akamai EdgeWorkers KV store.
+ * - put(key, value) - Puts a value into the Akamai EdgeWorkers KV store.
+ * - delete(key) - Deletes a key from the Akamai EdgeWorkers KV store.
  */
 class AkamaiKVInterface {
     /**
@@ -23,7 +27,7 @@ class AkamaiKVInterface {
         const value = await this.namespace.get(key, { decode: false });
         return value !== null ? value.toString() : null;
       } catch (error) {
-        console.error(`Error getting value for key ${key}:`, error);
+        logger().error(`Error getting value for key ${key}:`, error);
         return null;
       }
     }
@@ -38,7 +42,7 @@ class AkamaiKVInterface {
       try {
         await this.namespace.put(key, value);
       } catch (error) {
-        console.error(`Error putting value for key ${key}:`, error);
+        logger().error(`Error putting value for key ${key}:`, error);
       }
     }
   
@@ -51,7 +55,7 @@ class AkamaiKVInterface {
       try {
         await this.namespace.delete(key);
       } catch (error) {
-        console.error(`Error deleting key ${key}:`, error);
+        logger().error(`Error deleting key ${key}:`, error);
       }
     }
   }

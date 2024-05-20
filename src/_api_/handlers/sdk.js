@@ -1,4 +1,11 @@
 /**
+ * @module SDK
+ */
+
+import { logger } from '../../_helpers_/optimizelyHelper.js';
+
+
+/**
  * Fetches and updates the Optimizely JavaScript SDK based on the provided URL.
  * @param {Request} request - The incoming request object.
  * @returns {Promise<Response>} - A promise that resolves to the response object.
@@ -39,7 +46,7 @@ const handleSDK = async (request) => {
   
       return new Response(`SDK updated to: ${sdkUrl}\n`, { headers });
     } catch (error) {
-      console.error("Error in handleSDK:", error);
+      logger().error("Error in handleSDK:", error);
       return new Response("Error updating SDK", { status: 500 });
     }
   };
