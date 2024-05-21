@@ -1,10 +1,10 @@
 /**
  * @module RequestConfig
- * 
+ *
  * The RequestConfig is responsible for extracting and parsing the configuration settings from the request.
  * It prioritizes values from the headers, query parameters, and body of the request in this order. If a value is not found in the headers,
  * the query parameters, or the body, the default values are used. Some settings are shared between the headers, query parameters, and body.
- * 
+ *
  * It implements the following methods:
  * - initialize(request) - Initializes the request configuration based on headers, query parameters, and possibly the body for POST requests.
  * - defineQueryParameters() - Defines the set of query parameters used for configuration.
@@ -13,7 +13,7 @@
  * - initializeFromHeaders() - Initializes configuration settings from HTTP headers.
  * - initializeFromQueryParams() - Initializes configuration settings from URL query parameters.
  * - initializeFromBody() - Initializes configuration settings from the request body if available. Only POST requests are considered.
- * 
+ *
  */
 
 import Logger from '../_helpers_/logger';
@@ -31,6 +31,7 @@ export default class RequestConfig {
 	constructor(request, env, ctx, cdnAdapter, abstractionHelper) {
 		logger().debug('RequestConfig constructor called');
 		this.abstractionHelper = abstractionHelper;
+		this.eventListeners = EventListeners.getInstance();
 		this.request = this.abstractionHelper.request;
 		this.cdnAdapter = cdnAdapter;
 		this.url = this.abstractionHelper.abstractRequest.getNewURL(this.abstractionHelper.request.url);
@@ -55,6 +56,8 @@ export default class RequestConfig {
 			defaultSetRequestCookies: true,
 			defaultSetRequestHeaders: true,
 			defaultResponseHeadersAndCookies: true,
+			defaultOverrideCache: false,
+			defaultOverrideVisitorId: false,
 			decisionsKeyName: 'decisions',
 			decisionsCookieName: 'optly_edge_decisions',
 			visitorIdCookieName: 'optly_edge_visitor_id',
@@ -76,6 +79,7 @@ export default class RequestConfig {
 			enableFlagsFromKV: 'X-Optimizely-Flags-KV',
 			enableDatafileFromKV: 'X-Optimizely-Datafile-KV',
 			enableRespMetadataHeader: 'X-Optimizely-Enable-Response-Metadata',
+			overrideCacheHeader: 'X-Optimizely-Override-Cache-Header',
 			eventKeyHeader: 'X-Optimizely-Event-Key',
 			kvFlagKeyName: 'optly_flagKeys',
 			kvDatafileKeyName: 'optly_sdk_datafile',
@@ -167,6 +171,7 @@ export default class RequestConfig {
 			enableDatafileFromKV: 'enableDatafileFromKV',
 			enableFlagsFromKV: 'enableFlagsFromKV',
 			eventKey: 'eventKey',
+			overrideCache: 'overrideCache',
 		};
 	}
 
@@ -229,6 +234,7 @@ export default class RequestConfig {
 	async initializeFromHeaders() {
 		logger().debugExt('RequestConfig - Initializing from headers [initializeFromHeaders]');
 		this.sdkKey = this.getHeader(this.settings.sdkKeyHeader);
+		this.overrideCache = this.getHeader(this.settings.overrideCacheHeader) === 'true' ? true : false;
 		this.overrideVisitorId = this.parseBoolean(this.getHeader(this.settings.overrideVisitorIdHeader));
 		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Headers';
 		this.attributes = this.parseJson(this.getHeader(this.settings.attributesHeader));
@@ -267,13 +273,21 @@ export default class RequestConfig {
 	async initializeFromQueryParams() {
 		logger().debugExt('RequestConfig - Initializing from query parameters [initializeFromQueryParams]');
 		const qp = this.url.searchParams;
-		this.overrideVisitorId = this.overrideVisitorId || qp.get(this.queryParameters.overrideVisitorId) === 'true' ? true : false || false;
+		this.overrideVisitorId =
+			this.overrideVisitorId || qp.get(this.queryParameters.overrideVisitorId) === 'true'
+				? true
+				: false || this.settings.defaultOverrideVisitorId;
+		this.overrideCache =
+			this.overrideCache || qp.get(this.queryParameters.overrideCache) === 'true'
+				? true
+				: false || this.settings.defaultOverrideCache;
 		this.serverMode = qp.get(this.queryParameters.serverMode);
-		this.visitorId = this.visitorId || qp.get(this.queryParameters.visitorId); 
+		this.visitorId = this.visitorId || qp.get(this.queryParameters.visitorId);
 		this.flagKeys = qp.getAll(this.queryParameters.keys);
 		this.sdkKey = this.sdkKey || qp.get(this.queryParameters.sdkKey);
-		this.eventKey = this.eventKey || qp.get(this.queryParameters.eventKey); 
-		this.enableResponseMetadata = this.enableResponseMetadata || this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata));
+		this.eventKey = this.eventKey || qp.get(this.queryParameters.eventKey);
+		this.enableResponseMetadata =
+			this.enableResponseMetadata || this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata));
 		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Query Parameters';
 		this.decideAll = this.parseBoolean(qp.get(this.queryParameters.decideAll));
 		//this.trimmedDecisions = this.trimmedDecisions || this.parseBoolean(qp.get(this.queryParameters.trimmedDecisions)) || this.settings.defaultTrimmedDecisions;
@@ -297,14 +311,22 @@ export default class RequestConfig {
 
 		if (!this.isPostMethod || this.isPostMethod === undefined) {
 			this.setRequestHeaders =
-				this.setRequestHeaders || this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)) || this.settings.defaultSetRequestHeaders;
+				this.setRequestHeaders ||
+				this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)) ||
+				this.settings.defaultSetRequestHeaders;
 			this.setRequestCookies =
-				this.setRequestCookies || this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)) || this.settings.defaultSetRequestCookies;
+				this.setRequestCookies ||
+				this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)) ||
+				this.settings.defaultSetRequestCookies;
 		}
 		this.setResponseHeaders =
-			this.setResponseHeaders || this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)) || this.settings.defaultSetResponseHeaders;
+			this.setResponseHeaders ||
+			this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)) ||
+			this.settings.defaultSetResponseHeaders;
 		this.setResponseCookies =
-			this.setResponseCookies || this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)) || this.settings.defaultSetResponseCookies;
+			this.setResponseCookies ||
+			this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)) ||
+			this.settings.defaultSetResponseCookies;
 	}
 
 	/**
@@ -314,7 +336,9 @@ export default class RequestConfig {
 		logger().debugExt('RequestConfig - Initializing from body [initializeFromBody]');
 		if (this.body) {
 			this.visitorId = this.visitorId || this.body.visitorId;
-			this.overrideVisitorId = this.overrideVisitorId || this.body.overrideVisitorId || false;
+			this.overrideVisitorId =
+				this.overrideVisitorId || this.body.overrideVisitorId || this.settings.defaultOverrideVisitorId;
+			this.overrideCache = this.overrideCache || this.body.overrideCache || this.settings.defaultOverrideCache;
 			this.flagKeys = this.flagKeys.length > 0 ? this.flagKeys : this.body.flagKeys;
 			this.sdkKey = this.sdkKey || this.body.sdkKey;
 			this.eventKey = this.eventKey || this.body.eventKey;
@@ -341,13 +365,18 @@ export default class RequestConfig {
 					this.trimmedDecisions = true;
 				}
 			} else {
-				if (this.trimmedDecisions === undefined) this.trimmedDecisions = this.trimmedDecisions || this.settings.defaultTrimmedDecisions;
+				if (this.trimmedDecisions === undefined)
+					this.trimmedDecisions = this.trimmedDecisions || this.settings.defaultTrimmedDecisions;
 			}
 
-			this.setRequestHeaders = this.setRequestHeaders || this.body.setRequestHeaders || this.settings.defaultSetRequestHeaders;
-			this.setResponseHeaders = this.setResponseHeaders || this.body.setResponseHeaders || this.settings.defaultSetResponseHeaders;
-			this.setRequestCookies = this.setRequestCookies || this.body.setRequestCookies || this.settings.defaultSetRequestCookies;
-			this.setResponseCookies = this.setResponseCookies || this.body.setResponseCookies || this.settings.defaultSetResponseCookies;
+			this.setRequestHeaders =
+				this.setRequestHeaders || this.body.setRequestHeaders || this.settings.defaultSetRequestHeaders;
+			this.setResponseHeaders =
+				this.setResponseHeaders || this.body.setResponseHeaders || this.settings.defaultSetResponseHeaders;
+			this.setRequestCookies =
+				this.setRequestCookies || this.body.setRequestCookies || this.settings.defaultSetRequestCookies;
+			this.setResponseCookies =
+				this.setResponseCookies || this.body.setResponseCookies || this.settings.defaultSetResponseCookies;
 		}
 	}
 

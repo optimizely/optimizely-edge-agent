@@ -42,10 +42,13 @@ class CloudflareAdapter {
 		this.kvStore = kvStore || undefined;
 		this.coreLogic = coreLogic;
 		this.abstractionHelper = abstractionHelper;
+		this.eventListeners = EventListeners.getInstance();
+		this.eventListenersResult = undefined;
 		this.eventQueue = [];
 		this.request = undefined;
 		this.env = undefined;
 		this.ctx = undefined;
+		this.result = undefined;
 		this.cachedRequestHeaders = undefined;
 		this.cachedRequestCookies = undefined;
 		this.cookiesToSetRequest = [];
@@ -72,6 +75,9 @@ class CloudflareAdapter {
 		this.request = request;
 		this.env = env;
 		this.ctx = ctx;
+		this.reqResponse = undefined;
+		this.shouldCacheResponse = false;
+		this.eventListeners = EventListeners.getInstance();
 		try {
 			let originUrl = this.abstractionHelper.abstractRequest.getNewURL(request.url);
 			this.logger.debug(`Origin URL [fetchHandler]: ${originUrl}`);
@@ -82,20 +88,59 @@ class CloudflareAdapter {
 			// Convert URL object back to string
 			originUrl = originUrl.toString();
 			const httpMethod = request.method;
-			const result = await this.coreLogic.processRequest(request, env, ctx, this.sdkKey);
+			let preRequest = request;
+			this.eventListenersResult = await this.eventListeners.trigger(
+				'beforeProcessingRequest',
+				request,
+				this.coreLogic.requestConfig
+			);
+			if (this.eventListenersResult && this.eventListenersResult.modifiedRequest) {
+				preRequest = this.eventListenersResult.modifiedRequest;
+			}
+			const result = await this.coreLogic.processRequest(preRequest, env, ctx, this.sdkKey);
+			this.eventListenersResult = await this.eventListeners.trigger(
+				'afterProcessingRequest',
+				request,
+				result.reqResponse,
+				this.coreLogic.requestConfig,
+				result
+			);
+			let postResponse = result.reqResponse;
+			if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
+				postResponse = this.eventListenersResult.modifiedResponse;
+			}
+
+			this.result = result;
+			this.reqResponse = postResponse;
+			if (result && result.reqResponseObjectType === 'response') {
+				this.eventListenersResult = await this.eventListeners.trigger(
+					'beforeResponse',
+					request,
+					result.reqResponse,
+					result
+				);
+			}
+
 			const cdnSettings = result.cdnExperimentSettings;
 			const validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
-
 			// Adjust origin URL based on CDN settings
 			if (validCDNSettings) {
 				originUrl = cdnSettings.cdnResponseURL;
-				this.logger.debug(`CDN settings found [fetchHandler]: ${cdnSettings}`);
+				this.shouldCacheResponse = cdnSettings.cacheRequestToOrigin === true;
+				this.logger.debug(`CDN settings found [fetchHandler] - shouldCacheResponse: ${this.shouldCacheResponse}`);
 			}
 
 			// Return response for POST requests without caching
 			if (httpMethod === 'POST') {
 				this.logger.debug('POST request detected. Returning response without caching [fetchHandler]');
-				return result.reqResponse;
+				this.eventListenersResult = await this.eventListeners.trigger(
+					'afterResponse',
+					request,
+					result.reqResponse,
+					result
+				);
+				fetchResponse = this.eventListenersResult.modifiedResponse || result.reqResponse;
+				return fetchResponse;
 			}
 
 			// Handle specific GET requests immediately without caching
@@ -108,11 +153,9 @@ class CloudflareAdapter {
 			}
 
 			// Evaluate if we should fetch from the origin and/or cache
-			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
-				this.logger.debug(
-					'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]'
-				);
-				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings);
+			if (originUrl && (!cdnSettings || validCDNSettings)) {
+				this.setFetchAndProcessLogs(validCDNSettings, cdnSettings);
+				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings, ctx);
 			} else {
 				this.logger.debug(
 					'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.'
@@ -120,10 +163,30 @@ class CloudflareAdapter {
 				fetchResponse = await this.fetchFromOriginOrCDN(request);
 			}
 
+			this.eventListenersResult = await this.eventListeners.trigger('afterResponse', request, fetchResponse, result);
+			fetchResponse = this.eventListenersResult.modifiedResponse || fetchResponse;
+
 			return fetchResponse;
 		} catch (error) {
 			this.logger.error('Error processing request:', error);
 			return new Response(`Internal Server Error: ${error.toString()}`, { status: 500 });
+		}
+	}
+
+	setFetchAndProcessLogs(validCDNSettings, cdnSettings) {
+		if (!validCDNSettings) {
+			this.logger.debug(
+				'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]'
+			);
+		} else {
+		}
+
+		if (validCDNSettings) {
+			this.logger.debug(
+				`Fetching content from origin in CDN Adapter [fetchHandler -> fetchAndProcessRequest] - `,
+				`shouldCacheResponse is ${this.shouldCacheResponse} and validCDNSettings is ${validCDNSettings} and `,
+				`cdnSettings.forwardRequestToOrigin is ${cdnSettings.forwardRequestToOrigin}`
+			);
 		}
 	}
 
@@ -134,27 +197,38 @@ class CloudflareAdapter {
 	 * @param {Object} cdnSettings - CDN related settings.
 	 * @returns {Promise<Response>} - The processed response.
 	 */
-	async fetchAndProcessRequest(originalRequest, originUrl, cdnSettings) {
-		this.logger.debug(
-			`Fetching and processing request [fetchAndProcessRequest]: ${originalRequest}, ${originUrl}, ${cdnSettings}`
-		);
+	async fetchAndProcessRequest(originalRequest, originUrl, cdnSettings, ctx) {
+		this.logger.debug(`Fetching and processing request [fetchAndProcessRequest] URL: ${originUrl}`);
+
+		let response;
 		let newRequest = this.cloneRequestWithNewUrl(originalRequest, originUrl);
 
 		// Set headers and cookies as necessary before sending the request
-		newRequest.headers.set(defaultSettings.workerOperationHeader, 'true');
-		if (this.cookiesToSetRequest.length > 0) {
-			newRequest = this.setMultipleReqSerializedCookies(newRequest, this.cookiesToSetRequest);
-		}
-		if (optlyHelper.isValidObject(this.headersToSetRequest)) {
-			newRequest = this.setMultipleRequestHeaders(newRequest, this.headersToSetRequest);
+		if (cdnSettings.forwardRequestToOrigin) {
+			newRequest.headers.set(defaultSettings.workerOperationHeader, 'true');
+
+			if (this.cookiesToSetRequest.length > 0) {
+				newRequest = this.setMultipleReqSerializedCookies(newRequest, this.cookiesToSetRequest);
+			}
+			if (optlyHelper.isValidObject(this.headersToSetRequest)) {
+				newRequest = this.setMultipleRequestHeaders(newRequest, this.headersToSetRequest);
+			}
 		}
 
-		let response = await this.fetchFromOriginOrCDN(newRequest);
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'beforeRequest',
+			newRequest,
+			this.reqResponse,
+			this.result
+		);
+		if (this.eventListenersResult && this.eventListenersResult.modifiedRequest) {
+			newRequest = this.eventListenersResult.modifiedRequest;
+		}
 
-		// Apply cache-control if present in the response
-		if (response.headers.has('Cache-Control')) {
-			response = new Response(response.body, response);
-			response.headers.set('Cache-Control', 'public');
+		if (!this.shouldCacheResponse) {
+			response = await this.fetchFromOriginOrCDN(newRequest);
+		} else {
+			response = await this.handleFetchFromOrigin(newRequest, originUrl, cdnSettings, ctx);
 		}
 
 		// Set response headers and cookies after receiving the response
@@ -165,14 +239,11 @@ class CloudflareAdapter {
 			response = this.setMultipleResponseHeaders(response, this.headersToSetResponse);
 		}
 
-		// Optionally cache the response
-		if (cdnSettings && cdnSettings.cacheRequestToOrigin) {
-			const cacheKey = this.generateCacheKey(cdnSettings, originUrl);
-			const cache = caches.default;
-			await cache.put(cacheKey, response.clone());
-			this.logger.debug(`Cache hit for: ${originUrl}.`);
-		}
 		this.logger.debug(`Response processed and being returned [fetchAndProcessRequest]`);
+		this.eventListenersResult = await this.eventListeners.trigger('afterRequest', newRequest, response, this.result);
+		if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
+			response = this.eventListenersResult.modifiedResponse;
+		}
 		return response;
 	}
 
@@ -196,7 +267,7 @@ class CloudflareAdapter {
 	 * @returns {Boolean} - True if the request should be forwarded to the origin, false otherwise.
 	 */
 	shouldFetchFromOrigin(cdnSettings) {
-		const result = !!(cdnSettings && !cdnSettings.forwardRequestToOrigin && this.request.method === 'GET');
+		const result = !!(cdnSettings && this.request.method === 'GET');
 		this.logger.debug(`Should fetch from origin [shouldFetchFromOrigin]: ${result}`);
 		return result;
 	}
@@ -211,22 +282,60 @@ class CloudflareAdapter {
 	 */
 	async handleFetchFromOrigin(request, originUrl, cdnSettings, ctx) {
 		this.logger.debug(`Handling fetch from origin [handleFetchFromOrigin]: ${originUrl}`);
+		let response = undefined;
+		let cacheKey = undefined;
 		const clonedRequest = this.cloneRequestWithNewUrl(request, originUrl);
-		const cacheKey = this.generateCacheKey(cdnSettings, originUrl);
+		this.eventListenersResult = await this.eventListeners.trigger('beforeCreateCacheKey', request, this.result);
+		if (this.eventListenersResult && this.eventListenersResult.cacheKey) {
+			cacheKey = this.eventListenersResult.cacheKey;
+		} else {
+			cacheKey = this.generateCacheKey(cdnSettings, originUrl);
+			this.eventListenersResult = await this.eventListeners.trigger('afterCreateCacheKey', cacheKey, this.result);
+		}
 		this.logger.debug(`Generated cache key: ${cacheKey}`);
 		const cache = caches.default;
-		let response = await cache.match(cacheKey);
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'beforeReadingCache',
+			request,
+			this.requestConfig,
+			this.result
+		);
+		if (!this.coreLogic.requestConfig.overrideCache) {
+			response = await cache.match(cacheKey);
+		}
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'afterReadingCache',
+			request,
+			response,
+			this.requestConfig,
+			this.result
+		);
+		if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
+			response = this.eventListenersResult.modifiedResponse;
+		}
 
 		if (!response) {
 			this.logger.debug(`Cache miss for ${originUrl}. Fetching from origin.`);
-			const newRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(originUrl, newRequest);
+			const newRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(originUrl, clonedRequest);
 			response = await this.fetchFromOriginOrCDN(newRequest);
+			if (response.headers.has('Cache-Control')) {
+				response = this.abstractionHelper.abstractResponse.createNewResponse(response.body, response);
+				response.headers.set('Cache-Control', 'public');
+			}
 			if (response.ok) {
 				this.cacheResponse(ctx, cache, cacheKey, response);
-				this.logger.debug(`Response from origin was cached successfully. Cached Key: ${cacheKey}`);
+				this.eventListenersResult = await this.eventListeners.trigger(
+					'afterCacheResponse',
+					request,
+					response,
+					this.result
+				);
+				if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
+					response = this.eventListenersResult.modifiedResponse;
+				}
 			}
 		} else {
-			this.logger.debug(`Cache hit for: ${originUrl}.`);
+			this.logger.debug(`Cache hit for: ${originUrl} with cacheKey: ${cacheKey}`);
 		}
 
 		return this.applyResponseSettings(response, cdnSettings);
@@ -246,25 +355,26 @@ class CloudflareAdapter {
 	}
 
 	/**
-	 * Generates a cache key based on CDN settings, enhancing cache control by appending
-	 * A/B test identifiers or using specific CDN URLs.
+
+	 * Generates a cache key based on CDN settings, enhancing cache control by adding
+	 * A/B test identifiers or using specific CDN URLs as query parameters.
 	 * @param {Object} cdnSettings - The CDN configuration settings.
 	 * @param {string} originUrl - The request response used if forwarding to origin is needed.
 	 * @returns {string} - A fully qualified URL to use as a cache key.
 	 */
 	generateCacheKey(cdnSettings, originUrl) {
 		this.logger.debug(`Generating cache key [generateCacheKey]: ${cdnSettings}, ${originUrl}`);
+
 		try {
 			let cacheKeyUrl = this.abstractionHelper.abstractRequest.getNewURL(originUrl);
-
-			// Ensure that the pathname ends properly before appending
-			let basePath = cacheKeyUrl.pathname.endsWith('/') ? cacheKeyUrl.pathname.slice(0, -1) : cacheKeyUrl.pathname;
-
+			// Add flagKey and variationKey as query parameters
 			if (cdnSettings.cacheKey === 'VARIATION_KEY') {
-				cacheKeyUrl.pathname = `${basePath}/${cdnSettings.flagKey}-${cdnSettings.variationKey}`;
+				cacheKeyUrl.searchParams.set('flagKey', cdnSettings.flagKey);
+				cacheKeyUrl.searchParams.set('variationKey', cdnSettings.variationKey);
 			} else {
-				cacheKeyUrl.pathname = `${basePath}/${cdnSettings.cacheKey}`;
+				cacheKeyUrl.searchParams.set('cacheKey', cdnSettings.cacheKey);
 			}
+
 			this.logger.debug(`Cache key generated [generateCacheKey]: ${cacheKeyUrl.href}`);
 			return cacheKeyUrl.href;
 		} catch (error) {
@@ -281,8 +391,9 @@ class CloudflareAdapter {
 	 */
 	async fetchFromOriginOrCDN(input, options = {}) {
 		try {
-			this.logger.debug(`Fetching from origin or CDN [fetchFromOriginOrCDN]: ${input}, ${options}`);
-			return await AbstractRequest.fetchRequest(input, options);
+			const urlToFetch = typeof input === 'string' ? input : input.url;
+			this.logger.debug(`Fetching from origin or CDN [fetchFromOriginOrCDN]: ${urlToFetch}`, options);
+			return await AbstractRequest.fetchRequest(urlToFetch, options);
 		} catch (error) {
 			this.logger.error('Error fetching from origin or CDN:', error);
 			throw error;
@@ -314,12 +425,22 @@ class CloudflareAdapter {
 	 * @param {string} cacheKey - The cache key.
 	 * @param {Response} response - The response to cache.
 	 */
-	async cacheResponse(ctx, cache, cacheKey, response) {
+	async cacheResponse(ctx, cache, cacheKey, responseToCache) {
+		let response;
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'beforeCacheResponse',
+			this.request,
+			responseToCache,
+			this.result
+		);
+		if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
+			response = this.eventListenersResult.modifiedResponse;
+		}
+		response = response || responseToCache;
 		this.logger.debug(`Caching response [cacheResponse]: ${cacheKey}`);
 		try {
-			this.logger.debug(`Caching response [cacheResponse]: ${ctx}, ${cache}, ${cacheKey}, ${response}`);
-			const responseToCache = response.clone();
-			this.abstractionHelper.abstractContext.waitUntil(cache.put(cacheKey, responseToCache));
+			const responseToCache = this.cloneResponse(response);
+			this.abstractionHelper.ctx.waitUntil(cache.put(cacheKey, responseToCache));
 			this.logger.debug('Response from origin was cached successfully. Cached Key:', cacheKey);
 		} catch (error) {
 			this.logger.error('Error caching response:', error);
@@ -437,7 +558,6 @@ class CloudflareAdapter {
 	 * @returns {Object} - An object containing detailed error information.
 	 */
 	createErrorDetails(request, url, message, errorMessage = '', cdnSettingsVariable) {
-
 		const _errorMessage = errorMessage || 'An error occurred during request processing the request.';
 		return {
 			requestUrl: url || request.url,
@@ -991,9 +1111,9 @@ class CloudflareAdapter {
 	 * const newResponse = setMultipleResponseHeaders(originalResponse, updatedHeaders);
 	 */
 	setMultipleResponseHeaders(response, headers) {
-		this.logger.debug(`Setting multiple headers [setMultipleResponseHeaders]: ${headers}`);
+		this.logger.debugExt(`Setting multiple headers [setMultipleResponseHeaders]:`, headers);
 		// Clone the original response
-		const newResponse = this.abstractionHelper.abstractResponse.cloneResponse(response);
+		const newResponse = this.cloneResponse(response);
 
 		// Update the headers with new values
 		Object.entries(headers).forEach(([name, value]) => {

@@ -84,7 +84,7 @@ export default class OptimizelyProvider {
 	 * @throws {TypeError} - Throws a TypeError if any parameter does not match its expected type.
 	 */
 	validateParameters(attributes, eventTags, defaultDecideOptions, userAgent, datafileAccessToken) {
-		logger().debug('Validating parameters [validateParameters]');
+		logger().debug('Validating Optimizely client parameters [validateParameters]');
 		if (typeof attributes !== 'object') {
 			throw new TypeError('Attributes must be a valid object.');
 		}

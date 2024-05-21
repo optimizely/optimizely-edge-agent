@@ -16,7 +16,8 @@
 // CDN specific imports
 import CloudflareAdapter from './cdn-adapters/cloudflare/cloudflareAdapter';
 import CloudflareKVInterface from './cdn-adapters/cloudflare/cloudflareKVInterface';
-
+// Import the registered listeners
+import './_event_listeners_/registered-listeners/registeredListeners';
 // Application specific imports
 import CoreLogic from './coreLogic';
 import OptimizelyProvider from './_optimizely_/optimizelyProvider';

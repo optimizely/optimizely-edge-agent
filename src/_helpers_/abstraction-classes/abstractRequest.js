@@ -1,9 +1,9 @@
 /**
  * @module AbstractRequest
- * 
- */ 
+ *
+ */
 
-import defaultSettings  from '../../_config_/defaultSettings';
+import defaultSettings from '../../_config_/defaultSettings';
 import { logger } from '../../_helpers_/optimizelyHelper';
 import { AbstractionHelper } from '../abstractionHelper';
 
@@ -34,7 +34,7 @@ export class AbstractRequest {
 	 */
 	constructor(request) {
 		logger().debug('AbstractRequest constructor called');
-				this.request = request;		
+		this.request = request;
 		this.cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		logger().debug('AbstractRequest - CDN provider:', this.cdnProvider);
 		this.URL = new URL(request.url);
@@ -496,12 +496,16 @@ export class AbstractRequest {
 	/**
 	 * Creates a new request with the given URL and options.
 	 * @param {Request} request - The original request object.
-	 * @param {string} newUrl - The new URL for the request.
+	 * @param {string} [newUrl] - The new URL for the request. If null or empty, the original request URL is used.
 	 * @param {Object} [options={}] - Additional options for the request.
 	 * @returns {Request} - The new request object.
 	 */
 	static createNewRequest(request, newUrl, options = {}) {
 		logger().debugExt('AbstractRequest - Creating new request [createNewRequest]');
+
+		// Use the original request URL if newUrl is null or empty
+		const finalUrl = newUrl || request.url;
+
 		const requestOptions = {
 			method: request.method,
 			headers: new Headers(request.headers),
@@ -519,7 +523,7 @@ export class AbstractRequest {
 			requestOptions.body = request.body;
 		}
 
-		return new Request(newUrl, requestOptions);
+		return new Request(finalUrl, requestOptions);
 	}
 
 	/**
