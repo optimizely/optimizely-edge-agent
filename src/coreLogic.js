@@ -180,7 +180,7 @@ export default class CoreLogic {
 	 */
 	async getConfigForDecision(decisions, flagKey, variationKey) {
 		const filtered = decisions.find(
-			(decision) => decision.hasOwnProperty(flagKey) && decision[flagKey].hasOwnProperty(variationKey)
+			(decision) => decision.hasOwnProperty(flagKey) && decision[flagKey].hasOwnProperty(variationKey),
 		);
 		return filtered ? filtered[flagKey][variationKey] : undefined;
 	}
@@ -272,7 +272,7 @@ export default class CoreLogic {
 						// Compare the normalized URLs
 						if (compareOriginAndPath === targetUrl || (testFlagKey && testFlagKey === flagKey)) {
 							this.logger.debug(
-								`Match found for URL: ${requestURL}. Flag Key: ${flagKey}, Variation Key: ${variationKey}, CDN Config: ${cdnConfig}`
+								`Match found for URL: ${requestURL}. Flag Key: ${flagKey}, Variation Key: ${variationKey}, CDN Config: ${cdnConfig}`,
 							);
 							this.setCdnConfigProperties(cdnConfig, flagKey, variationKey);
 							return cdnConfig;
@@ -309,7 +309,7 @@ export default class CoreLogic {
 				this.env,
 				this.ctx,
 				this.cdnAdapter,
-				this.abstractionHelper
+				this.abstractionHelper,
 			);
 			this.logger.debug('RequestConfig initialized');
 			await requestConfig.initialize(request);
@@ -347,21 +347,20 @@ export default class CoreLogic {
 			this.eventListenersResult = await this.eventListeners.trigger(
 				'beforeDetermineFlagsToDecide',
 				request,
-				requestConfig
+				requestConfig,
 			);
 			// Process decision flags if required
 			let flagsToForce, filteredFlagsToDecide, validStoredDecisions;
 			if (isDecideOperation) {
-				({ flagsToForce, filteredFlagsToDecide, validStoredDecisions } = await this.determineFlagsToDecide(
-					requestConfig
-				));
+				({ flagsToForce, filteredFlagsToDecide, validStoredDecisions } =
+					await this.determineFlagsToDecide(requestConfig));
 				this.logger.debugExt(
 					'Flags to decide:',
 					filteredFlagsToDecide,
 					'Flags to force:',
 					flagsToForce,
 					'Valid stored decisions:',
-					validStoredDecisions
+					validStoredDecisions,
 				);
 			}
 			this.eventListenersResult = await this.eventListeners.trigger(
@@ -370,7 +369,7 @@ export default class CoreLogic {
 				requestConfig,
 				flagsToForce,
 				filteredFlagsToDecide,
-				validStoredDecisions
+				validStoredDecisions,
 			);
 
 			// Execute Optimizely logic and prepare responses based on the request method
@@ -397,24 +396,24 @@ export default class CoreLogic {
 					this.cdnExperimentSettings = await this.findMatchingConfig(
 						request.url,
 						optlyResponse,
-						defaultSettings.urlIgnoreQueryParameters
+						defaultSettings.urlIgnoreQueryParameters,
 					);
 
 				if (this.isGetMethod && isDecideOperation && !this.cdnExperimentSettings) {
-					reqResponse = "NO_MATCH";
+					reqResponse = 'NO_MATCH';
 				} else {
 					// Prepare decisions and final response
 					this.serializedDecisions = await this.prepareDecisions(
 						optlyResponse,
 						flagsToForce,
 						validStoredDecisions,
-						requestConfig
+						requestConfig,
 					);
 					reqResponse = await this.prepareFinalResponse(
 						this.allDecisions,
 						visitorId,
 						requestConfig,
-						this.serializedDecisions
+						this.serializedDecisions,
 					);
 				}
 			}
@@ -447,7 +446,7 @@ export default class CoreLogic {
 					`Internal Server Error: ${error.message}`,
 					'text/html',
 					false,
-					500
+					500,
 				),
 				cdnExperimentSettings: undefined,
 				reqResponseObjectType: 'response',
@@ -479,7 +478,7 @@ export default class CoreLogic {
 					this.request,
 					requestConfig,
 					flagsToDecide,
-					flagsToForce
+					flagsToForce,
 				);
 				this.logger.debug('POST operation [/v1/decide]: Decide');
 				let result = await this.optimizelyProvider.decide(flagsToDecide, flagsToForce, requestConfig.forcedDecisions);
@@ -487,7 +486,7 @@ export default class CoreLogic {
 					'afterDecide',
 					this.request,
 					requestConfig,
-					result
+					result,
 				);
 				return result;
 			case '/v1/track':
@@ -497,7 +496,7 @@ export default class CoreLogic {
 					let result = await this.optimizelyProvider.track(
 						requestConfig.eventKey,
 						requestConfig.attributes,
-						requestConfig.eventTags
+						requestConfig.eventTags,
 					);
 					if (!result) {
 						result = {
@@ -518,7 +517,7 @@ export default class CoreLogic {
 						'Invalid or missing event key. An event key is required for tracking conversions.',
 						'text/html',
 						false,
-						400
+						400,
 					);
 				}
 			case '/v1/datafile':
@@ -628,7 +627,7 @@ export default class CoreLogic {
 			requestConfig.eventTags,
 			requestConfig.datafileAccessToken,
 			userAgent,
-			this.sdkKey
+			this.sdkKey,
 		);
 	}
 
@@ -685,14 +684,14 @@ export default class CoreLogic {
 		this.eventListenersResult = await this.eventListeners.trigger(
 			'beforeReadingCookie',
 			this.request,
-			requestConfig.headerCookiesString
+			requestConfig.headerCookiesString,
 		);
 
 		if (requestConfig.headerCookiesString && !this.isPostMethod) {
 			try {
 				const tempCookie = optlyHelper.getCookieValueByName(
 					requestConfig.headerCookiesString,
-					requestConfig.settings.decisionsCookieName
+					requestConfig.settings.decisionsCookieName,
 				);
 				savedCookieDecisions = optlyHelper.deserializeDecisions(tempCookie);
 				validStoredDecisions = optlyHelper.getValidCookieDecisions(savedCookieDecisions, activeFlags);
@@ -707,7 +706,7 @@ export default class CoreLogic {
 			this.request,
 			savedCookieDecisions,
 			validStoredDecisions,
-			invalidCookieDecisions
+			invalidCookieDecisions,
 		);
 		if (this.eventListenersResult) {
 			savedCookieDecisions = this.eventListenersResult.savedCookieDecisions || savedCookieDecisions;
@@ -790,7 +789,7 @@ export default class CoreLogic {
 				requestConfig.includeReasons,
 				requestConfig.enabledFlagsOnly,
 				requestConfig.trimmedDecisions,
-				this.httpMethod
+				this.httpMethod,
 			);
 		}
 

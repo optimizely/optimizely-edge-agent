@@ -94,7 +94,7 @@ class Logger {
 						return optlyHelper.safelyStringifyJSON(msg);
 					} else {
 						if (typeof msg === 'object' && !isValidObject) {
-							return "[Empty Object]";
+							return '[Empty Object]';
 						} else {
 							return String(msg);
 						}

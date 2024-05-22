@@ -204,13 +204,13 @@ export function routeMatches(requestPath) {
 export function isValidExperimentationEndpoint(url, validEndpoints) {
 	// Remove query parameters from the URL
 	const urlWithoutQuery = url.split('?')[0];
-  
+
 	// Normalize the URL path by removing any trailing slash
 	const normalizedUrl = urlWithoutQuery.replace(/\/$/, '');
-  
+
 	// Compare the normalized URL against the valid endpoints
 	return validEndpoints.includes(normalizedUrl);
-  }
+}
 
 /**
  * Retrieves the response JSON key name based on the URL path.
@@ -418,7 +418,7 @@ export function getSerializedArray(
 	includeReasons,
 	enabledFlagsOnly,
 	trimmedDecisions,
-	httpMethod
+	httpMethod,
 ) {
 	if (!Array.isArray(decisionsArray)) {
 		throw new Error('Invalid input: decisionsArray must be an array.');

@@ -51,15 +51,15 @@ class UserProfileService {
 	}
 
 	/**
-        * Save user profile data to the key-value store.
+	 * Save user profile data to the key-value store.
 	 * @param {string} key - The visitor key.
 	 * @param {Object} data - The user profile data to write.
 	 * @returns {Promise<Object>} A promise that resolves to the user profile data.
 	 */
 	async saveToKVStorage(key, data) {
 		let result = await this.kvStore.put(key, data);
-        return result;
-	}    
+		return result;
+	}
 
 	/**
 	 * Write user profile data to the key-value store and update the cache.

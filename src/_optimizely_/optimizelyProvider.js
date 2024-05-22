@@ -171,7 +171,7 @@ export default class OptimizelyProvider {
 		eventTags = {},
 		datafileAccessToken = '',
 		userAgent = '',
-		sdkKey = ''
+		sdkKey = '',
 	) {
 		logger().debug('Initializing Optimizely [initializeOptimizely]');
 		this.visitorId = visitorId;
@@ -196,14 +196,14 @@ export default class OptimizelyProvider {
 					'Creating new Optimizely client [initializeOptimizely] - new sdkKey: ',
 					sdkKey,
 					' - previous sdkKey: ',
-					globalSdkKey
+					globalSdkKey,
 				);
 				const params = this.buildInitParameters(
 					datafile,
 					datafileAccessToken,
 					defaultDecideOptions,
 					visitorId,
-					globalKVStoreUserProfile
+					globalKVStoreUserProfile,
 				);
 				globalOptimizelyClient = createInstance(params);
 				globalSdkKey = sdkKey;
@@ -403,8 +403,13 @@ export default class OptimizelyProvider {
 		if (this.kvStoreUserProfileEnabled && this.kvStoreUserProfile) {
 			const { key, userProfileMap } = await globalKVStoreUserProfile.getUserProfileFromCache(this.visitorId);
 			const resultJSON = optlyHelper.safelyStringifyJSON(userProfileMap);
-			logger().debugExt('Retrieved user profile data for visitor [decide -> saveToKVStorage] - key:', key, 'user profile map:', userProfileMap);
-			await globalKVStoreUserProfile.saveToKVStorage(key, resultJSON);			
+			logger().debugExt(
+				'Retrieved user profile data for visitor [decide -> saveToKVStorage] - key:',
+				key,
+				'user profile map:',
+				userProfileMap,
+			);
+			await globalKVStoreUserProfile.saveToKVStorage(key, resultJSON);
 		}
 		return decisions;
 	}
@@ -429,7 +434,7 @@ export default class OptimizelyProvider {
 		if (doForceDecision) {
 			this.optimizelyUserContext.setForcedDecision(
 				{ flagKey: flagObj.flagKey, ruleKey: flagObj.ruleKey },
-				{ variationKey: flagObj.variationKey }
+				{ variationKey: flagObj.variationKey },
 			);
 		}
 
@@ -451,7 +456,7 @@ export default class OptimizelyProvider {
 			'Attributes:',
 			attributes,
 			'Event Tags:',
-			eventTags
+			eventTags,
 		);
 		const result = this.optimizelyUserContext.trackEvent(eventKey, attributes, eventTags);
 		return result;
