@@ -139,7 +139,7 @@ export class AbstractionHelper {
 	 */
 	static getHeaderValue(response, headerName) {
 		logger().debugExt('AbstractionHelper - Getting header value [getHeaderValue]', 'Header name:', headerName);
-		
+
 		const cdnProvider = defaultSettings.cdnProvider;
 		try {
 			if (!response || typeof response !== 'object') {

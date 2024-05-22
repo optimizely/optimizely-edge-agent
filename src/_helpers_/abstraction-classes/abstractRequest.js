@@ -695,7 +695,9 @@ export class AbstractRequest {
 
 		switch (cdnProvider) {
 			case 'cloudflare':
-				return await fetch(new Request(url, requestOptions));
+				const result = await fetch(new Request(url, requestOptions));
+				//logger().debugExt('AbstractRequest - Fetch request [fetchRequest] - result:', result);
+				return result;
 			case 'akamai':
 				return await AbstractRequest.akamaiFetch(url, requestOptions);
 			case 'fastly':

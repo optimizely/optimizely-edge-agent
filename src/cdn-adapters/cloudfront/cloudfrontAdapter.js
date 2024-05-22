@@ -29,7 +29,8 @@ class CloudfrontAdapter {
 		this.cookiesToSetResponse = [];
 		this.headersToSetResponse = {};
 		this.optimizelyProvider = optimizelyProvider;
-		this.cdnSettingsMessage = 'Failed to process the request. CDN settings are missing or require forwarding to origin.';
+		this.cdnSettingsMessage =
+			'Failed to process the request. CDN settings are missing or require forwarding to origin.';
 	}
 
 	/**
@@ -82,7 +83,9 @@ class CloudfrontAdapter {
 			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
 				fetchResponse = await this.fetchAndProcessRequest(this.request, originUrl, cdnSettings);
 			} else {
-				this.logger.debug('No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.');
+				this.logger.debug(
+					'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.',
+				);
 				fetchResponse = await this.fetchDirectly(this.request);
 			}
 
@@ -230,7 +233,11 @@ class CloudfrontAdapter {
 	 * @returns {Promise<void>} - A Promise that resolves when the event dispatch process is complete.
 	 */
 	async dispatchConsolidatedEvents(ctx, defaultSettings) {
-		if (optlyHelper.arrayIsValid(this.eventQueue) && this.optimizelyProvider && this.optimizelyProvider.optimizelyClient) {
+		if (
+			optlyHelper.arrayIsValid(this.eventQueue) &&
+			this.optimizelyProvider &&
+			this.optimizelyProvider.optimizelyClient
+		) {
 			try {
 				const allEvents = await this.consolidateVisitorsInEvents(this.eventQueue);
 				await this.dispatchAllEventsToOptimizely(defaultSettings.optimizelyEventsEndpoint, allEvents).catch((err) => {
@@ -889,7 +896,9 @@ class CloudfrontAdapter {
 		const existingCookies = clonedRequest.headers.cookie || '';
 
 		// Append each serialized cookie to the existing cookie header
-		const updatedCookies = existingCookies ? `${existingCookies}; ${Object.values(cookies).join('; ')}` : Object.values(cookies).join('; ');
+		const updatedCookies = existingCookies
+			? `${existingCookies}; ${Object.values(cookies).join('; ')}`
+			: Object.values(cookies).join('; ');
 		clonedRequest.headers.cookie = updatedCookies;
 
 		return clonedRequest;

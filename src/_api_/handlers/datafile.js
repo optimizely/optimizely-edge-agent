@@ -1,9 +1,9 @@
 /**
  * @module Datafile
- * 
+ *
  * The Datafile module is responsible for handling the datafile API.
  * It will get or put the datafile in the KV store of the CDN provider.
- * 
+ *
  * The following methods are implemented:
  * - handleDatafile(request, abstractionHelper, kvStore, logger, defaultSettings, params) - Fetches and updates the Optimizely datafile based on the provided datafile key.
  * - handleGetDatafile(request, abstractionHelper, kvStore, logger, defaultSettings, params) - Retrieves the current Optimizely SDK datafile from KV storage.
@@ -43,13 +43,14 @@ const handleDatafile = async (request, abstractionHelper, kvStore, logger, defau
 		return abstractionHelper.getResponseContent(response);
 	}
 
-	if (!datafileKey) return abstractionHelper.createResponse('Datafile SDK key is required but it is missing from the request.', 400);
+	if (!datafileKey)
+		return abstractionHelper.createResponse('Datafile SDK key is required but it is missing from the request.', 400);
 
 	try {
 		logger.debug('API Router - Fetching datafile [fetchRequest]');
 		const datafileResponse = await AbstractRequest.fetchRequest(datafileUrl);
 		logger.debugExt('API Router - Datafile response:', datafileResponse);
-		const jsonString = await processResponse(datafileResponse);		
+		const jsonString = await processResponse(datafileResponse);
 		await kvStore.put(datafileKey, jsonString);
 		const kvDatafile = await kvStore.get(datafileKey);
 

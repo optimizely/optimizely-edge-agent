@@ -71,7 +71,7 @@ export default {
 		logger.debug(`Matched route for API: ${normalizedPathname}`);
 
 		// Check if the request is for the worker operation, similar to request for asset
-		let workerOperation = _abstractRequest.getHeader(defaultSettings.workerOperationHeader) === 'true';    
+		let workerOperation = _abstractRequest.getHeader(defaultSettings.workerOperationHeader) === 'true';
 
 		// Regular expression to match common asset extensions
 		const assetsRegex = /\.(jpg|jpeg|png|gif|svg|css|js|ico|woff|woff2|ttf|eot)$/i;
@@ -130,13 +130,13 @@ export default {
 					};
 					return abstractionHelper.createResponse(errorMessage, 500); // Return a 500 error response
 				}
-			} catch (error) {				
+			} catch (error) {
 				const errorMessage = {
 					errorMessage: 'Failed to load API functionality. Please check configuration and dependencies.',
 					error: error,
 				};
 				logger.error(errorMessage);
-				
+
 				// Fallback to the original CDN adapter if an error occurs
 				cdnAdapter = new CloudflareAdapter();
 				return await cdnAdapter.defaultFetch(_request, _env, _ctx);

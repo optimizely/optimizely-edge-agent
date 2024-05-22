@@ -36,7 +36,7 @@ class CloudflareAdapter {
 	 * Creates an instance of CloudflareAdapter.
 	 * @param {Object} coreLogic - The core logic instance.
 	 */
-	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger) {
+	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, kvStoreUserProfile, logger) {
 		this.sdkKey = sdkKey;
 		this.logger = logger;
 		this.kvStore = kvStore || undefined;
@@ -48,6 +48,8 @@ class CloudflareAdapter {
 		this.request = undefined;
 		this.env = undefined;
 		this.ctx = undefined;
+		this.responseCookiesSet = false;
+		this.responseHeadersSet = false;
 		this.result = undefined;
 		this.cachedRequestHeaders = undefined;
 		this.cachedRequestCookies = undefined;
@@ -56,6 +58,7 @@ class CloudflareAdapter {
 		this.cookiesToSetResponse = [];
 		this.headersToSetResponse = {};
 		this.optimizelyProvider = optimizelyProvider;
+		this.kvStoreUserProfile = kvStoreUserProfile;
 		this.cdnSettingsMessage =
 			'Failed to process the request. CDN settings are missing or require forwarding to origin.';
 	}
@@ -77,6 +80,8 @@ class CloudflareAdapter {
 		this.ctx = ctx;
 		this.reqResponse = undefined;
 		this.shouldCacheResponse = false;
+		this.responseCookiesSet = false;
+		this.responseHeadersSet = false;
 		this.eventListeners = EventListeners.getInstance();
 		try {
 			let originUrl = this.abstractionHelper.abstractRequest.getNewURL(request.url);
@@ -98,6 +103,12 @@ class CloudflareAdapter {
 				preRequest = this.eventListenersResult.modifiedRequest;
 			}
 			const result = await this.coreLogic.processRequest(preRequest, env, ctx, this.sdkKey);
+			const reqResponse = result.reqResponse;
+			if (reqResponse === "NO_MATCH") {
+				this.logger.debug('No cdnVariationSettings found. Fetching content from origin [cdnAdapter -> fetchHandler]');
+				return await this.fetchFromOriginOrCDN(request);
+			} 				
+			
 			this.eventListenersResult = await this.eventListeners.trigger(
 				'afterProcessingRequest',
 				request,
@@ -122,7 +133,7 @@ class CloudflareAdapter {
 			}
 
 			const cdnSettings = result.cdnExperimentSettings;
-			const validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
+			let validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
 			// Adjust origin URL based on CDN settings
 			if (validCDNSettings) {
 				originUrl = cdnSettings.cdnResponseURL;
@@ -169,7 +180,7 @@ class CloudflareAdapter {
 			return fetchResponse;
 		} catch (error) {
 			this.logger.error('Error processing request:', error);
-			return new Response(`Internal Server Error: ${error.toString()}`, { status: 500 });
+			return AbstractResponse.createNewResponse(`Internal Server Error: ${error.toString()}`, { status: 500 });
 		}
 	}
 
@@ -255,7 +266,7 @@ class CloudflareAdapter {
 	 */
 	getOriginUrl(request, cdnSettings) {
 		if (cdnSettings && cdnSettings.cdnResponseURL) {
-			this.logger.debug('Valid CDN settings detected.');
+			this.logger.debug(`CDN Origin URL [getOriginUrl]: ${cdnSettings.cdnResponseURL}`);
 			return cdnSettings.cdnResponseURL;
 		}
 		return request.url;
@@ -349,8 +360,12 @@ class CloudflareAdapter {
 	 */
 	applyResponseSettings(response, cdnSettings) {
 		// Example methods to apply headers and cookies
-		response = this.setMultipleRespSerializedCookies(response, this.cookiesToSetResponse);
-		response = this.setMultipleResponseHeaders(response, this.headersToSetResponse);
+		if (!this.responseHeadersSet) {
+			response = this.setMultipleResponseHeaders(response, this.headersToSetResponse);
+		}
+		if (!this.responseCookiesSet) {
+			response = this.setMultipleRespSerializedCookies(response, this.cookiesToSetResponse);
+		}
 		return response;
 	}
 
@@ -411,7 +426,9 @@ class CloudflareAdapter {
 		try {
 			this.logger.debug(`Fetching from origin [fetchFromOrigin]: ${cdnSettings}, ${reqResponse}`);
 			const urlToFetch = cdnSettings.forwardRequestToOrigin ? reqResponse.url : cdnSettings.cdnResponseURL;
-			return await this.fetchFromOriginOrCDN(urlToFetch);
+			const result = await this.fetchFromOriginOrCDN(urlToFetch);
+			this.logger.debug(`Fetch from origin completed [fetchFromOrigin]: ${urlToFetch}`);
+			return result;
 		} catch (error) {
 			this.logger.error('Error fetching from origin:', error);
 			throw new Error('Failed to fetch from origin.');
@@ -500,7 +517,7 @@ class CloudflareAdapter {
 			this.logger.debug(`Fetch fromn origin completed [defaultFetch]`);
 
 			// Clone the response to modify it if necessary
-			let clonedResponse = await AbstractResponse.createNewResponse(response.body, {
+			let clonedResponse = AbstractResponse.createNewResponse(response.body, {
 				status: response.status,
 				statusText: response.statusText,
 				//headers: new Headers(response.headers),
@@ -538,6 +555,7 @@ class CloudflareAdapter {
 	async getDatafile(sdkKey, ttl = 3600) {
 		this.logger.debugExt(`Getting datafile [getDatafile]: ${sdkKey}`);
 		const url = `https://cdn.optimizely.com/datafiles/${sdkKey}.json`;
+		// TODO - This cacheTtl needs to be verified across CDN providers and abstracted...
 		try {
 			const response = await this.defaultFetch(url, { cf: { cacheTtl: ttl } });
 			if (!response.ok) {
@@ -623,6 +641,8 @@ class CloudflareAdapter {
 	 * @throws {Error} - Throws an error if the fetch request fails, parameters are missing, or the URL is invalid.
 	 */
 	async dispatchAllEventsToOptimizely(url, events) {
+		let modifiedEvents = events,
+			modifiedUrl = url;
 		this.logger.debug(`Dispatching all events to Optimizely [dispatchAllEventsToOptimizely]: ${url}, ${events}`);
 		if (!url) {
 			throw new Error('URL must be provided.');
@@ -632,17 +652,40 @@ class CloudflareAdapter {
 			throw new Error('Valid event data must be provided.');
 		}
 
-		const eventRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(url, {
+		this.eventListenersResult = this.eventListeners.trigger('beforeDispatchingEvents', url, events);
+		if (this.eventListenersResult) {
+			if (this.eventListenersResult.modifiedUrl) {
+				modifiedUrl = this.eventListenersResult.modifiedUrl;
+			}
+			if (this.eventListenersResult.modifiedEvents) {
+				modifiedEvents = this.eventListenersResult.modifiedEvents;
+			}
+		}
+
+		const eventRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(modifiedUrl, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json',
 			},
-			body: JSON.stringify(events),
+			body: JSON.stringify(modifiedEvents),
 		});
 
 		try {
 			const response = await this.fetchFromOriginOrCDN(eventRequest);
-			if (!response.ok) {
+			const operationResult = !!response.ok;
+			this.logger.debug(
+				`Events were dispatched to Optimizely [dispatchAllEventsToOptimizely] - Operation Result: ${operationResult}`
+			);
+
+			this.eventListenersResult = this.eventListeners.trigger(
+				'afterDispatchingEvents',
+				eventRequest,
+				response,
+				modifiedEvents,
+				operationResult
+			);
+
+			if (!operationResult) {
 				throw new Error(`HTTP error! Status: ${response.status}`);
 			}
 			this.logger.debug(`Events were successfully dispatched to Optimizely [dispatchAllEventsToOptimizely]`);
@@ -691,11 +734,11 @@ class CloudflareAdapter {
 				} else {
 					tempResponse = responseBody;
 				}
-				result = new Response(tempResponse, { status });
+				result = AbstractResponse.createNewResponse(tempResponse, { status });
 				result.headers.set('Content-Type', 'application/json');
 				break;
 			case 'text/html':
-				result = new Response(responseBody, { status });
+				result = AbstractResponse.createNewResponse(responseBody, { status });
 				result.headers.set('Content-Type', 'text/html;charset=UTF-8');
 				break;
 			default:
@@ -1031,7 +1074,7 @@ class CloudflareAdapter {
 		}
 
 		// Clone the original response to avoid modifying it directly
-		const clonedResponse = new Response(response.body, response);
+		const clonedResponse = AbstractResponse.createNewResponse(response.body, response);
 		// Retrieve existing Set-Cookie headers
 		let existingCookies = this.getResponseHeader(clonedResponse, 'Set-Cookie') || [];
 		// Existing cookies may not necessarily be an array
@@ -1085,7 +1128,7 @@ class CloudflareAdapter {
 	 */
 	setMultipleRequestHeaders(request, headers) {
 		this.logger.debugExt(`Setting multiple headers [setMultipleRequestHeaders]: ${headers}`);
-		const newRequest = this.abstractionHelper.abstractRequest.cloneRequest(request);
+		const newRequest = this.cloneRequest(request);
 		for (const [name, value] of Object.entries(headers)) {
 			this.abstractionHelper.abstractRequest.setHeaderInRequest(newRequest, name, value);
 		}
@@ -1114,6 +1157,7 @@ class CloudflareAdapter {
 		this.logger.debugExt(`Setting multiple headers [setMultipleResponseHeaders]:`, headers);
 		// Clone the original response
 		const newResponse = this.cloneResponse(response);
+		// const newResponse = response;
 
 		// Update the headers with new values
 		Object.entries(headers).forEach(([name, value]) => {

@@ -74,7 +74,7 @@ export default class CoreLogic {
 	 * @param {*} cdnAdapter - The CDN provider.
 	 * @param {*} optimizelyProvider - The Optimizely provider.
 	 */
-	constructor(optimizelyProvider, env, ctx, sdkKey, abstractionHelper, kvStore, logger) {
+	constructor(optimizelyProvider, env, ctx, sdkKey, abstractionHelper, kvStore, kvStoreUserProfile, logger) {
 		this.logger = logger;
 		this.logger.info(`CoreLogic instance created for SDK Key: ${sdkKey}`);
 		this.env = env;
@@ -84,6 +84,7 @@ export default class CoreLogic {
 		this.logger = logger;
 		this.abstractionHelper = abstractionHelper;
 		this.optimizelyProvider = optimizelyProvider;
+		this.kvStoreUserProfile = kvStoreUserProfile;
 		this.eventListeners = EventListeners.getInstance();
 		this.cdnAdapter = undefined;
 		this.reqResponseObjectType = 'response';
@@ -282,6 +283,7 @@ export default class CoreLogic {
 		}
 
 		// Return null if no matching configuration is found
+		this.logger.debug('No matching configuration found in cdnVariationSettings [findMatchingConfig]');
 		return null;
 	}
 
@@ -331,7 +333,7 @@ export default class CoreLogic {
 			this.isGetMethod = this.httpMethod === 'GET';
 
 			// Clone the request
-			this.request = this.abstractionHelper.abstractRequest.cloneRequest(request);
+			// this.request = this.abstractionHelper.abstractRequest.cloneRequest(request);
 
 			// Get visitor ID, datafile, and user agent
 			const visitorId = await this.getVisitorId(request, requestConfig);
@@ -342,7 +344,11 @@ export default class CoreLogic {
 			const initSuccess = await this.initializeOptimizely(datafile, visitorId, requestConfig, userAgent);
 			if (!initSuccess) throw new Error('Failed to initialize Optimizely');
 
-			this.eventListenersResult = await this.eventListeners.trigger('beforeDetermineFlagsToDecide', request, requestConfig);	
+			this.eventListenersResult = await this.eventListeners.trigger(
+				'beforeDetermineFlagsToDecide',
+				request,
+				requestConfig
+			);
 			// Process decision flags if required
 			let flagsToForce, filteredFlagsToDecide, validStoredDecisions;
 			if (isDecideOperation) {
@@ -358,7 +364,14 @@ export default class CoreLogic {
 					validStoredDecisions
 				);
 			}
-			this.eventListenersResult = await this.eventListeners.trigger('afterDetermineFlagsToDecide', request, requestConfig, flagsToForce, filteredFlagsToDecide, validStoredDecisions);		
+			this.eventListenersResult = await this.eventListeners.trigger(
+				'afterDetermineFlagsToDecide',
+				request,
+				requestConfig,
+				flagsToForce,
+				filteredFlagsToDecide,
+				validStoredDecisions
+			);
 
 			// Execute Optimizely logic and prepare responses based on the request method
 			this.logger.debug('Executing Optimizely logic and preparing responses based on the request method');
@@ -387,19 +400,23 @@ export default class CoreLogic {
 						defaultSettings.urlIgnoreQueryParameters
 					);
 
-				// Prepare decisions and final response
-				this.serializedDecisions = await this.prepareDecisions(
-					optlyResponse,
-					flagsToForce,
-					validStoredDecisions,
-					requestConfig
-				);
-				reqResponse = await this.prepareFinalResponse(
-					this.allDecisions,
-					visitorId,
-					requestConfig,
-					this.serializedDecisions
-				);
+				if (this.isGetMethod && isDecideOperation && !this.cdnExperimentSettings) {
+					reqResponse = "NO_MATCH";
+				} else {
+					// Prepare decisions and final response
+					this.serializedDecisions = await this.prepareDecisions(
+						optlyResponse,
+						flagsToForce,
+						validStoredDecisions,
+						requestConfig
+					);
+					reqResponse = await this.prepareFinalResponse(
+						this.allDecisions,
+						visitorId,
+						requestConfig,
+						this.serializedDecisions
+					);
+				}
 			}
 
 			// Package the final response
@@ -408,6 +425,7 @@ export default class CoreLogic {
 				cdnExperimentSettings: this.cdnExperimentSettings,
 				reqResponseObjectType: this.reqResponseObjectType,
 				forwardRequestToOrigin: this.forwardRequestToOrigin,
+
 				errorMessage: undefined,
 				isError: false,
 				isPostMethod: this.isPostMethod,
@@ -456,10 +474,21 @@ export default class CoreLogic {
 	async handlePostOperations(flagsToDecide, flagsToForce, requestConfig) {
 		switch (this.pathName) {
 			case '/v1/decide':
-				this.eventListenersResult = await this.eventListeners.trigger('beforeDecide', this.request, requestConfig, flagsToDecide, flagsToForce);
+				this.eventListenersResult = await this.eventListeners.trigger(
+					'beforeDecide',
+					this.request,
+					requestConfig,
+					flagsToDecide,
+					flagsToForce
+				);
 				this.logger.debug('POST operation [/v1/decide]: Decide');
 				let result = await this.optimizelyProvider.decide(flagsToDecide, flagsToForce, requestConfig.forcedDecisions);
-				this.eventListenersResult = await this.eventListeners.trigger('afterDecide', this.request, requestConfig, result);				
+				this.eventListenersResult = await this.eventListeners.trigger(
+					'afterDecide',
+					this.request,
+					requestConfig,
+					result
+				);
 				return result;
 			case '/v1/track':
 				this.logger.debug('POST operation [/v1/track]: Track');
@@ -598,7 +627,8 @@ export default class CoreLogic {
 			requestConfig.attributes,
 			requestConfig.eventTags,
 			requestConfig.datafileAccessToken,
-			userAgent
+			userAgent,
+			this.sdkKey
 		);
 	}
 
@@ -625,7 +655,7 @@ export default class CoreLogic {
 				return;
 			}
 
-			const decisions = await this.handleCookieDecisions(requestConfig, activeFlags);
+			const decisions = await this.handleCookieDecisions(requestConfig, activeFlags, this.httpMethod);
 			const { validStoredDecisions } = decisions;
 
 			if (!isDecideOperation) return;
@@ -643,12 +673,20 @@ export default class CoreLogic {
 	/**
 	 * Handle cookie-based decisions from request.
 	 */
-	async handleCookieDecisions(requestConfig, activeFlags) {
+	async handleCookieDecisions(requestConfig, activeFlags, httpMethod) {
 		this.logger.debug('Handling cookie decisions [handleCookieDecisions]');
 		let savedCookieDecisions = [];
 		let validStoredDecisions = [];
 		let invalidCookieDecisions = [];
-		this.eventListenersResult = await this.eventListeners.trigger('beforeReadingCookie', this.request, requestConfig.headerCookiesString);	
+		if (httpMethod === 'POST') {
+			return { savedCookieDecisions, validStoredDecisions, invalidCookieDecisions };
+		}
+
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'beforeReadingCookie',
+			this.request,
+			requestConfig.headerCookiesString
+		);
 
 		if (requestConfig.headerCookiesString && !this.isPostMethod) {
 			try {
@@ -664,7 +702,13 @@ export default class CoreLogic {
 			}
 		}
 
-		this.eventListenersResult = await this.eventListeners.trigger('afterReadingCookie', this.request, savedCookieDecisions, validStoredDecisions, invalidCookieDecisions);	
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'afterReadingCookie',
+			this.request,
+			savedCookieDecisions,
+			validStoredDecisions,
+			invalidCookieDecisions
+		);
 		if (this.eventListenersResult) {
 			savedCookieDecisions = this.eventListenersResult.savedCookieDecisions || savedCookieDecisions;
 			validStoredDecisions = this.eventListenersResult.validStoredDecisions || validStoredDecisions;
@@ -754,7 +798,7 @@ export default class CoreLogic {
 			// if (validStoredDecisions) this.allDecisions = this.allDecisions.concat(validStoredDecisions);
 			let serializedDecisions = optlyHelper.serializeDecisions(this.allDecisions);
 			if (serializedDecisions) {
-				serializedDecisions = optlyHelper.jsonStringifySafe(serializedDecisions);
+				serializedDecisions = optlyHelper.safelyStringifyJSON(serializedDecisions);
 			}
 			this.logger.debugExt('Serialized decisions [prepareDecisions]: ', serializedDecisions);
 			return serializedDecisions;
@@ -1045,10 +1089,14 @@ export default class CoreLogic {
 	setResponseHeaders(response, visitorId, serializedDecisions, requestConfig) {
 		this.logger.debug('Setting response headers [setResponseHeaders]');
 		if (visitorId) {
-			this.cdnAdapter.setResponseHeader(response, requestConfig.settings.visitorIdsHeaderName, visitorId);
+			// this.cdnAdapter.setResponseHeader(response, requestConfig.settings.visitorIdsHeaderName, visitorId);
+			this.cdnAdapter.headersToSetResponse[requestConfig.settings.visitorIdsHeaderName] = visitorId;
+			this.cdnAdapter.responseHeadersSet = true;
 		}
 		if (serializedDecisions) {
-			this.cdnAdapter.setResponseHeader(response, requestConfig.settings.decisionsHeaderName, serializedDecisions);
+			// this.cdnAdapter.setResponseHeader(response, requestConfig.settings.decisionsHeaderName, serializedDecisions);
+			this.cdnAdapter.headersToSetResponse[requestConfig.settings.decisionsHeaderName] = serializedDecisions;
+			this.cdnAdapter.responseHeadersSet = true;
 		}
 	}
 
@@ -1075,6 +1123,7 @@ export default class CoreLogic {
 		}
 
 		response = this.cdnAdapter.setMultipleRespSerializedCookies(response, this.cdnAdapter.cookiesToSetResponse);
+		this.cdnAdapter.responseCookiesSet = true;
 	}
 
 	/**

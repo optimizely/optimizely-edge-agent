@@ -1,8 +1,8 @@
 /**
  * @module VercelKVInterface
- * 
+ *
  * The VercelKVInterface module is responsible for interacting with the Vercel Edge Functions KV store.
- * 
+ *
  * The following methods are implemented:
  * - get(key) - Retrieves a value by key from the Vercel Edge Functions KV store.
  * - put(key, value) - Puts a value into the Vercel Edge Functions KV store.

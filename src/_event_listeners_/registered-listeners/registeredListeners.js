@@ -170,7 +170,7 @@ eventListeners.on(
 		// This must be an async operation
 		// This method expects no return value.
 		// Log information without modifying the request
-	}
+	},
 );
 
 // Register an async event listener for 'beforeReadingCookie'
@@ -192,21 +192,21 @@ eventListeners.on(
 			'Valid stored decisions:',
 			validStoredDecisions,
 			'Invalid cookie decisions:',
-			invalidCookieDecisions
+			invalidCookieDecisions,
 		);
 		// This must be an async operation
 		return { savedCookieDecisions, validStoredDecisions, invalidCookieDecisions };
 		// Log information without modifying the request
-	}
+	},
 );
 
 // Register an async event listener for 'beforeReadingCache'
 eventListeners.on('beforeReadingCache', async (request, requestConfig, cdnExperimentSettings) => {
 	logger().debug('Before reading cache event triggered');
 	// This must be an async operation
-	// const modifiedResponse = await new Promise(resolve => { return AbstractRequest.cloneResponse(responseToCache) });	
+	// const modifiedResponse = await new Promise(resolve => { return AbstractRequest.cloneResponse(responseToCache) });
 	// Log information without modifying the request
-    //return { modifiedResponse };
+	//return { modifiedResponse };
 });
 
 // Register an async event listener for 'afterReadingCache'
@@ -234,6 +234,21 @@ eventListeners.on('afterProcessingRequest', async (request, response, requestCon
 	// await new Promise(resolve => { return AbstractRequest.cloneRequest(request) });
 	// Log information without modifying the request
 	// return { modfiedResponse };
+});
+
+eventListeners.on('beforeDispatchingEvents', async (url, events) => {
+	logger().debug('Before dispatching events event triggered');
+	// This must be an async operation
+	// await new Promise(resolve => { return AbstractRequest.cloneRequest(request) });
+	// Log information without modifying the request
+	// return { modifiedUrl, modifiedEvents };
+});
+
+eventListeners.on('afterDispatchingEvents', async (request, response, events, operationResult) => {
+	logger().debug('After dispatching events event triggered');
+	// This must be an async operation
+	// This method expects no return value.
+	// Log information without modifying the request
 });
 
 export default eventListeners;

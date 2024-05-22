@@ -87,13 +87,20 @@ class Logger {
 	 */
 	formatMessages(...messages) {
 		try {
-			const result = messages.map((msg) => {
-				if (typeof msg === 'object' && optlyHelper.isValidObject(msg)) {
-					return optlyHelper.jsonStringifySafe(msg);
-				} else {
-					return String(msg);
-				}
-			}).join(' ');
+			const result = messages
+				.map((msg) => {
+					const isValidObject = optlyHelper.isValidObject(msg);
+					if (typeof msg === 'object' && isValidObject) {
+						return optlyHelper.safelyStringifyJSON(msg);
+					} else {
+						if (typeof msg === 'object' && !isValidObject) {
+							return "[Empty Object]";
+						} else {
+							return String(msg);
+						}
+					}
+				})
+				.join(' ');
 			return result;
 		} catch (error) {
 			console.error('Error formatting messages in logger module [formatMessages]:', error);
