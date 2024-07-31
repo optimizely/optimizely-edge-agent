@@ -1,9 +1,9 @@
 /**
  * @module KVStoreAbstractInterface
- * 
+ *
  * The KVStoreAbstractInterface is an abstract class that provides a unified interface for interacting with a key-value store.
  * It is used to abstract the specifics of how the KV store is implemented.
- * 
+ *
  * The following methods are implemented:
  * - get(key) - Retrieves a value by key from the KV store.
  * - put(key, value) - Puts a value into the KV store.

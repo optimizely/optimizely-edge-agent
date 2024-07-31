@@ -1,9 +1,9 @@
 /**
  * @module ApiRouter
- * 
+ *
  * The ApiRouter module is responsible for routing the incoming requests to the appropriate handlers. The APIRouter only handles requests
  * that are related to the API. Specifically for updating and retrieving datafiles and flag keys in the KV store of the CDN provider.
- * 
+ *
  * The following methods are implemented:
  * - apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings) - Manually handle routing based on URL and method.
  * - handleRequest(request, abstractionHelper, kvStore, logger, defaultSettings) - Handle incoming requests using the manual routing function.

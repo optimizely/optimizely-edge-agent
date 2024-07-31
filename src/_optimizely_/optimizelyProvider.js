@@ -4,14 +4,23 @@
 
 import * as optlyHelper from '../_helpers_/optimizelyHelper';
 import { logger } from '../_helpers_/optimizelyHelper';
-import EventListeners from '../_event_listeners_/eventListeners';
+// import EventListeners from '../_event_listeners_/eventListeners';
 import defaultSettings from '../_config_/defaultSettings';
+import UserProfileService from './userProfileService';
 
 import {
 	createInstance,
 	enums as OptimizelyEnums,
 	OptimizelyDecideOption as optlyDecideOptions,
 } from '@optimizely/optimizely-sdk/dist/optimizely.lite.min.js';
+
+// Global variables to store the SDK key and the Optimizely client. These are used to make sure that the
+// same Optimizely client is used across multiple instances of the OptimizelyProvider class, and only one instance
+// of the Optimizely client is created for each SDK key.
+let globalSdkKey = undefined;
+let globalOptimizelyClient = undefined;
+let globalKVStore = undefined;
+let globalKVStoreUserProfile = undefined;
 
 /**
  * The OptimizelyProvider class is a class that provides a common interface for handling Optimizely operations.
@@ -38,16 +47,22 @@ import {
  * - config() - Retrieves the Optimizely configuration.
  */
 export default class OptimizelyProvider {
-	constructor(request, env, ctx, requestConfig, abstractionHelper) {
+	constructor(request, env, ctx, requestConfig, abstractionHelper, kvStoreUserProfile) {
 		logger().debug('Initializing OptimizelyProvider');
+		this.visitorId = undefined;
 		this.optimizelyClient = undefined;
 		this.optimizelyUserContext = undefined;
 		this.cdnAdapter = undefined;
 		this.request = request;
+		this.httpMethod = abstractionHelper.abstractRequest.method;
 		this.requestConfig = requestConfig;
 		this.abstractionHelper = abstractionHelper;
+		this.kvStoreUserProfile = kvStoreUserProfile;
+		this.kvStoreUserProfileEnabled = kvStoreUserProfile ? true : false;
 		this.env = env;
 		this.ctx = ctx;
+		this.abstractContext = abstractionHelper.abstractContext;
+		globalKVStore = kvStoreUserProfile;
 	}
 
 	/**
@@ -84,7 +99,7 @@ export default class OptimizelyProvider {
 	 * @throws {TypeError} - Throws a TypeError if any parameter does not match its expected type.
 	 */
 	validateParameters(attributes, eventTags, defaultDecideOptions, userAgent, datafileAccessToken) {
-		logger().debug('Validating parameters [validateParameters]');
+		logger().debug('Validating Optimizely client parameters [validateParameters]');
 		if (typeof attributes !== 'object') {
 			throw new TypeError('Attributes must be a valid object.');
 		}
@@ -113,6 +128,7 @@ export default class OptimizelyProvider {
 	 * @param {Object} [eventTags={}] - Tags to be used for the event.
 	 * @param {string} [datafileAccessToken=""] - Access token for the datafile (optional).
 	 * @param {string} [userAgent=""] - User agent string of the client, used in attributes fetching.
+	 * @param {string} [sdkKey=""] - The datafile SDK key.
 	 * @returns {Promise<boolean>} - True if initialization is successful.
 	 * @throws {Error} - Propagates any errors encountered.
 	 */
@@ -123,9 +139,12 @@ export default class OptimizelyProvider {
 		attributes = {},
 		eventTags = {},
 		datafileAccessToken = '',
-		userAgent = ''
+		userAgent = '',
+		sdkKey = '',
 	) {
 		logger().debug('Initializing Optimizely [initializeOptimizely]');
+		this.visitorId = visitorId;
+
 		try {
 			this.validateParameters(attributes, eventTags, defaultDecideOptions, userAgent, datafileAccessToken);
 
@@ -136,11 +155,40 @@ export default class OptimizelyProvider {
 				throw new Error('Visitor ID must be provided.');
 			}
 
-			const params = this.buildInitParameters(datafile, datafileAccessToken, defaultDecideOptions);
-			attributes = await this.getAttributes(attributes, userAgent);
+			if (globalSdkKey !== sdkKey) {
+				// Create and / or assign the global KV Storage User Profile Service
+				globalKVStoreUserProfile = this.kvStoreUserProfileEnabled
+					? globalKVStoreUserProfile || new UserProfileService(this.kvStoreUserProfile, sdkKey)
+					: null;
 
-			logger().debug('Creating Optimizely client [initializeOptimizely]');
-			this.optimizelyClient = createInstance(params);
+				logger().debug(
+					'Creating new Optimizely client [initializeOptimizely] - new sdkKey: ',
+					sdkKey,
+					' - previous sdkKey: ',
+					globalSdkKey,
+				);
+				const params = this.buildInitParameters(
+					datafile,
+					datafileAccessToken,
+					defaultDecideOptions,
+					visitorId,
+					globalKVStoreUserProfile,
+				);
+				globalOptimizelyClient = createInstance(params);
+				globalSdkKey = sdkKey;
+			} else {
+				logger().debug('Reusing existing Optimizely client [initializeOptimizely] - sdkKey: ', sdkKey);
+			}
+
+			if (this.kvStoreUserProfileEnabled) {
+				// Prefetch user profiles for anticipated user(s)
+				if (globalKVStoreUserProfile) {
+					await globalKVStoreUserProfile.prefetchUserProfiles([visitorId]);
+				}
+			}
+
+			this.optimizelyClient = globalOptimizelyClient;
+			attributes = await this.getAttributes(attributes, userAgent);
 			logger().debug('Creating Optimizely user context [initializeOptimizely]');
 			this.optimizelyUserContext = this.optimizelyClient.createUserContext(visitorId, attributes);
 
@@ -184,14 +232,34 @@ export default class OptimizelyProvider {
 	 * @param {string[]} [defaultDecideOptions=[]] - The default decision options.
 	 * @returns {Object} - The initialization parameters with a custom event dispatcher if applicable.
 	 */
-	buildInitParameters(datafile, datafileAccessToken, defaultDecideOptions = []) {
+	buildInitParameters(datafile, datafileAccessToken, defaultDecideOptions = [], visitorId, globalUserProfile) {
+		let userProfileService;
+		if (this.kvStoreUserProfileEnabled) {
+			userProfileService = {
+				lookup: (visitorId) => {
+					const userProfile = globalUserProfile.getUserProfileSync(visitorId);
+					if (userProfile) {
+						return userProfile;
+					} else {
+						throw new Error('User profile not found in cache');
+					}
+				},
+				save: (userProfileMap) => {
+					globalUserProfile.saveSync(userProfileMap, this.abstractContext);
+				},
+			};
+		} else {
+			userProfileService = {};
+		}
+
 		logger().debug('Building initialization parameters [buildInitParameters]');
 		const params = {
 			datafile,
 			logLevel: OptimizelyEnums.LOG_LEVEL.ERROR,
 			clientEngine: defaultSettings.optlyClientEngine,
 			clientVersion: defaultSettings.optlyClientEngineVersion,
-			eventDispatcher: this.createEventDispatcher(defaultDecideOptions), // Add custom event dispatcher
+			eventDispatcher: this.createEventDispatcher(defaultDecideOptions),
+			userProfileService,
 		};
 
 		if (defaultDecideOptions.length > 0) {
@@ -300,6 +368,18 @@ export default class OptimizelyProvider {
 		}
 
 		logger().debugExt('Decisions made [decide]: ', decisions);
+
+		if (this.kvStoreUserProfileEnabled && this.kvStoreUserProfile) {
+			const { key, userProfileMap } = await globalKVStoreUserProfile.getUserProfileFromCache(this.visitorId);
+			const resultJSON = optlyHelper.safelyStringifyJSON(userProfileMap);
+			logger().debugExt(
+				'Retrieved user profile data for visitor [decide -> saveToKVStorage] - key:',
+				key,
+				'user profile map:',
+				userProfileMap,
+			);
+			await globalKVStoreUserProfile.saveToKVStorage(key, resultJSON);
+		}
 		return decisions;
 	}
 
@@ -313,7 +393,7 @@ export default class OptimizelyProvider {
 		return forcedDecisions.some((decision) => decision.flagKey === flagKey);
 	}
 
-	/**
+	/**+
 	 * Retrieves the decision for a flag.
 	 * @param {Object} flagObj - The flag object.
 	 * @param {boolean} [doForceDecision=false] - Whether to force the decision.
@@ -323,7 +403,7 @@ export default class OptimizelyProvider {
 		if (doForceDecision) {
 			this.optimizelyUserContext.setForcedDecision(
 				{ flagKey: flagObj.flagKey, ruleKey: flagObj.ruleKey },
-				{ variationKey: flagObj.variationKey }
+				{ variationKey: flagObj.variationKey },
 			);
 		}
 
@@ -345,7 +425,7 @@ export default class OptimizelyProvider {
 			'Attributes:',
 			attributes,
 			'Event Tags:',
-			eventTags
+			eventTags,
 		);
 		const result = this.optimizelyUserContext.trackEvent(eventKey, attributes, eventTags);
 		return result;
@@ -356,8 +436,8 @@ export default class OptimizelyProvider {
 	 * @returns {Promise<Object>} - A promise that resolves to the datafile.
 	 */
 	async datafile() {
-		logger().debug('Retrieving datafile in OptimizelyProvider [datafile]');
-		return optlyHelper.jsonParseSafe(this.optimizelyClient.getOptimizelyConfig().getDatafile());
+		logger().debug('Retrieving datafile from the Optimizely Client [OptimizelyProvider -> datafile]');
+		return optlyHelper.safelyParseJSON(this.optimizelyClient.getOptimizelyConfig().getDatafile());
 	}
 
 	/**
@@ -399,7 +479,6 @@ export default class OptimizelyProvider {
 	 */
 	async batch(batchOperations) {
 		logger().debug('Executing Optimizely batch operation in OptimizelyProvider [batch]');
-
 
 		try {
 			// TODO: Implement the method  batch

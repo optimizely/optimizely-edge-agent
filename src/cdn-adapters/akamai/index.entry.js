@@ -42,7 +42,6 @@ let coreLogic;
 // let adapter = new AkamaiAdapter(coreLogic);
 let cdnAdapter;
 
-
 // import { AbstractContext } from './abstractionHelper';
 
 // export function onClientRequest(request) {
@@ -62,7 +61,6 @@ let cdnAdapter;
 
 // 	// Your logic here
 // }
-
 
 // export function onClientResponse(request, response) {
 // 	// Create a context-like object
@@ -239,7 +237,6 @@ function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper) {
 	optimizelyProvider.setCdnAdapter(cdnAdapter);
 	coreLogic.setCdnAdapter(cdnAdapter);
 }
-
 
 /*
 // logic to dispatch events as background tasks withou blocking the response

@@ -40,7 +40,7 @@ export class AbstractResponse {
 			'Headers:',
 			headers,
 			'Content type:',
-			contentType
+			contentType,
 		);
 
 		// Ensure headers is a valid object
@@ -85,7 +85,7 @@ export class AbstractResponse {
 					status: status.toString(),
 					statusDescription: 'OK',
 					headers: Object.fromEntries(
-						Object.entries(headers).map(([k, v]) => [k.toLowerCase(), [{ key: k, value: v }]])
+						Object.entries(headers).map(([k, v]) => [k.toLowerCase(), [{ key: k, value: v }]]),
 					),
 					body: responseBody,
 				};
@@ -393,7 +393,7 @@ export class AbstractResponse {
 	static setHeaderInResponse(response, name, value) {
 		logger().debugExt(
 			'AbstractResponse - Setting header in response [setHeaderInResponse]',
-			`Name: ${name}, Value: ${value}`
+			`Name: ${name}, Value: ${value}`,
 		);
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		switch (cdnProvider) {
@@ -466,7 +466,7 @@ export class AbstractResponse {
 	static setCookieInResponse(response, name, value, options = {}) {
 		logger().debugExt(
 			'AbstractResponse - Setting cookie in response [setCookieInResponse]',
-			`Name: ${name}, Value: ${value}, Options: ${options}`
+			`Name: ${name}, Value: ${value}, Options: ${options}`,
 		);
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		let cookieString = `${name}=${value}`;
@@ -503,7 +503,10 @@ export class AbstractResponse {
 	 * @param {string} cookieValue - The serialized cookie string.
 	 */
 	static appendCookieToResponse(response, cookieValue) {
-		logger().debugExt('AbstractResponse - Appending cookie to response [appendCookieToResponse]', `Cookie value: ${cookieValue}`);
+		logger().debugExt(
+			'AbstractResponse - Appending cookie to response [appendCookieToResponse]',
+			`Cookie value: ${cookieValue}`,
+		);
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		switch (cdnProvider) {
 			case 'cloudflare':

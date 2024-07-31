@@ -16,7 +16,17 @@
 // CDN specific imports
 import CloudflareAdapter from './cdn-adapters/cloudflare/cloudflareAdapter';
 import CloudflareKVInterface from './cdn-adapters/cloudflare/cloudflareKVInterface';
+// import AkamaiAdapter from './cdn-adapters/akamai/akamaiAdapter';
+// import AkamaiKVInterface from './cdn-adapters/akamai/akamaiKVInterface';
+// import FastlyAdapter from './cdn-adapters/fastly/fastlyAdapter';
+// import FastlyKVInterface from './cdn-adapters/fastly/fastlyKVInterface';
+// import CloudFrontAdapter from './cdn-adapters/cloudfront/cloudFrontAdapter';
+// import CloudFrontKVInterface from './cdn-adapters/cloudfront/cloudFrontKVInterface';
+// import VercelAdapter from './cdn-adapters/vercel/vercelAdapter';
+// import VercelKVInterface from './cdn-adapters/vercel/vercelKVInterface';
 
+// Import the registered listeners
+import './_event_listeners_/registered-listeners/registeredListeners';
 // Application specific imports
 import CoreLogic from './coreLogic';
 import OptimizelyProvider from './_optimizely_/optimizelyProvider';
@@ -39,15 +49,32 @@ let optimizelyProvider, coreLogic, cdnAdapter;
  * @param {object} kvStore - The key-value store instance.
  * @throws Will throw an error if the SDK key is not provided.
  */
-function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore) {
+function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore, kvStoreUserProfile) {
 	logger.debug('Edgeworker index.js - Initializing core logic [initializeCoreLogic]');
 	if (!sdkKey) {
 		throw new Error('SDK Key is required for initialization.');
 	}
 	logger.debug(`Initializing core logic with SDK Key: ${sdkKey}`);
-	optimizelyProvider = new OptimizelyProvider(sdkKey, request, env, ctx, abstractionHelper);
-	coreLogic = new CoreLogic(optimizelyProvider, env, ctx, sdkKey, abstractionHelper, kvStore, logger);
-	cdnAdapter = new CloudflareAdapter(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger);
+	optimizelyProvider = new OptimizelyProvider(sdkKey, request, env, ctx, abstractionHelper, kvStoreUserProfile);
+	coreLogic = new CoreLogic(
+		optimizelyProvider,
+		env,
+		ctx,
+		sdkKey,
+		abstractionHelper,
+		kvStore,
+		kvStoreUserProfile,
+		logger
+	);
+	cdnAdapter = new CloudflareAdapter(
+		coreLogic,
+		optimizelyProvider,
+		sdkKey,
+		abstractionHelper,
+		kvStore,
+		kvStoreUserProfile,
+		logger
+	);
 	optimizelyProvider.setCdnAdapter(cdnAdapter);
 	coreLogic.setCdnAdapter(cdnAdapter);
 }
@@ -67,13 +94,30 @@ function normalizePathname(pathName) {
  * @returns {boolean} True if the request is for an asset, false otherwise.
  */
 function isAssetRequest(pathName) {
-	logger.debug('Edgeworker index.js - Checking if request is for an asset [isAssetRequest]');
 	const assetsRegex = /\.(jpg|jpeg|png|gif|svg|css|js|ico|woff|woff2|ttf|eot)$/i;
-	return assetsRegex.test(pathName);
+	const result = assetsRegex.test(pathName);
+	logger.debug('Edgeworker index.js - Checking if request is for an asset [isAssetRequest]', result);
+	return result;
 }
 
 /**
- * Initializes the key-value store.
+ * Initializes the key-value store for user profile.
+ * @param {object} env - The environment bindings.
+ * @returns {object} The initialized key-value store.
+ */
+function initializeKVStoreUserProfile(env) {
+	if (defaultSettings.kv_user_profile_enabled) {
+		logger.debug('Edgeworker index.js - Initializing KV store for user profile [initializeKVStoreUserProfile]');
+		const kvInterfaceAdapterUserProfile = new CloudflareKVInterface(env, defaultSettings.kv_namespace_user_profile);
+		return abstractionHelper.initializeKVStore(defaultSettings.cdnProvider, kvInterfaceAdapterUserProfile);
+	} else {
+		logger.debug('Edgeworker index.js - KV store for user profile is disabled [initializeKVStoreUserProfile]');
+		return null;
+	}
+}
+
+/**
+ * Initializes the key-value store for datafile and flag keys.
  * @param {object} env - The environment bindings.
  * @returns {object} The initialized key-value store.
  */
@@ -92,9 +136,44 @@ function getSdkKey(abstractRequest) {
 	logger.debug('Edgeworker index.js - Getting SDK key [getSdkKey]');
 	let sdkKey = abstractRequest.getHeader(defaultSettings.sdkKeyHeader);
 	if (!sdkKey) {
-		sdkKey = abstractRequest.URL.searchParams.get('sdkKey');
+		sdkKey = abstractRequest.URL.searchParams.get(defaultSettings.sdkKeyQueryParameter);
 	}
 	return sdkKey;
+}
+
+/**
+ * Returns the appropriate CDN adapter based on the CDN provider.
+ * @param {object} coreLogic - The core logic instance.
+ * @param {object} optimizelyProvider - The Optimizely provider instance.
+ * @param {string} sdkKey - The SDK key for Optimizely.
+ * @param {object} abstractionHelper - The abstraction helper instance.
+ * @param {object} kvStore - The key-value store instance.
+ * @param {object} logger - The logger instance.
+ * @returns {object} The CDN adapter instance.
+ */
+function getCdnAdapter(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger) {
+	const AdapterClass = (() => {
+		switch (defaultSettings.cdnProvider) {
+			case 'cloudflare':
+				return CloudflareAdapter;
+			// case 'akamai':
+			//     return AkamaiAdapter;
+			// case 'fastly':
+			//     return FastlyAdapter;
+			// case 'cloudfront':
+			//     return CloudfrontAdapter;
+			// case 'vercel':
+			//     return VercelAdapter;
+			default:
+				throw new Error(`Unsupported CDN provider: ${defaultSettings.cdnProvider}`);
+		}
+	})();
+
+	if (arguments.length === 0 || coreLogic === undefined) {
+		return new AdapterClass(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger);
+	} else {
+		return new AdapterClass(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, logger);
+	}
 }
 
 /**
@@ -117,12 +196,11 @@ async function handleApiRequest(incomingRequest, abstractionHelper, kvStore, log
 		}
 	} catch (error) {
 		const errorMessage = {
-			errorMessage: 'Failed to load API functionality. Please check configuration and dependencies.',
+			errorMessage: 'Failed to handler API request. Please check configuration and dependencies.',
 			error,
 		};
 		logger.error(errorMessage);
-		cdnAdapter = new CloudflareAdapter();
-		return await cdnAdapter.defaultFetch(incomingRequest, environmentVariables, context);
+		return await abstractionHelper.createResponse(errorMessage, 500);
 	}
 }
 
@@ -136,14 +214,14 @@ async function handleApiRequest(incomingRequest, abstractionHelper, kvStore, log
  * @param {object} kvStore - The key-value store instance.
  * @returns {Promise<Response>} The response to the Optimizely request.
  */
-async function handleOptimizelyRequest(sdkKey, request, env, ctx, abstractionHelper, kvStore) {
+async function handleOptimizelyRequest(sdkKey, request, env, ctx, abstractionHelper, kvStore, kvStoreUserProfile) {
 	logger.debug('Edgeworker index.js - Handling Optimizely request [handleOptimizelyRequest]');
 	try {
-		initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore);
+		initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore, kvStoreUserProfile);
 		return cdnAdapter.fetchHandler(incomingRequest, environmentVariables, context);
 	} catch (error) {
 		logger.error('Error during core logic initialization:', error);
-		return new Response(JSON.stringify({ module: 'index.js', error: error.message }), { status: 500 });
+		return abstractionHelper.createResponse({ module: 'index.js', error: error.message }, 500);
 	}
 }
 
@@ -168,8 +246,22 @@ async function handleDefaultRequest(
 	optimizelyEnabled
 ) {
 	logger.debug('Edgeworker index.js - Handling default request [handleDefaultRequest]');
+	// if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey) {
+	// 	return fetch(incomingRequest, environmentVariables, context);
+	// }
+
 	if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey) {
-		return fetch(incomingRequest, environmentVariables, context);
+		// Check if the request is already being handled by the worker
+		if (incomingRequest.headers.get('X-Worker-Processed')) {
+			return abstractionHelper.createResponse({ error: 'Endless loop detected' }, 500);
+		}
+
+		// Clone the request and add a custom header to mark it as processed
+		const modifiedRequest = new Request(incomingRequest, {
+			headers: { ...Object.fromEntries(request.headers), 'X-Worker-Processed': 'true' },
+		});
+
+		return fetch(modifiedRequest, environmentVariables, context);
 	}
 
 	if (
@@ -238,11 +330,23 @@ export default {
 		// If workerOperation is true then we know for a fact that it is not an Optimizely operation.
 		if (workerOperation || requestIsForAsset) {
 			logger.debug(`Request is for an asset or an edge worker operation: ${pathName}`);
-			return abstractionHelper.abstractRequest.fetchRequest(incomingRequest);
+
+			// Check if the request is already being handled by the worker
+			if (incomingRequest.headers.get('X-Worker-Processed')) {
+				return abstractionHelper.createResponse({ error: 'Endless loop detected' }, 500);
+			}
+
+			// Clone the request and add a custom header to mark it as processed
+			const modifiedRequest = new Request(incomingRequest, {
+				headers: { ...Object.fromEntries(incomingRequest.headers), 'X-Worker-Processed': 'true' },
+			});
+
+			return abstractionHelper.abstractRequest.fetchRequest(modifiedRequest);
 		}
 
 		// Initialize the KV store
 		const kvStore = initializeKVStore(env);
+		const kvStoreUserProfile = initializeKVStoreUserProfile(env);
 
 		// Get the SDK key from the abstract request
 		const sdkKey = getSdkKey(abstractRequest);
@@ -270,7 +374,8 @@ export default {
 				environmentVariables,
 				context,
 				abstractionHelper,
-				kvStore
+				kvStore,
+				kvStoreUserProfile
 			);
 		}
 

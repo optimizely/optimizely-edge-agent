@@ -1,9 +1,9 @@
 /**
  * @module FlagKeys
- * 
+ *
  * The FlagKeys module is responsible for handling the flag keys API.
  * It will get or put the flag keys in the KV store of the CDN provider.
- * 
+ *
  * The following methods are implemented:
  * - handleFlagKeys(request, abstractionHelper, kvStore, logger, defaultSettings) - Handles the flag keys API request.
  * - handleGetFlagKeys(request, abstractionHelper, kvStore, logger, defaultSettings) - Retrieves flag keys stored in the KV store under the namespace 'optly_flagKeys'.
@@ -45,8 +45,8 @@ function handleFlagKeysResponse(combinedString, abstractionHelper, logger) {
 
 	// Create a JSON object with a message and the array of flag keys
 	const responseObject = {
-		message: "Flag keys were updated successfully in the KV store.",
-		flagKeys: flagKeys
+		message: 'Flag keys were updated successfully in the KV store.',
+		flagKeys: flagKeys,
 	};
 
 	// Step 3: Return a response with JSON type and stringified JSON object
@@ -79,7 +79,7 @@ const handleFlagKeys = async (request, abstractionHelper, kvStore, logger, defau
 		let flagKeys = requestBody.flagKeys;
 
 		// Trim each string in the array of flag keys to remove extraneous whitespace
-		flagKeys = await trimStringArray(flagKeys);		
+		flagKeys = await trimStringArray(flagKeys);
 
 		// Validate the array to ensure it contains valid, non-empty data
 		if (!isValidArray(flagKeys)) {
@@ -136,7 +136,7 @@ const handleGetFlagKeys = async (request, abstractionHelper, kvStore, logger, de
 		}
 
 		// Split the stored string by commas into an array
-		const flagKeysArray = storedFlagKeys.split(',');		
+		const flagKeysArray = storedFlagKeys.split(',');
 
 		// Trim each flag key and filter out any empty strings if there are unintended commas
 		const trimmedFlagKeys = flagKeysArray.map((key) => key.trim()).filter((key) => key !== '');

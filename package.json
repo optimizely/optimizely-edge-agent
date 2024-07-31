@@ -6,6 +6,7 @@
     "deploy": "wrangler deploy",
     "dev": "wrangler dev",
     "start": "wrangler dev",
+    "format": "prettier --loglevel warn --write \"src/**/*.{jsx,js}\"",
     "test": "vitest"
   },
   "devDependencies": {

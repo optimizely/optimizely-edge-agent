@@ -30,7 +30,8 @@ class FastlyAdapter {
 		this.cookiesToSetResponse = [];
 		this.headersToSetResponse = {};
 		this.optimizelyProvider = optimizelyProvider;
-		this.cdnSettingsMessage = 'Failed to process the request. CDN settings are missing or require forwarding to origin.';
+		this.cdnSettingsMessage =
+			'Failed to process the request. CDN settings are missing or require forwarding to origin.';
 	}
 
 	/**
@@ -83,7 +84,9 @@ class FastlyAdapter {
 			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
 				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings);
 			} else {
-				this.logger.debug('No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.');
+				this.logger.debug(
+					'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.',
+				);
 				fetchResponse = await this.fetchDirectly(request);
 			}
 
@@ -284,13 +287,17 @@ class FastlyAdapter {
 	 * @returns {Promise<void>} - A Promise that resolves when the event dispatch process is complete.
 	 */
 	async dispatchConsolidatedEvents(ctx, defaultSettings) {
-		if (optlyHelper.arrayIsValid(this.eventQueue) && this.optimizelyProvider && this.optimizelyProvider.optimizelyClient) {
+		if (
+			optlyHelper.arrayIsValid(this.eventQueue) &&
+			this.optimizelyProvider &&
+			this.optimizelyProvider.optimizelyClient
+		) {
 			try {
 				const allEvents = await this.consolidateVisitorsInEvents(this.eventQueue);
 				ctx.waitUntil(
 					this.dispatchAllEventsToOptimizely(defaultSettings.optimizelyEventsEndpoint, allEvents).catch((err) => {
 						this.logger.error('Failed to dispatch event:', err);
-					})
+					}),
 				);
 			} catch (error) {
 				this.logger.error('Error during event consolidation or dispatch:', error);
@@ -963,7 +970,9 @@ class FastlyAdapter {
 		const existingCookies = clonedRequest.headers.get('Cookie') || '';
 
 		// Append each serialized cookie to the existing cookie header
-		const updatedCookies = existingCookies ? `${existingCookies}; ${Object.values(cookies).join('; ')}` : Object.values(cookies).join('; ');
+		const updatedCookies = existingCookies
+			? `${existingCookies}; ${Object.values(cookies).join('; ')}`
+			: Object.values(cookies).join('; ');
 		clonedRequest.headers.set('Cookie', updatedCookies);
 
 		return clonedRequest;

@@ -1,9 +1,9 @@
 /**
  * @module AbstractRequest
- * 
- */ 
+ *
+ */
 
-import defaultSettings  from '../../_config_/defaultSettings';
+import defaultSettings from '../../_config_/defaultSettings';
 import { logger } from '../../_helpers_/optimizelyHelper';
 import { AbstractionHelper } from '../abstractionHelper';
 
@@ -34,7 +34,7 @@ export class AbstractRequest {
 	 */
 	constructor(request) {
 		logger().debug('AbstractRequest constructor called');
-				this.request = request;		
+		this.request = request;
 		this.cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		logger().debug('AbstractRequest - CDN provider:', this.cdnProvider);
 		this.URL = new URL(request.url);
@@ -448,7 +448,18 @@ export class AbstractRequest {
 				case 'fastly':
 				case 'vercel':
 					// For these CDNs, the Fetch API's clone method should work.
-					return request.clone();
+					const newRequestInit = {
+						method: request.method,
+						headers: new Headers(request.headers), // Clone existing headers
+						body: request.body,
+						mode: request.mode,
+						credentials: request.credentials,
+						cache: request.cache,
+						redirect: request.redirect,
+						referrer: request.referrer,
+						integrity: request.integrity,
+					};
+					return new Request(request.url, newRequestInit);
 
 				case 'cloudfront':
 					// CloudFront Lambda@Edge specific cloning logic
@@ -496,12 +507,16 @@ export class AbstractRequest {
 	/**
 	 * Creates a new request with the given URL and options.
 	 * @param {Request} request - The original request object.
-	 * @param {string} newUrl - The new URL for the request.
+	 * @param {string} [newUrl] - The new URL for the request. If null or empty, the original request URL is used.
 	 * @param {Object} [options={}] - Additional options for the request.
 	 * @returns {Request} - The new request object.
 	 */
 	static createNewRequest(request, newUrl, options = {}) {
 		logger().debugExt('AbstractRequest - Creating new request [createNewRequest]');
+
+		// Use the original request URL if newUrl is null or empty
+		const finalUrl = newUrl || request.url;
+
 		const requestOptions = {
 			method: request.method,
 			headers: new Headers(request.headers),
@@ -519,7 +534,7 @@ export class AbstractRequest {
 			requestOptions.body = request.body;
 		}
 
-		return new Request(newUrl, requestOptions);
+		return new Request(finalUrl, requestOptions);
 	}
 
 	/**
@@ -655,6 +670,7 @@ export class AbstractRequest {
 	 * @returns {Promise<Response>} - The response from the fetch operation.
 	 */
 	static async fetchRequest(input, options = {}) {
+		try {
 		logger().debugExt('AbstractRequest - Making HTTP request [fetchRequest]');
 		let url;
 		let requestOptions = options;
@@ -691,7 +707,9 @@ export class AbstractRequest {
 
 		switch (cdnProvider) {
 			case 'cloudflare':
-				return await fetch(new Request(url, requestOptions));
+				const result = await fetch(new Request(url, requestOptions));
+				//logger().debugExt('AbstractRequest - Fetch request [fetchRequest] - result:', result);
+				return result;
 			case 'akamai':
 				return await AbstractRequest.akamaiFetch(url, requestOptions);
 			case 'fastly':
@@ -701,7 +719,12 @@ export class AbstractRequest {
 			case 'vercel':
 				return await fetch(new Request(url, requestOptions));
 			default:
-				throw new Error('Unsupported CDN provider.');
+					throw new Error('Unsupported CDN provider.');
+			}
+		} catch (error) {
+			logger().error('Error fetching request:', error.message);
+			const _asbstractionHelper = AbstractionHelper.getAbstractionHelper();
+			return _asbstractionHelper.createResponse({ error: error.message }, 500);
 		}
 	}
 

@@ -74,7 +74,7 @@ export default class CoreLogic {
 	 * @param {*} cdnAdapter - The CDN provider.
 	 * @param {*} optimizelyProvider - The Optimizely provider.
 	 */
-	constructor(optimizelyProvider, env, ctx, sdkKey, abstractionHelper, kvStore, logger) {
+	constructor(optimizelyProvider, env, ctx, sdkKey, abstractionHelper, kvStore, kvStoreUserProfile, logger) {
 		this.logger = logger;
 		this.logger.info(`CoreLogic instance created for SDK Key: ${sdkKey}`);
 		this.env = env;
@@ -84,8 +84,10 @@ export default class CoreLogic {
 		this.logger = logger;
 		this.abstractionHelper = abstractionHelper;
 		this.optimizelyProvider = optimizelyProvider;
-		// undefined values
+		this.kvStoreUserProfile = kvStoreUserProfile;
+		this.eventListeners = EventListeners.getInstance();
 		this.cdnAdapter = undefined;
+		this.reqResponseObjectType = 'response';
 		this.allDecisions = undefined;
 		this.serializedDecisions = undefined;
 		this.cdnExperimentSettings = undefined;
@@ -281,6 +283,7 @@ export default class CoreLogic {
 		}
 
 		// Return null if no matching configuration is found
+		this.logger.debug('No matching configuration found in cdnVariationSettings [findMatchingConfig]');
 		return null;
 	}
 
@@ -293,7 +296,8 @@ export default class CoreLogic {
 	 * @returns {Promise<Object>} - A promise that resolves to an object containing the response and any CDN experiment settings.
 	 */
 	async processRequest(request, env, ctx) {
-		this.logger.info('Entering processRequest');
+		this.eventListeners = EventListeners.getInstance();
+		this.logger.info('Entering processRequest [coreLogic.js]');
 		try {
 			let reqResponse;
 			this.env = this.abstractionHelper.env;
@@ -307,13 +311,14 @@ export default class CoreLogic {
 				this.cdnAdapter,
 				this.abstractionHelper
 			);
-			this.logger.debug('RequestConfig initialized');			
+			this.logger.debug('RequestConfig initialized');
 			await requestConfig.initialize(request);
 			// this.logger.debugExt('RequestConfig: ', requestConfig);
 			this.requestConfig = requestConfig;
 
 			// Get the pathname and check if it starts with "//"
 			this.pathName = requestConfig.url.pathname.toLowerCase();
+			this.href = requestConfig.url.href.toLowerCase();
 			if (this.pathName.startsWith('//')) {
 				this.pathName = this.pathName.substring(1);
 			}
@@ -328,7 +333,7 @@ export default class CoreLogic {
 			this.isGetMethod = this.httpMethod === 'GET';
 
 			// Clone the request
-			this.request = this.abstractionHelper.abstractRequest.cloneRequest(request);
+			// this.request = this.abstractionHelper.abstractRequest.cloneRequest(request);
 
 			// Get visitor ID, datafile, and user agent
 			const visitorId = await this.getVisitorId(request, requestConfig);
@@ -339,6 +344,11 @@ export default class CoreLogic {
 			const initSuccess = await this.initializeOptimizely(datafile, visitorId, requestConfig, userAgent);
 			if (!initSuccess) throw new Error('Failed to initialize Optimizely');
 
+			this.eventListenersResult = await this.eventListeners.trigger(
+				'beforeDetermineFlagsToDecide',
+				request,
+				requestConfig
+			);
 			// Process decision flags if required
 			let flagsToForce, filteredFlagsToDecide, validStoredDecisions;
 			if (isDecideOperation) {
@@ -354,6 +364,14 @@ export default class CoreLogic {
 					validStoredDecisions
 				);
 			}
+			this.eventListenersResult = await this.eventListeners.trigger(
+				'afterDetermineFlagsToDecide',
+				request,
+				requestConfig,
+				flagsToForce,
+				filteredFlagsToDecide,
+				validStoredDecisions
+			);
 
 			// Execute Optimizely logic and prepare responses based on the request method
 			this.logger.debug('Executing Optimizely logic and preparing responses based on the request method');
@@ -365,10 +383,12 @@ export default class CoreLogic {
 			if (this.shouldReturnJsonResponse(this) && !isDecideOperation) {
 				// Datafile or config operation
 				reqResponse = await this.cdnAdapter.getNewResponseObject(optlyResponse, 'application/json', true);
+				this.reqResponseObjectType = 'response';
 			} else if (this.isPostMethod && !isDecideOperation) {
 				// POST method without decide operation
 				reqResponse = await this.cdnAdapter.getNewResponseObject(optlyResponse, 'application/json', true);
 				this.cdnExperimentSettings = undefined;
+				this.reqResponseObjectType = 'response';
 			} else if (this.isDecideOperation) {
 				// Update metadata if enabled
 				if (isDecideOperation) this.updateMetadata(requestConfig, flagsToForce, validStoredDecisions);
@@ -380,29 +400,47 @@ export default class CoreLogic {
 						defaultSettings.urlIgnoreQueryParameters
 					);
 
-				// Prepare decisions and final response
-				this.serializedDecisions = await this.prepareDecisions(
-					optlyResponse,
-					flagsToForce,
-					validStoredDecisions,
-					requestConfig
-				);
-				reqResponse = await this.prepareFinalResponse(
-					this.allDecisions,
-					visitorId,
-					requestConfig,
-					this.serializedDecisions
-				);
+				if (this.isGetMethod && isDecideOperation && !this.cdnExperimentSettings) {
+					reqResponse = 'NO_MATCH';
+				} else {
+					// Prepare decisions and final response
+					this.serializedDecisions = await this.prepareDecisions(
+						optlyResponse,
+						flagsToForce,
+						validStoredDecisions,
+						requestConfig
+					);
+					reqResponse = await this.prepareFinalResponse(
+						this.allDecisions,
+						visitorId,
+						requestConfig,
+						this.serializedDecisions
+					);
+				}
 			}
 
 			// Package the final response
 			return {
 				reqResponse,
 				cdnExperimentSettings: this.cdnExperimentSettings,
+				reqResponseObjectType: this.reqResponseObjectType,
+				forwardRequestToOrigin: this.forwardRequestToOrigin,
+				errorMessage: undefined,
+				isError: false,
+				isPostMethod: this.isPostMethod,
+				isGetMethod: this.isGetMethod,
+				isDecideOperation: this.isDecideOperation,
+				isDatafileOperation: this.datafileOperation,
+				isConfigOperation: this.configOperation,
+				flagsToDecide: filteredFlagsToDecide,
+				flagsToForce: flagsToForce,
+				validStoredDecisions: validStoredDecisions,
+				href: this.href,
+				pathName: this.pathName,
 			};
 		} catch (error) {
 			// Handle any errors during the process, returning a server error response
-			this.logger.error('Error processing request:', error);
+			this.logger.error('Error processing request:', error.message);
 			return {
 				reqResponse: await this.cdnAdapter.getNewResponseObject(
 					`Internal Server Error: ${error.message}`,
@@ -411,6 +449,10 @@ export default class CoreLogic {
 					500
 				),
 				cdnExperimentSettings: undefined,
+				reqResponseObjectType: 'response',
+				forwardRequestToOrigin: this.forwardRequestToOrigin,
+				errorMessage: error.message,
+				isError: true,
 			};
 		}
 	}
@@ -429,11 +471,24 @@ export default class CoreLogic {
 	 * @returns {Promise<Object|null>} - The decisions object or null.
 	 */
 	async handlePostOperations(flagsToDecide, flagsToForce, requestConfig) {
-		
 		switch (this.pathName) {
 			case '/v1/decide':
+				this.eventListenersResult = await this.eventListeners.trigger(
+					'beforeDecide',
+					this.request,
+					requestConfig,
+					flagsToDecide,
+					flagsToForce
+				);
 				this.logger.debug('POST operation [/v1/decide]: Decide');
-				return await this.optimizelyProvider.decide(flagsToDecide, flagsToForce, requestConfig.forcedDecisions);
+				let result = await this.optimizelyProvider.decide(flagsToDecide, flagsToForce, requestConfig.forcedDecisions);
+				this.eventListenersResult = await this.eventListeners.trigger(
+					'afterDecide',
+					this.request,
+					requestConfig,
+					result
+				);
+				return result;
 			case '/v1/track':
 				this.logger.debug('POST operation [/v1/track]: Track');
 				this.trackOperation = true;
@@ -571,7 +626,8 @@ export default class CoreLogic {
 			requestConfig.attributes,
 			requestConfig.eventTags,
 			requestConfig.datafileAccessToken,
-			userAgent
+			userAgent,
+			this.sdkKey
 		);
 	}
 
@@ -598,7 +654,7 @@ export default class CoreLogic {
 				return;
 			}
 
-			const decisions = await this.handleCookieDecisions(requestConfig, activeFlags);
+			const decisions = await this.handleCookieDecisions(requestConfig, activeFlags, this.httpMethod);
 			const { validStoredDecisions } = decisions;
 
 			if (!isDecideOperation) return;
@@ -616,11 +672,20 @@ export default class CoreLogic {
 	/**
 	 * Handle cookie-based decisions from request.
 	 */
-	async handleCookieDecisions(requestConfig, activeFlags) {
+	async handleCookieDecisions(requestConfig, activeFlags, httpMethod) {
 		this.logger.debug('Handling cookie decisions [handleCookieDecisions]');
 		let savedCookieDecisions = [];
 		let validStoredDecisions = [];
 		let invalidCookieDecisions = [];
+		if (httpMethod === 'POST') {
+			return { savedCookieDecisions, validStoredDecisions, invalidCookieDecisions };
+		}
+
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'beforeReadingCookie',
+			this.request,
+			requestConfig.headerCookiesString
+		);
 
 		if (requestConfig.headerCookiesString && !this.isPostMethod) {
 			try {
@@ -634,6 +699,19 @@ export default class CoreLogic {
 			} catch (error) {
 				this.logger.error('Error while handling stored cookie decisions:', error);
 			}
+		}
+
+		this.eventListenersResult = await this.eventListeners.trigger(
+			'afterReadingCookie',
+			this.request,
+			savedCookieDecisions,
+			validStoredDecisions,
+			invalidCookieDecisions
+		);
+		if (this.eventListenersResult) {
+			savedCookieDecisions = this.eventListenersResult.savedCookieDecisions || savedCookieDecisions;
+			validStoredDecisions = this.eventListenersResult.validStoredDecisions || validStoredDecisions;
+			invalidCookieDecisions = this.eventListenersResult.invalidCookieDecisions || invalidCookieDecisions;
 		}
 
 		return { savedCookieDecisions, validStoredDecisions, invalidCookieDecisions };
@@ -719,7 +797,7 @@ export default class CoreLogic {
 			// if (validStoredDecisions) this.allDecisions = this.allDecisions.concat(validStoredDecisions);
 			let serializedDecisions = optlyHelper.serializeDecisions(this.allDecisions);
 			if (serializedDecisions) {
-				serializedDecisions = optlyHelper.jsonStringifySafe(serializedDecisions);
+				serializedDecisions = optlyHelper.safelyStringifyJSON(serializedDecisions);
 			}
 			this.logger.debugExt('Serialized decisions [prepareDecisions]: ', serializedDecisions);
 			return serializedDecisions;
@@ -870,6 +948,7 @@ export default class CoreLogic {
 				return this.handleOriginForwarding(visitorId, serializedDecisions, requestConfig);
 			} else {
 				this.logger.debug('Preparing local response [prepareResponse]');
+				this.reqResponseObjectType = 'response';
 				return this.prepareLocalResponse(responseDecisions, visitorId, serializedDecisions, requestConfig);
 			}
 		} catch (error) {
@@ -892,16 +971,83 @@ export default class CoreLogic {
 	}
 
 	/**
-	 * Handles forwarding the request to the origin while setting appropriate headers and cookies.
+	 * Handles forwarding the request to the origin with the necessary headers and cookies.
 	 * @param {string} visitorId - The visitor ID.
 	 * @param {string} serializedDecisions - The serialized decisions string.
 	 * @param {RequestConfig} requestConfig - The request configuration object.
-	 * @returns {Promise<Response>}
+	 * @returns {Promise<Response>} - The response from the origin.
 	 */
 	async handleOriginForwarding(visitorId, serializedDecisions, requestConfig) {
-		let clonedRequest = await this.setupRequestModification(visitorId, serializedDecisions, requestConfig);
-		return clonedRequest || this.request;
+		this.logger.debug('Handling origin forwarding [handleOriginForwarding]');
+		let clonedRequest;
+
+		try {
+			// Set request headers if configured
+			if (requestConfig.setRequestHeaders) {
+				const headers = {};
+
+				if (visitorId) {
+					headers[requestConfig.settings.visitorIdsHeaderName] = visitorId;
+					this.cdnAdapter.headersToSetRequest[requestConfig.settings.visitorIdsHeaderName] = visitorId;
+				}
+
+				if (serializedDecisions) {
+					headers[requestConfig.settings.decisionsHeaderName] = serializedDecisions;
+					this.cdnAdapter.headersToSetRequest[requestConfig.settings.decisionsHeaderName] = serializedDecisions;
+				}
+				this.logger.debugExt('Setting request headers [handleOriginForwarding]:', headers);
+				clonedRequest = this.cdnAdapter.setMultipleRequestHeaders(this.request, headers);
+			}
+
+			// Set request cookies if configured
+			if (requestConfig.setRequestCookies) {
+				const [visitorCookie, modReqCookie] = await Promise.all([
+					optlyHelper.createCookie(requestConfig.settings.visitorIdCookieName, visitorId),
+					optlyHelper.createCookie(requestConfig.settings.decisionsCookieName, serializedDecisions),
+				]);
+
+				// Ensure clonedRequest is defined or fallback to this.request
+				clonedRequest = clonedRequest || (await this.cdnAdapter.cloneRequest(this.request));
+				// Prepare the cookies object based on conditions
+				let cookiesToSet = {};
+				if (visitorCookie) {
+					cookiesToSet['visitorCookie'] = visitorCookie;
+					this.cdnAdapter.cookiesToSetRequest.push(visitorCookie);
+				}
+
+				if (modReqCookie) {
+					cookiesToSet['modReqCookie'] = modReqCookie;
+					this.cdnAdapter.cookiesToSetRequest.push(modReqCookie);
+				}
+
+				// Use the new function to set multiple cookies at once
+				this.logger.debugExt('Setting request cookies [handleOriginForwarding]:', cookiesToSet);
+				if (Object.keys(cookiesToSet).length > 0) {
+					clonedRequest = this.cdnAdapter.setMultipleReqSerializedCookies(clonedRequest, cookiesToSet);
+				}
+			}
+
+			// Forward the request to the origin
+			const fetchResponse = await fetch(clonedRequest || this.request);
+			this.reqResponseObjectType = 'response';
+			return fetchResponse;
+		} catch (error) {
+			this.logger.error('Error in coreLogic.js [handleOriginForwarding]:', error);
+			throw error;
+		}
 	}
+
+	// /**
+	//  * Handles forwarding the request to the origin while setting appropriate headers and cookies.
+	//  * @param {string} visitorId - The visitor ID.
+	//  * @param {string} serializedDecisions - The serialized decisions string.
+	//  * @param {RequestConfig} requestConfig - The request configuration object.
+	//  * @returns {Promise<Response>}
+	//  */
+	// async handleOriginForwarding(visitorId, serializedDecisions, requestConfig) {
+	// 	let clonedRequest = await this.setupRequestModification(visitorId, serializedDecisions, requestConfig);
+	// 	return clonedRequest || this.request;
+	// }
 
 	/**
 	 * Prepares a response when not forwarding to the origin, primarily for local decisioning.
@@ -942,10 +1088,14 @@ export default class CoreLogic {
 	setResponseHeaders(response, visitorId, serializedDecisions, requestConfig) {
 		this.logger.debug('Setting response headers [setResponseHeaders]');
 		if (visitorId) {
-			this.cdnAdapter.setResponseHeader(response, requestConfig.settings.visitorIdsHeaderName, visitorId);
+			// this.cdnAdapter.setResponseHeader(response, requestConfig.settings.visitorIdsHeaderName, visitorId);
+			this.cdnAdapter.headersToSetResponse[requestConfig.settings.visitorIdsHeaderName] = visitorId;
+			this.cdnAdapter.responseHeadersSet = true;
 		}
 		if (serializedDecisions) {
-			this.cdnAdapter.setResponseHeader(response, requestConfig.settings.decisionsHeaderName, serializedDecisions);
+			// this.cdnAdapter.setResponseHeader(response, requestConfig.settings.decisionsHeaderName, serializedDecisions);
+			this.cdnAdapter.headersToSetResponse[requestConfig.settings.decisionsHeaderName] = serializedDecisions;
+			this.cdnAdapter.responseHeadersSet = true;
 		}
 	}
 
@@ -972,6 +1122,7 @@ export default class CoreLogic {
 		}
 
 		response = this.cdnAdapter.setMultipleRespSerializedCookies(response, this.cdnAdapter.cookiesToSetResponse);
+		this.cdnAdapter.responseCookiesSet = true;
 	}
 
 	/**
