@@ -39,3 +39,10 @@ const defaultSettings = {
 };
 
 export default defaultSettings;
+
+// const defaultSettings = {
+// 	kv_namespace: 'OPTLY_HYBRID_AGENT_KV',
+// 	kv_key_optly_flagKeys: 'optly_flagKeys',
+// 	kv_key_optly_sdk_datafile: 'optly_sdk_datafile',
+// 	kv_namespace_user_profile: 'OPTLY_HYBRID_AGENT_UPS_KV',
+// };

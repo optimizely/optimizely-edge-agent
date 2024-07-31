@@ -5,12 +5,12 @@ compatibility_date = "2024-05-02"
 compatibility_flags = ["nodejs_compat"]
 account_id = "YOUR ACCOUNT ID HERE"
 workers_dev = true
-route = "YOUR ROUTE GOES HERE"
+# route = "YOUR ROUTE GOES HERE"
 kv_namespaces = [{ binding = "OPTLY_HYBRID_AGENT_KV", id = "KV NAMESPACE ID GOES HERE", preview_id = "KV PREVIEW NAMESPACE ID GOES HERE",
-binding = "OPTLY_HYBRID_AGENT_UPS_KV", id = "KV USER PROFILE NAMESPACE ID GOES HERE", preview_id = "KV USER PROFILE PREVIEW NAMESPACE ID GOES HERE" } }]
+binding = "OPTLY_HYBRID_AGENT_UPS_KV", id = "KV USER PROFILE NAMESPACE ID GOES HERE", preview_id = "KV USER PROFILE PREVIEW NAMESPACE ID GOES HERE" } ]
 
 [vars]
- # Supported: "DEBUG, INFO, ERROR"
+ # Supported: "debug, debugExt, info, error"
  LOG_LEVEL = "debug" 
  #TESTING_FLAG_DEBUG = "INDIVIDUAL FX FLAG KEY FOR TESTING GOES HERE"
  

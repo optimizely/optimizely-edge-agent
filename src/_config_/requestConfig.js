@@ -110,6 +110,14 @@ export default class RequestConfig {
 			await this.loadRequestBody(request);
 		}
 
+		if (!this.enableFlagsFromKV) {
+			this.enableFlagsFromKV = this.settings.flagsFromKV;
+		}
+
+		if (!this.enableDatafileFromKV) {
+			this.enableDatafileFromKV = this.settings.datafileFromKV;
+		}
+
 		// Set metadata properties if response metadata is enabled and values are available.
 		if (this.sdkKey && this.settings.enableResponseMetadata) {
 			this.configMetadata.sdkKey = this.sdkKey;
@@ -349,8 +357,8 @@ export default class RequestConfig {
 			if (this.body.eventTags && this.settings.enableResponseMetadata) this.configMetadata.eventTagsFrom = 'body';
 			this.enableResponseMetadata = this.enableResponseMetadata || this.body.enableResponseMetadata;
 			this.forcedDecisions = this.body.forcedDecisions;
-			this.enableFlagsFromKV = this.enableFlagsFromKV || this.body.enableFlagsFromKV;
-			this.datafileFromKV = this.datafileFromKV || this.body.datafileFromKV;
+			this.enableFlagsFromKV = this.enableFlagsFromKV || this.body.enableFlagsFromKV === true;
+			this.datafileFromKV = this.datafileFromKV || this.body.datafileFromKV === true;
 			this.decideAll = this.decideAll || this.body.decideAll;
 			this.disableDecisionEvent = this.disableDecisionEvent || this.body.disableDecisionEvent;
 			this.enabledFlagsOnly = this.enabledFlagsOnly || this.body.enabledFlagsOnly;

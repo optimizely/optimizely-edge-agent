@@ -448,7 +448,18 @@ export class AbstractRequest {
 				case 'fastly':
 				case 'vercel':
 					// For these CDNs, the Fetch API's clone method should work.
-					return request.clone();
+					const newRequestInit = {
+						method: request.method,
+						headers: new Headers(request.headers), // Clone existing headers
+						body: request.body,
+						mode: request.mode,
+						credentials: request.credentials,
+						cache: request.cache,
+						redirect: request.redirect,
+						referrer: request.referrer,
+						integrity: request.integrity,
+					};
+					return new Request(request.url, newRequestInit);
 
 				case 'cloudfront':
 					// CloudFront Lambda@Edge specific cloning logic
@@ -659,6 +670,7 @@ export class AbstractRequest {
 	 * @returns {Promise<Response>} - The response from the fetch operation.
 	 */
 	static async fetchRequest(input, options = {}) {
+		try {
 		logger().debugExt('AbstractRequest - Making HTTP request [fetchRequest]');
 		let url;
 		let requestOptions = options;
@@ -707,7 +719,12 @@ export class AbstractRequest {
 			case 'vercel':
 				return await fetch(new Request(url, requestOptions));
 			default:
-				throw new Error('Unsupported CDN provider.');
+					throw new Error('Unsupported CDN provider.');
+			}
+		} catch (error) {
+			logger().error('Error fetching request:', error.message);
+			const _asbstractionHelper = AbstractionHelper.getAbstractionHelper();
+			return _asbstractionHelper.createResponse({ error: error.message }, 500);
 		}
 	}
 

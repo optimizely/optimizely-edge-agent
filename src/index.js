@@ -64,7 +64,7 @@ function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvSto
 		abstractionHelper,
 		kvStore,
 		kvStoreUserProfile,
-		logger,
+		logger
 	);
 	cdnAdapter = new CloudflareAdapter(
 		coreLogic,
@@ -73,7 +73,7 @@ function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvSto
 		abstractionHelper,
 		kvStore,
 		kvStoreUserProfile,
-		logger,
+		logger
 	);
 	optimizelyProvider.setCdnAdapter(cdnAdapter);
 	coreLogic.setCdnAdapter(cdnAdapter);
@@ -243,11 +243,25 @@ async function handleDefaultRequest(
 	pathName,
 	workerOperation,
 	sdkKey,
-	optimizelyEnabled,
+	optimizelyEnabled
 ) {
 	logger.debug('Edgeworker index.js - Handling default request [handleDefaultRequest]');
+	// if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey) {
+	// 	return fetch(incomingRequest, environmentVariables, context);
+	// }
+
 	if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey) {
-		return fetch(incomingRequest, environmentVariables, context);
+		// Check if the request is already being handled by the worker
+		if (incomingRequest.headers.get('X-Worker-Processed')) {
+			return abstractionHelper.createResponse({ error: 'Endless loop detected' }, 500);
+		}
+
+		// Clone the request and add a custom header to mark it as processed
+		const modifiedRequest = new Request(incomingRequest, {
+			headers: { ...Object.fromEntries(request.headers), 'X-Worker-Processed': 'true' },
+		});
+
+		return fetch(modifiedRequest, environmentVariables, context);
 	}
 
 	if (
@@ -299,7 +313,7 @@ export default {
 		const matchedRouteForAPI = optlyHelper.routeMatches(normalizedPathname);
 		logger.debug(
 			'Edgeworker index.js - Checking if route matches any API route [matchedRouteForAPI]',
-			matchedRouteForAPI,
+			matchedRouteForAPI
 		);
 
 		// Check if the request is for a worker operation
@@ -316,7 +330,18 @@ export default {
 		// If workerOperation is true then we know for a fact that it is not an Optimizely operation.
 		if (workerOperation || requestIsForAsset) {
 			logger.debug(`Request is for an asset or an edge worker operation: ${pathName}`);
-			return abstractionHelper.abstractRequest.fetchRequest(incomingRequest);
+
+			// Check if the request is already being handled by the worker
+			if (incomingRequest.headers.get('X-Worker-Processed')) {
+				return abstractionHelper.createResponse({ error: 'Endless loop detected' }, 500);
+			}
+
+			// Clone the request and add a custom header to mark it as processed
+			const modifiedRequest = new Request(incomingRequest, {
+				headers: { ...Object.fromEntries(incomingRequest.headers), 'X-Worker-Processed': 'true' },
+			});
+
+			return abstractionHelper.abstractRequest.fetchRequest(modifiedRequest);
 		}
 
 		// Initialize the KV store
@@ -350,7 +375,7 @@ export default {
 				context,
 				abstractionHelper,
 				kvStore,
-				kvStoreUserProfile,
+				kvStoreUserProfile
 			);
 		}
 
@@ -362,7 +387,7 @@ export default {
 			pathName,
 			workerOperation,
 			sdkKey,
-			optimizelyEnabled,
+			optimizelyEnabled
 		);
 	},
 };

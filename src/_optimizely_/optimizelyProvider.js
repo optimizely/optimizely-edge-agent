@@ -22,37 +22,6 @@ let globalOptimizelyClient = undefined;
 let globalKVStore = undefined;
 let globalKVStoreUserProfile = undefined;
 
-// const userProfileService = {
-// 	// Adapter that provides helpers to read and write from KV Store
-// 	UPS_LS_PREFIX: 'optly-ups-data',
-// 	kvStorageAdapter: {
-// 	  read: async function(key) {
-// 		let userProfileData = await kvStore.get(key);
-// 		if (userProfileData) {
-// 			userProfileData = JSON.parse(userProfileData);
-// 			return optlyHelper.isValidObject(userProfileData, true);
-// 		}
-// 		return {};
-// 	  },
-// 	  write: async function(key, data) {
-// 		let userProfileData = optlyHelper.isValidObject(data, true);
-// 		await kvStore.put(key, JSON.stringify(userProfileData));
-// 	  },
-// 	},
-// 	getUserKey: function (userId) {
-// 	  return `${this.UPS_LS_PREFIX}-${userId}`;
-// 	},
-// 	// Perform user profile lookup
-// 	lookup: function(userId) {
-// 	  return this.kvStorageAdapter.read(this.getUserKey(userId));
-// 	},
-// 	// Persist user profile
-// 	save: async function(userProfileMap) {
-// 	  const userKey = this.getUserKey(userProfileMap.user_id);
-// 	  await this.kvStorageAdapter.write(userKey, userProfileMap);
-// 	},
-//   };
-
 /**
  * The OptimizelyProvider class is a class that provides a common interface for handling Optimizely operations.
  * It is designed to be extended by other classes to provide specific implementations for handling Optimizely operations.
@@ -424,7 +393,7 @@ export default class OptimizelyProvider {
 		return forcedDecisions.some((decision) => decision.flagKey === flagKey);
 	}
 
-	/**
+	/**+
 	 * Retrieves the decision for a flag.
 	 * @param {Object} flagObj - The flag object.
 	 * @param {boolean} [doForceDecision=false] - Whether to force the decision.

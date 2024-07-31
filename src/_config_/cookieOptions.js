@@ -1,5 +1,5 @@
 /**
- * @module CookieOptions
+ * @module cookieOptions
  *
  * The CookieOptions specifies the default options for the cookies. *
  */

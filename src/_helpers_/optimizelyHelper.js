@@ -497,6 +497,7 @@ export function getValidCookieDecisions(decisions, activeFlags) {
 	return decisions.filter((decision) => activeFlagsSet.has(decision.flagKey));
 }
 
+
 /**
  * Serializes an array of decision objects into a string.
  * @param {Object[]} decisions - The array of decision objects.
