@@ -1037,18 +1037,6 @@ export default class CoreLogic {
 		}
 	}
 
-	// /**
-	//  * Handles forwarding the request to the origin while setting appropriate headers and cookies.
-	//  * @param {string} visitorId - The visitor ID.
-	//  * @param {string} serializedDecisions - The serialized decisions string.
-	//  * @param {RequestConfig} requestConfig - The request configuration object.
-	//  * @returns {Promise<Response>}
-	//  */
-	// async handleOriginForwarding(visitorId, serializedDecisions, requestConfig) {
-	// 	let clonedRequest = await this.setupRequestModification(visitorId, serializedDecisions, requestConfig);
-	// 	return clonedRequest || this.request;
-	// }
-
 	/**
 	 * Prepares a response when not forwarding to the origin, primarily for local decisioning.
 	 * @param {Object|string} responseDecisions - Decisions to be included in the response.

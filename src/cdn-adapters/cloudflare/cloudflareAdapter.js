@@ -1155,9 +1155,6 @@ class CloudflareAdapter {
 	 */
 	setMultipleResponseHeaders(response, headers) {
 		this.logger.debugExt(`Setting multiple headers [setMultipleResponseHeaders]:`, headers);
-		// Clone the original response
-		// const newResponse = this.cloneResponse(response);
-		// const newResponse = response;
 
 		// Update the headers with new values
 		Object.entries(headers).forEach(([name, value]) => {
