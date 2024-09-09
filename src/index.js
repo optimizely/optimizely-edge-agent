@@ -246,11 +246,14 @@ async function handleDefaultRequest(
 	optimizelyEnabled
 ) {
 	logger.debug('Edgeworker index.js - Handling default request [handleDefaultRequest]');
-	// if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey) {
-	// 	return fetch(incomingRequest, environmentVariables, context);
-	// }
 
-	if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey) {
+	const url = new URL(incomingRequest.url);
+	const isLocalhost = url.hostname === '127.0.0.1' && url.port === '8787';
+
+	// URL of your Pages deployment
+	const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
+
+	if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey || isLocalhost) {
 		// Check if the request is already being handled by the worker
 		if (incomingRequest.headers.get('X-Worker-Processed')) {
 			return abstractionHelper.createResponse({ error: 'Endless loop detected' }, 500);
@@ -258,10 +261,28 @@ async function handleDefaultRequest(
 
 		// Clone the request and add a custom header to mark it as processed
 		const modifiedRequest = new Request(incomingRequest, {
-			headers: { ...Object.fromEntries(request.headers), 'X-Worker-Processed': 'true' },
+			headers: { ...Object.fromEntries(incomingRequest.headers), 'X-Worker-Processed': 'true' },
 		});
 
-		return fetch(modifiedRequest, environmentVariables, context);
+		let newUrl;
+		if (isLocalhost) {
+			// Redirect to https://edgeagent.demo.optimizely.com with the same path
+			newUrl = new URL(url.pathname + url.search, 'https://edgeagent.demo.optimizely.com');
+		} else {
+			// For non-localhost requests, proxy to the Pages deployment
+			newUrl = new URL(url.pathname + url.search, PAGES_URL);
+		}
+
+		// Create a new request with the new URL
+		const proxyRequest = new Request(newUrl.toString(), modifiedRequest);
+
+		const response = await fetch(proxyRequest, environmentVariables, context);
+		
+		// Clone the response and add a header to indicate it was proxied
+		const newResponse = new Response(response.body, response);
+		newResponse.headers.set('X-Proxied-From', isLocalhost ? 'localhost' : PAGES_URL);
+
+		return newResponse;
 	}
 
 	if (
@@ -306,6 +327,7 @@ export default {
 		const pathName = abstractRequest.getPathname();
 		logger.debug('Edgeworker index.js - Getting pathname [pathName]', pathName);
 
+
 		// Normalize the pathname
 		const normalizedPathname = normalizePathname(pathName);
 
@@ -328,8 +350,8 @@ export default {
 		// if the request is for an Optimizely operation. This will result in a large number of edge worker invocations for non-Optimizely
 		// operations and will drastically reduce the edge worker's performance. If it is for an asset then simply fetch the asset.
 		// If workerOperation is true then we know for a fact that it is not an Optimizely operation.
-		if (workerOperation || requestIsForAsset) {
-			logger.debug(`Request is for an asset or an edge worker operation: ${pathName}`);
+		if (workerOperation) {
+			logger.debug(`Request is for an edge worker operation: ${pathName}`);
 
 			// Check if the request is already being handled by the worker
 			if (incomingRequest.headers.get('X-Worker-Processed')) {

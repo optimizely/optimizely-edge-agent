@@ -9,6 +9,7 @@ lerna-debug.log*
 
 #Cloudflare Wrangler
 wrangler.toml
+wrangler*.toml
 .wrangler/
 #Custom Settings
 
