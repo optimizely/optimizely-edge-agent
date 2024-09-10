@@ -39,6 +39,9 @@ import handleRequest from './_api_/apiRouter';
 let abstractionHelper, logger, abstractRequest, incomingRequest, environmentVariables, context;
 let optimizelyProvider, coreLogic, cdnAdapter;
 
+// URL of your Pages deployment
+const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
+
 /**
  * Initializes the core logic of the application.
  * @param {string} sdkKey - The SDK key for Optimizely.
@@ -73,7 +76,8 @@ function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvSto
 		abstractionHelper,
 		kvStore,
 		kvStoreUserProfile,
-		logger
+		logger,
+		PAGES_URL
 	);
 	optimizelyProvider.setCdnAdapter(cdnAdapter);
 	coreLogic.setCdnAdapter(cdnAdapter);
@@ -218,7 +222,8 @@ async function handleOptimizelyRequest(sdkKey, request, env, ctx, abstractionHel
 	logger.debug('Edgeworker index.js - Handling Optimizely request [handleOptimizelyRequest]');
 	try {
 		initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore, kvStoreUserProfile);
-		return cdnAdapter.fetchHandler(incomingRequest, environmentVariables, context);
+		const response = await cdnAdapter.fetchHandler(incomingRequest, environmentVariables, context);
+		return response;
 	} catch (error) {
 		logger.error('Error during core logic initialization:', error);
 		return abstractionHelper.createResponse({ module: 'index.js', error: error.message }, 500);
@@ -250,9 +255,7 @@ async function handleDefaultRequest(
 	const url = new URL(incomingRequest.url);
 	const isLocalhost = url.hostname === '127.0.0.1' && url.port === '8787';
 
-	// URL of your Pages deployment
-	// const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
-	const PAGES_URL = 'https://hybrid.russell-loube-optimizely.com/';
+	// const PAGES_URL = 'https://hybrid.russell-loube-optimizely.com';
 
 	if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey || isLocalhost) {
 		// Check if the request is already being handled by the worker
@@ -264,6 +267,8 @@ async function handleDefaultRequest(
 		const modifiedRequest = new Request(incomingRequest, {
 			headers: { ...Object.fromEntries(incomingRequest.headers), 'X-Worker-Processed': 'true' },
 		});
+
+		logger.debug('Edgeworker index.js - Fetching request [handleDefaultRequest - modifiedRequest]', modifiedRequest);
 
 		let newUrl;
 		if (isLocalhost) {
@@ -277,11 +282,21 @@ async function handleDefaultRequest(
 		// Create a new request with the new URL
 		const proxyRequest = new Request(newUrl.toString(), modifiedRequest);
 
+		logger.debug('Edgeworker index.js - Fetching request [handleDefaultRequest - proxyRequest]', proxyRequest);
+
 		const response = await fetch(proxyRequest, environmentVariables, context);
-		
+
+		logger.debug('Edgeworker index.js - Fetching request [handleDefaultRequest - response]', response);
+
 		// Clone the response and add a header to indicate it was proxied
 		const newResponse = new Response(response.body, response);
 		newResponse.headers.set('X-Proxied-From', isLocalhost ? 'localhost' : PAGES_URL);
+
+		logger.debug('Edgeworker index.js - Fetching request [handleDefaultRequest - newResponse]', newResponse);
+
+		// Log the response body
+		// const bodyText = await newResponse.clone().text();
+		// logger.debug('Edgeworker index.js - Response body [handleDefaultRequest - newResponse body]', bodyText);
 
 		return newResponse;
 	}
@@ -318,8 +333,13 @@ export default {
 		logger = Logger.getInstance(env);
 		logger.debug('Edgeworker index.js - Edgeworker default handler [fetch]');
 
-		// Get the abstraction helper for handling the request
-		abstractionHelper = getAbstractionHelper(request, ctx, env, logger);
+		// Ensure HTTPS protocol
+		const url = new URL(request.url);
+		url.protocol = 'https:';
+		const httpsRequest = new Request(url.toString(), request);
+
+		// Get the abstraction helper for handling the request with the HTTPS request
+		abstractionHelper = getAbstractionHelper(httpsRequest, ctx, env, logger);
 
 		// Destructure the abstraction helper to get the necessary objects
 		({ abstractRequest, request: incomingRequest, env: environmentVariables, ctx: context } = abstractionHelper);
@@ -327,11 +347,6 @@ export default {
 		// Get the pathname from the abstract request
 		const pathName = abstractRequest.getPathname();
 		logger.debug('Edgeworker index.js - Getting pathname [pathName]', pathName);
-
-		// Ensure HTTPS protocol
-		const url = new URL(incomingRequest.url);
-		url.protocol = 'https:';
-		incomingRequest = new Request(url.toString(), incomingRequest);
 
 		// Normalize the pathname
 		const normalizedPathname = normalizePathname(pathName);
@@ -349,8 +364,7 @@ export default {
 
 		// Check if the request is for an asset
 		const requestIsForAsset = isAssetRequest(pathName);
-
-		if (workerOperation || requestIsForAsset) {
+		if (workerOperation) {
 			logger.debug(`Request is for an asset or an edge worker operation: ${pathName}`);
 
 			// Check if the request is already being handled by the worker
@@ -363,6 +377,7 @@ export default {
 				headers: { ...Object.fromEntries(incomingRequest.headers), 'X-Worker-Processed': 'true' },
 			});
 
+			logger.debug('Edgeworker index.js - Fetching request [workerOperation]', optimizelyEnabled);
 			return abstractionHelper.abstractRequest.fetchRequest(modifiedRequest);
 		}
 		// Initialize the KV store
@@ -389,7 +404,7 @@ export default {
 		// If the request is not for an asset, Optimizely is enabled, not a worker operation, and has an SDK key,
 		// handle the Optimizely request
 		if (!requestIsForAsset && optimizelyEnabled && !workerOperation && sdkKey) {
-			return handleOptimizelyRequest(
+			const response = await handleOptimizelyRequest(
 				sdkKey,
 				abstractRequest,
 				environmentVariables,
@@ -398,6 +413,18 @@ export default {
 				kvStore,
 				kvStoreUserProfile
 			);
+			// Log the response headers
+			const headers = {};
+			for (const [key, value] of response.headers.entries()) {
+				headers[key] = value;
+			}
+			logger.debug('Response headers:', JSON.stringify(headers, null, 2));
+
+			// Log the response body
+			const clonedResponse = response.clone();
+			// const body = await clonedResponse.text();
+			// logger.debug('Response body:', body);
+			return response;
 		}
 
 		// If none of the above conditions are met, handle the request as a default request

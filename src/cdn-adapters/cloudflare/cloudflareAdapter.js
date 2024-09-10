@@ -36,7 +36,8 @@ class CloudflareAdapter {
 	 * Creates an instance of CloudflareAdapter.
 	 * @param {Object} coreLogic - The core logic instance.
 	 */
-	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, kvStoreUserProfile, logger) {
+	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, kvStoreUserProfile, logger, pagesUrl) {
+		this.pagesUrl = pagesUrl;
 		this.sdkKey = sdkKey;
 		this.logger = logger;
 		this.kvStore = kvStore || undefined;
@@ -106,7 +107,8 @@ class CloudflareAdapter {
 			const reqResponse = result.reqResponse;
 			if (reqResponse === 'NO_MATCH') {
 				this.logger.debug('No cdnVariationSettings found. Fetching content from origin [cdnAdapter -> fetchHandler]');
-				return await this.fetchFromOriginOrCDN(request);
+				const response = await this.fetchFromOriginOrCDN(request);
+				return response;
 			}
 
 			this.eventListenersResult = await this.eventListeners.trigger(
@@ -133,10 +135,25 @@ class CloudflareAdapter {
 			}
 
 			const cdnSettings = result.cdnExperimentSettings;
-			let validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
+			let validCDNSettings = false;
+
+			if (cdnSettings && typeof cdnSettings === 'object') {
+				validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
+				this.logger.debug(
+					`Valid CDN settings found [fetchHandler] - validCDNSettings: ${optlyHelper.safelyStringifyJSON(
+						validCDNSettings
+					)}`
+				);
+				this.logger.debug(
+					`CDN settings found [fetchHandler] - cdnSettings: ${optlyHelper.safelyStringifyJSON(cdnSettings)}`
+				);
+			} else {
+				this.logger.debug('CDN settings are undefined or invalid');
+			}
+
 			// Adjust origin URL based on CDN settings
 			if (validCDNSettings) {
-				originUrl = cdnSettings.cdnResponseURL;
+				originUrl = cdnSettings.cdnResponseURL || originUrl;
 				this.shouldCacheResponse = cdnSettings.cacheRequestToOrigin === true;
 				this.logger.debug(`CDN settings found [fetchHandler] - shouldCacheResponse: ${this.shouldCacheResponse}`);
 			}
@@ -169,7 +186,7 @@ class CloudflareAdapter {
 				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings, ctx);
 			} else {
 				this.logger.debug(
-					'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.'
+					'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.'
 				);
 				fetchResponse = await this.fetchFromOriginOrCDN(request);
 			}
@@ -187,12 +204,13 @@ class CloudflareAdapter {
 	setFetchAndProcessLogs(validCDNSettings, cdnSettings) {
 		if (!validCDNSettings) {
 			this.logger.debug(
-				'No CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]'
+				'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]'
 			);
 		} else {
+			this.logger.debug('Valid CDN settings found [fetchHandler]');
 		}
 
-		if (validCDNSettings) {
+		if (validCDNSettings && cdnSettings) {
 			this.logger.debug(
 				`Fetching content from origin in CDN Adapter [fetchHandler -> fetchAndProcessRequest] - `,
 				`shouldCacheResponse is ${this.shouldCacheResponse} and validCDNSettings is ${validCDNSettings} and `,
@@ -200,7 +218,6 @@ class CloudflareAdapter {
 			);
 		}
 	}
-
 	/**
 	 * Fetches from the origin and processes the request based on caching and CDN settings.
 	 * @param {Request} originalRequest - The original request.
@@ -406,9 +423,33 @@ class CloudflareAdapter {
 	 */
 	async fetchFromOriginOrCDN(input, options = {}) {
 		try {
-			const urlToFetch = typeof input === 'string' ? input : input.url;
+			let urlToFetch = typeof input === 'string' ? input : input.url;
+			this.logger.debug('urlToFetch:', urlToFetch);
+			
+			// Parse the original URL
+			const originalUrl = new URL(urlToFetch);
+			
+			// Check if the URL is for the Optimizely datafile
+			if (!originalUrl.hostname.includes('cdn.optimizely.com')) {
+				// Create a new URL using this.pagesUrl as the base
+				const newUrl = new URL(this.pagesUrl);
+				
+				// Preserve the original path and search parameters
+				newUrl.pathname = originalUrl.pathname;
+				newUrl.search = originalUrl.search;
+				
+				urlToFetch = newUrl.toString();
+				
+				if (urlToFetch.endsWith('/')) {
+					urlToFetch = urlToFetch.slice(0, -1);
+				}
+			}
+			
 			this.logger.debug(`Fetching from origin or CDN [fetchFromOriginOrCDN]: ${urlToFetch}`, options);
-			return await AbstractRequest.fetchRequest(urlToFetch, options);
+			
+			const response = await AbstractRequest.fetchRequest(urlToFetch, options);
+			this.logger.debug(`Fetching from origin or CDN [fetchFromOriginOrCDN] - response`, response);
+			return response;
 		} catch (error) {
 			this.logger.error('Error fetching from origin or CDN:', error);
 			throw error;
@@ -500,33 +541,43 @@ class CloudflareAdapter {
 	 * @param {object} ctx - The execution context.
 	 * @returns {Promise<Response>} - The response from the origin server, or an error response if fetching fails.
 	 */
-	async defaultFetch(request, env, ctx) {
+	async defaultFetch(request, options = {}) {
 		try {
 			this.logger.debug(`Fetching from origin [defaultFetch]`);
-			// check if the request is a string, then use the request as the url, otherwise use the request object url property
-			const _url = typeof request === 'string' ? request : request.url;
-			this.logger.debug(`Fetching from origin for: ${_url}`);
+
+			let url;
+			let fetchOptions = {};
+
+			if (typeof request === 'string') {
+				url = request;
+				fetchOptions = options;
+			} else {
+				url = request.url;
+				fetchOptions = {
+					method: request.method,
+					headers: request.headers,
+					body: request.body,
+					...options,
+				};
+			}
+
+			this.logger.debug(`Fetching from origin for: ${url}`);
 
 			// Perform a standard fetch request using the original request details
-			const response = await this.fetchFromOriginOrCDN(_url);
+			const response = await this.fetchFromOriginOrCDN(url, fetchOptions);
 
 			// Check if the response was successful
 			if (!response.ok) {
 				throw new Error(`HTTP error! status: ${response.status}`);
 			}
-			this.logger.debug(`Fetch fromn origin completed [defaultFetch]`);
+			this.logger.debug(`Fetch from origin completed [defaultFetch]`);
 
 			// Clone the response to modify it if necessary
 			let clonedResponse = AbstractResponse.createNewResponse(response.body, {
 				status: response.status,
 				statusText: response.statusText,
-				//headers: new Headers(response.headers),
 				headers: this.abstractionHelper.getNewHeaders(response),
 			});
-
-			// Here you can add any headers or perform any response transformations if necessary
-			// For example, you might want to remove certain headers or add custom headers
-			// clonedResponse.headers.set('X-Custom-Header', 'value');
 
 			return clonedResponse;
 		} catch (error) {
@@ -555,16 +606,23 @@ class CloudflareAdapter {
 	async getDatafile(sdkKey, ttl = 3600) {
 		this.logger.debugExt(`Getting datafile [getDatafile]: ${sdkKey}`);
 		const url = `https://cdn.optimizely.com/datafiles/${sdkKey}.json`;
-		// TODO - This cacheTtl needs to be verified across CDN providers and abstracted...
+		
 		try {
-			const response = await this.defaultFetch(url, { cf: { cacheTtl: ttl } });
+			const response = await this.fetchFromOriginOrCDN(url, { 
+				cf: { cacheTtl: ttl },
+				headers: {
+					'Content-Type': 'application/json'
+				}
+			});
+			
 			if (!response.ok) {
 				throw new Error(`Failed to fetch datafile: ${response.statusText}`);
 			}
+			
 			return await response.text();
 		} catch (error) {
 			this.logger.error(`Error fetching datafile for SDK key ${sdkKey}: ${error}`);
-			throw new Error('Error fetching datafile.');
+			throw new Error('Error fetching datafile.' + error.message);
 		}
 	}
 

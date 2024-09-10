@@ -216,6 +216,16 @@ export default class CoreLogic {
 	}
 
 	/**
+	 * Removes extra slashes from the URL.
+	 * @param {string} url - The URL to remove extra slashes from.
+	 * @returns {string} The URL with extra slashes removed.
+	 */
+	removeExtraSlashes(url) {
+		// Keep https:// intact, then replace any occurrence of multiple slashes with a single slash
+		return url.replace(/(https?:\/\/)|(\/)+/g, '$1$2');
+	}
+
+	/**
 	 * Searches for a CDN configuration that matches a given URL within an array of decision objects.
 	 * It compares the request URL against each cdnExperimentURL, optionally ignoring query parameters based on the flag.
 	 * Efficiently compares URLs and caches matched configuration data for quick access.
@@ -245,8 +255,8 @@ export default class CoreLogic {
 
 		// Normalize the pathname by removing a trailing '/' if present
 		const normalizedPathname = url.pathname.endsWith('/') ? url.pathname.slice(0, -1) : url.pathname;
-		// Construct a comparison URL string
-		const compareOriginAndPath = url.origin + normalizedPathname;
+		// Construct a comparison URL string and remove extra slashes
+		const compareOriginAndPath = this.removeExtraSlashes(url.origin + normalizedPathname);
 
 		// Log the normalized URL to be compared
 		this.logger.debug(`Normalized URL for comparison: ${compareOriginAndPath}`);
@@ -265,7 +275,14 @@ export default class CoreLogic {
 						const cdnNormalizedPathname = cdnUrl.pathname.endsWith('/')
 							? cdnUrl.pathname.slice(0, -1)
 							: cdnUrl.pathname;
-						const targetUrl = cdnUrl.origin + cdnNormalizedPathname;
+						// Remove extra slashes from the target URL
+						const targetUrl = this.removeExtraSlashes(cdnUrl.origin + cdnNormalizedPathname);
+
+						// Update cdnConfig with normalized URLs
+						cdnConfig.cdnExperimentURL = this.removeExtraSlashes(cdnConfig.cdnExperimentURL);
+						if (cdnConfig.cdnResponseURL) {
+							cdnConfig.cdnResponseURL = this.removeExtraSlashes(cdnConfig.cdnResponseURL);
+						}
 
 						// Log the comparison details
 						this.logger.debug('Comparing URL: ' + compareOriginAndPath + ' with ' + targetUrl);
@@ -338,6 +355,29 @@ export default class CoreLogic {
 			// Get visitor ID, datafile, and user agent
 			const visitorId = await this.getVisitorId(request, requestConfig);
 			const datafile = await this.retrieveDatafile(requestConfig, env);
+			// If datafile is null, return origin content immediately
+			if (!datafile) {
+				this.logger.debug('Datafile is null. Returning origin content.');
+				return {
+					reqResponse: 'NO_MATCH',
+					cdnExperimentSettings: undefined,
+					reqResponseObjectType: 'response',
+					forwardRequestToOrigin: true,
+					errorMessage: 'Datafile retrieval failed',
+					isError: false,
+					isPostMethod: this.isPostMethod,
+					isGetMethod: this.isGetMethod,
+					isDecideOperation: this.isDecideOperation,
+					isDatafileOperation: this.datafileOperation,
+					isConfigOperation: this.configOperation,
+					flagsToDecide: [],
+					flagsToForce: [],
+					validStoredDecisions: [],
+					href: this.href,
+					pathName: this.pathName,
+				};
+			}
+
 			const userAgent = requestConfig.getHeader('User-Agent');
 
 			// Initialize Optimizely with the retrieved datafile
@@ -606,7 +646,8 @@ export default class CoreLogic {
 		} catch (error) {
 			// Log and rethrow error to be handled by the caller
 			this.logger.error('Error retrieving datafile:', error.message);
-			throw new Error(`Datafile retrieval error: ${error.message}`);
+			return null;
+			//throw new Error(`Datafile retrieval error: ${error.message}`);
 		}
 	}
 
