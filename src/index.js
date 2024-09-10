@@ -251,7 +251,8 @@ async function handleDefaultRequest(
 	const isLocalhost = url.hostname === '127.0.0.1' && url.port === '8787';
 
 	// URL of your Pages deployment
-	const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
+	// const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
+	const PAGES_URL = 'https://hybrid.russell-loube-optimizely.com/';
 
 	if (isAssetRequest(pathName) || !optimizelyEnabled || !sdkKey || isLocalhost) {
 		// Check if the request is already being handled by the worker
@@ -327,6 +328,10 @@ export default {
 		const pathName = abstractRequest.getPathname();
 		logger.debug('Edgeworker index.js - Getting pathname [pathName]', pathName);
 
+		// Ensure HTTPS protocol
+		const url = new URL(incomingRequest.url);
+		url.protocol = 'https:';
+		incomingRequest = new Request(url.toString(), incomingRequest);
 
 		// Normalize the pathname
 		const normalizedPathname = normalizePathname(pathName);
@@ -345,13 +350,8 @@ export default {
 		// Check if the request is for an asset
 		const requestIsForAsset = isAssetRequest(pathName);
 
-		// If the request is for an asset or a worker operation, fetch the request directly. If a single edge worker is used for many
-		// web pages and if this check is not done then every web page asset request will trigger the edge worker to attempt to determine
-		// if the request is for an Optimizely operation. This will result in a large number of edge worker invocations for non-Optimizely
-		// operations and will drastically reduce the edge worker's performance. If it is for an asset then simply fetch the asset.
-		// If workerOperation is true then we know for a fact that it is not an Optimizely operation.
-		if (workerOperation) {
-			logger.debug(`Request is for an edge worker operation: ${pathName}`);
+		if (workerOperation || requestIsForAsset) {
+			logger.debug(`Request is for an asset or an edge worker operation: ${pathName}`);
 
 			// Check if the request is already being handled by the worker
 			if (incomingRequest.headers.get('X-Worker-Processed')) {
@@ -365,7 +365,6 @@ export default {
 
 			return abstractionHelper.abstractRequest.fetchRequest(modifiedRequest);
 		}
-
 		// Initialize the KV store
 		const kvStore = initializeKVStore(env);
 		const kvStoreUserProfile = initializeKVStoreUserProfile(env);
