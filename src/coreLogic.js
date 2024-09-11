@@ -548,7 +548,7 @@ export default class CoreLogic {
 						return result;
 					}
 					result = {
-						message: 'An unknown error has occurred.',
+						message: 'An unknown internal error has occurred.',
 						status: 500,
 					};
 					return result;
