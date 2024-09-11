@@ -328,7 +328,7 @@ class CloudflareAdapter {
 			this.requestConfig,
 			this.result
 		);
-		if (!this.coreLogic.requestConfig.overrideCache) {
+		if ((this.coreLogic.requestConfig?.overrideCache === true) && cdnSettings?.cacheRequestToOrigin === true) {
 			response = await cache.match(cacheKey);
 		}
 		this.eventListenersResult = await this.eventListeners.trigger(
