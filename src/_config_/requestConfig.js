@@ -63,6 +63,7 @@ export default class RequestConfig {
 			visitorIdCookieName: 'optly_edge_visitor_id',
 			decisionsHeaderName: 'optly-edge-decisions',
 			visitorIdsHeaderName: 'optly-edge-visitor-id',
+			prioritizeHeadersOverQueryParams: true,
 			sdkKeyHeader: 'X-Optimizely-SDK-Key',
 			setResponseHeaders: 'X-Optimizely-Set-Response-Headers',
 			setResponseCookies: 'X-Optimizely-Set-Response-Cookies',
@@ -277,64 +278,143 @@ export default class RequestConfig {
 
 	/**
 	 * Initializes configuration settings from URL query parameters.
+	 * If this.settings.prioritizeHeadersOverQueryParams is false, query parameter values
+	 * take precedence over existing values (potentially from headers) when present in the request.
+	 *
+	 * This method updates various configuration properties including:
+	 * - overrideVisitorId
+	 * - overrideCache
+	 * - serverMode
+	 * - visitorId
+	 * - flagKeys
+	 * - sdkKey
+	 * - eventKey
+	 * - enableResponseMetadata
+	 * - decideAll
+	 * - trimmedDecisions
+	 * - disableDecisionEvent
+	 * - enabledFlagsOnly
+	 * - includeReasons
+	 * - ignoreUserProfileService
+	 * - excludeVariables
+	 * - setRequestHeaders (for non-POST requests)
+	 * - setRequestCookies (for non-POST requests)
+	 * - setResponseHeaders
+	 * - setResponseCookies
+	 *
+	 * Each property is updated based on its corresponding query parameter, if present.
+	 * Default values are used when neither existing values nor query parameters are available.
+	 *
+	 * @async
+	 * @function
+	 * @name initializeFromQueryParams
+	 * @memberof RequestConfig
+	 * @returns {Promise<void>}
 	 */
 	async initializeFromQueryParams() {
 		logger().debugExt('RequestConfig - Initializing from query parameters [initializeFromQueryParams]');
 		const qp = this.url.searchParams;
-		this.overrideVisitorId =
-			this.overrideVisitorId || qp.get(this.queryParameters.overrideVisitorId) === 'true'
-				? true
-				: false || this.settings.defaultOverrideVisitorId;
-		this.overrideCache =
-			this.overrideCache || qp.get(this.queryParameters.overrideCache) === 'true'
-				? true
-				: false || this.settings.defaultOverrideCache;
-		this.serverMode = qp.get(this.queryParameters.serverMode);
-		this.visitorId = this.visitorId || qp.get(this.queryParameters.visitorId);
-		this.flagKeys = qp.getAll(this.queryParameters.keys);
-		this.sdkKey = this.sdkKey || qp.get(this.queryParameters.sdkKey);
-		this.eventKey = this.eventKey || qp.get(this.queryParameters.eventKey);
-		this.enableResponseMetadata =
-			this.enableResponseMetadata || this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata));
-		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Query Parameters';
-		this.decideAll = this.parseBoolean(qp.get(this.queryParameters.decideAll));
-		//this.trimmedDecisions = this.trimmedDecisions || this.parseBoolean(qp.get(this.queryParameters.trimmedDecisions)) || this.settings.defaultTrimmedDecisions;
-		const trimmedDecisionsQueryParam = qp.get(this.queryParameters.trimmedDecisions);
-		if (this.trimmedDecisions === undefined && trimmedDecisionsQueryParam === 'false') {
-			this.trimmedDecisions = false;
-		} else {
-			if (this.trimmedDecisions === undefined && trimmedDecisionsQueryParam === 'true') {
-				this.trimmedDecisions = true;
-			} else if (trimmedDecisionsQueryParam === null) {
-				if (this.trimmedDecisions === undefined) this.trimmedDecisions = this.settings.defaultTrimmedDecisions;
+		const prioritizeHeaders = this.settings.prioritizeHeadersOverQueryParams;
+
+		const updateValue = (currentValue, queryParamValue, defaultValue) => {
+			if (!prioritizeHeaders && queryParamValue !== null) {
+				return queryParamValue;
 			}
+			return currentValue || queryParamValue || defaultValue;
+		};
+
+		this.overrideVisitorId = updateValue(
+			this.overrideVisitorId,
+			qp.get(this.queryParameters.overrideVisitorId) === 'true',
+			this.settings.defaultOverrideVisitorId
+		);
+
+		this.overrideCache = updateValue(
+			this.overrideCache,
+			qp.get(this.queryParameters.overrideCache) === 'true',
+			this.settings.defaultOverrideCache
+		);
+
+		this.serverMode = updateValue(this.serverMode, qp.get(this.queryParameters.serverMode), null);
+		this.visitorId = updateValue(this.visitorId, qp.get(this.queryParameters.visitorId), null);
+		this.flagKeys = updateValue(this.flagKeys, qp.getAll(this.queryParameters.keys), []);
+		this.sdkKey = updateValue(this.sdkKey, qp.get(this.queryParameters.sdkKey), null);
+		this.eventKey = updateValue(this.eventKey, qp.get(this.queryParameters.eventKey), null);
+
+		this.enableResponseMetadata = updateValue(
+			this.enableResponseMetadata,
+			this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata)),
+			null
+		);
+
+		if (this.sdkKey && this.settings.enableResponseMetadata) {
+			this.configMetadata.sdkKeyFrom = 'Query Parameters';
 		}
 
-		this.disableDecisionEvent = this.parseBoolean(qp.get(this.queryParameters.disableDecisionEvent));
-		this.enabledFlagsOnly = this.parseBoolean(qp.get(this.queryParameters.enabledFlagsOnly));
-		this.includeReasons = this.parseBoolean(qp.get(this.queryParameters.includeReasons));
-		this.ignoreUserProfileService = this.parseBoolean(qp.get(this.queryParameters.ignoreUserProfileService));
-		this.excludeVariables = this.excludeVariables || this.parseBoolean(qp.get(this.queryParameters.excludeVariables));
-		this.enabledFlagsOnly = this.enabledFlagsOnly || this.parseBoolean(qp.get(this.queryParameters.enabledFlagsOnly));
+		this.decideAll = updateValue(this.decideAll, this.parseBoolean(qp.get(this.queryParameters.decideAll)), false);
+
+		const trimmedDecisionsQueryParam = qp.get(this.queryParameters.trimmedDecisions);
+		if (!prioritizeHeaders && trimmedDecisionsQueryParam !== null) {
+			this.trimmedDecisions = trimmedDecisionsQueryParam === 'true';
+		} else if (this.trimmedDecisions === undefined) {
+			this.trimmedDecisions = trimmedDecisionsQueryParam === 'true' || this.settings.defaultTrimmedDecisions;
+		}
+
+		this.disableDecisionEvent = updateValue(
+			this.disableDecisionEvent,
+			this.parseBoolean(qp.get(this.queryParameters.disableDecisionEvent)),
+			false
+		);
+
+		this.enabledFlagsOnly = updateValue(
+			this.enabledFlagsOnly,
+			this.parseBoolean(qp.get(this.queryParameters.enabledFlagsOnly)),
+			false
+		);
+
+		this.includeReasons = updateValue(
+			this.includeReasons,
+			this.parseBoolean(qp.get(this.queryParameters.includeReasons)),
+			false
+		);
+
+		this.ignoreUserProfileService = updateValue(
+			this.ignoreUserProfileService,
+			this.parseBoolean(qp.get(this.queryParameters.ignoreUserProfileService)),
+			false
+		);
+
+		this.excludeVariables = updateValue(
+			this.excludeVariables,
+			this.parseBoolean(qp.get(this.queryParameters.excludeVariables)),
+			false
+		);
 
 		if (!this.isPostMethod || this.isPostMethod === undefined) {
-			this.setRequestHeaders =
-				this.setRequestHeaders ||
-				this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)) ||
-				this.settings.defaultSetRequestHeaders;
-			this.setRequestCookies =
-				this.setRequestCookies ||
-				this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)) ||
-				this.settings.defaultSetRequestCookies;
+			this.setRequestHeaders = updateValue(
+				this.setRequestHeaders,
+				this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)),
+				this.settings.defaultSetRequestHeaders
+			);
+
+			this.setRequestCookies = updateValue(
+				this.setRequestCookies,
+				this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)),
+				this.settings.defaultSetRequestCookies
+			);
 		}
-		this.setResponseHeaders =
-			this.setResponseHeaders ||
-			this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)) ||
-			this.settings.defaultSetResponseHeaders;
-		this.setResponseCookies =
-			this.setResponseCookies ||
-			this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)) ||
-			this.settings.defaultSetResponseCookies;
+
+		this.setResponseHeaders = updateValue(
+			this.setResponseHeaders,
+			this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)),
+			this.settings.defaultSetResponseHeaders
+		);
+
+		this.setResponseCookies = updateValue(
+			this.setResponseCookies,
+			this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)),
+			this.settings.defaultSetResponseCookies
+		);
 	}
 
 	/**

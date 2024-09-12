@@ -238,6 +238,16 @@ class CloudflareAdapter {
 			if (this.cookiesToSetRequest.length > 0) {
 				newRequest = this.setMultipleReqSerializedCookies(newRequest, this.cookiesToSetRequest);
 			}
+			
+			// Add additional headers from cdnSettings if present
+			if (cdnSettings.additionalHeaders && typeof cdnSettings.additionalHeaders === 'object') {
+				this.logger.debug('Adding additional headers from cdnSettings');
+				for (const [headerName, headerValue] of Object.entries(cdnSettings.additionalHeaders)) {
+					newRequest.headers.set(headerName, headerValue);
+					this.logger.debugExt(`Added header: ${headerName}: ${headerValue}`);
+				}
+			}
+			// Add headers from headersToSetRequest if present
 			if (optlyHelper.isValidObject(this.headersToSetRequest)) {
 				newRequest = this.setMultipleRequestHeaders(newRequest, this.headersToSetRequest);
 			}
@@ -351,7 +361,7 @@ class CloudflareAdapter {
 				response.headers.set('Cache-Control', 'public');
 			}
 			if (response.ok) {
-				this.cacheResponse(ctx, cache, cacheKey, response);
+				this.cacheResponse(ctx, cache, cacheKey, response, cdnSettings.cacheTTL = null);
 				this.eventListenersResult = await this.eventListeners.trigger(
 					'afterCacheResponse',
 					request,
@@ -483,7 +493,7 @@ class CloudflareAdapter {
 	 * @param {string} cacheKey - The cache key.
 	 * @param {Response} response - The response to cache.
 	 */
-	async cacheResponse(ctx, cache, cacheKey, responseToCache) {
+	async cacheResponse(ctx, cache, cacheKey, responseToCache, cacheTTL = null) {
 		let response;
 		this.eventListenersResult = await this.eventListeners.trigger(
 			'beforeCacheResponse',
@@ -498,7 +508,8 @@ class CloudflareAdapter {
 		this.logger.debug(`Caching response [cacheResponse]: ${cacheKey}`);
 		try {
 			const responseToCache = this.cloneResponse(response);
-			this.abstractionHelper.ctx.waitUntil(cache.put(cacheKey, responseToCache));
+			const ttl = typeof cacheTTL === 'number' && !isNaN(cacheTTL) ? cacheTTL : 60 * 60 * 24 * 60; // 60 days in seconds if invalid
+			this.abstractionHelper.ctx.waitUntil(cache.put(cacheKey, responseToCache, { expirationTtl: ttl }));
 			this.logger.debug('Response from origin was cached successfully. Cached Key:', cacheKey);
 		} catch (error) {
 			this.logger.error('Error caching response:', error);
@@ -1026,7 +1037,7 @@ class CloudflareAdapter {
 	 * @returns {Request} - A new request object with the updated cookies.
 	 * @throws {TypeError} - Throws if any parameters are not valid or the request is not a Request object.
 	 * @example
-	 * const originalRequest = new Request('https://example.com');
+	 * const originalRequest = this.abstractionHelper.abstractRequest.cloneRequest('https://example.com');
 	 * const cookiesToSet = {
 	 *     session: {value: '12345', options: {path: '/', secure: true}},
 	 *     user: {value: 'john_doe', options: {expires: new Date(2025, 0, 1)}}
