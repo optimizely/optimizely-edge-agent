@@ -40,7 +40,8 @@ let abstractionHelper, logger, abstractRequest, incomingRequest, environmentVari
 let optimizelyProvider, coreLogic, cdnAdapter;
 
 // URL of your Pages deployment
-const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
+// const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
+const PAGES_URL = 'https://edge-agent-demo-simone-tutorial.pages.dev';
 
 /**
  * Initializes the core logic of the application.

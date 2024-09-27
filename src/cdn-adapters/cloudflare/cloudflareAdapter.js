@@ -238,7 +238,7 @@ class CloudflareAdapter {
 			if (this.cookiesToSetRequest.length > 0) {
 				newRequest = this.setMultipleReqSerializedCookies(newRequest, this.cookiesToSetRequest);
 			}
-			
+
 			// Add additional headers from cdnSettings if present
 			if (cdnSettings.additionalHeaders && typeof cdnSettings.additionalHeaders === 'object') {
 				this.logger.debug('Adding additional headers from cdnSettings');
@@ -320,9 +320,12 @@ class CloudflareAdapter {
 	 */
 	async handleFetchFromOrigin(request, originUrl, cdnSettings, ctx) {
 		this.logger.debug(`Handling fetch from origin [handleFetchFromOrigin]: ${originUrl}`);
-		let response = undefined;
-		let cacheKey = undefined;
+		let response;
+		let cacheKey;
 		const clonedRequest = this.cloneRequestWithNewUrl(request, originUrl);
+		const shouldUseCache =
+			this.coreLogic.requestConfig?.overrideCache !== true && cdnSettings?.cacheRequestToOrigin === true;
+
 		this.eventListenersResult = await this.eventListeners.trigger('beforeCreateCacheKey', request, this.result);
 		if (this.eventListenersResult && this.eventListenersResult.cacheKey) {
 			cacheKey = this.eventListenersResult.cacheKey;
@@ -331,6 +334,7 @@ class CloudflareAdapter {
 			this.eventListenersResult = await this.eventListeners.trigger('afterCreateCacheKey', cacheKey, this.result);
 		}
 		this.logger.debug(`Generated cache key: ${cacheKey}`);
+
 		const cache = caches.default;
 		this.eventListenersResult = await this.eventListeners.trigger(
 			'beforeReadingCache',
@@ -338,9 +342,28 @@ class CloudflareAdapter {
 			this.requestConfig,
 			this.result
 		);
-		if ((this.coreLogic.requestConfig?.overrideCache === true) && cdnSettings?.cacheRequestToOrigin === true) {
+
+		if (shouldUseCache) {
 			response = await cache.match(cacheKey);
+			this.logger.debug(`Cache ${response ? 'hit' : 'miss'} for key: ${cacheKey}`);
 		}
+
+		if (!response) {
+			this.logger.debug(`Fetching fresh content from origin: ${originUrl}`);
+			const newRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(originUrl, clonedRequest);
+			response = await this.fetchFromOriginOrCDN(newRequest);
+
+			if (shouldUseCache && response.ok) {
+				// Only cache the response if caching is enabled and the response is successful
+				response = this.abstractionHelper.abstractResponse.createNewResponse(response.body, response);
+				if (!response.headers.has('Cache-Control')) {
+					response.headers.set('Cache-Control', 'public');
+				}
+				await this.cacheResponse(ctx, cache, cacheKey, response, cdnSettings.cacheTTL);
+				this.logger.debug(`Cached fresh content for key: ${cacheKey}`);
+			}
+		}
+
 		this.eventListenersResult = await this.eventListeners.trigger(
 			'afterReadingCache',
 			request,
@@ -350,30 +373,6 @@ class CloudflareAdapter {
 		);
 		if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
 			response = this.eventListenersResult.modifiedResponse;
-		}
-
-		if (!response) {
-			this.logger.debug(`Cache miss for ${originUrl}. Fetching from origin.`);
-			const newRequest = this.abstractionHelper.abstractRequest.createNewRequestFromUrl(originUrl, clonedRequest);
-			response = await this.fetchFromOriginOrCDN(newRequest);
-			if (response.headers.has('Cache-Control')) {
-				response = this.abstractionHelper.abstractResponse.createNewResponse(response.body, response);
-				response.headers.set('Cache-Control', 'public');
-			}
-			if (response.ok) {
-				this.cacheResponse(ctx, cache, cacheKey, response, cdnSettings.cacheTTL = null);
-				this.eventListenersResult = await this.eventListeners.trigger(
-					'afterCacheResponse',
-					request,
-					response,
-					this.result
-				);
-				if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
-					response = this.eventListenersResult.modifiedResponse;
-				}
-			}
-		} else {
-			this.logger.debug(`Cache hit for: ${originUrl} with cacheKey: ${cacheKey}`);
 		}
 
 		return this.applyResponseSettings(response, cdnSettings);
@@ -435,28 +434,28 @@ class CloudflareAdapter {
 		try {
 			let urlToFetch = typeof input === 'string' ? input : input.url;
 			this.logger.debug('urlToFetch:', urlToFetch);
-			
+
 			// Parse the original URL
 			const originalUrl = new URL(urlToFetch);
-			
+
 			// Check if the URL is for the Optimizely datafile
 			if (!originalUrl.hostname.includes('cdn.optimizely.com')) {
 				// Create a new URL using this.pagesUrl as the base
 				const newUrl = new URL(this.pagesUrl);
-				
+
 				// Preserve the original path and search parameters
 				newUrl.pathname = originalUrl.pathname;
 				newUrl.search = originalUrl.search;
-				
+
 				urlToFetch = newUrl.toString();
-				
+
 				if (urlToFetch.endsWith('/')) {
 					urlToFetch = urlToFetch.slice(0, -1);
 				}
 			}
-			
+
 			this.logger.debug(`Fetching from origin or CDN [fetchFromOriginOrCDN]: ${urlToFetch}`, options);
-			
+
 			const response = await AbstractRequest.fetchRequest(urlToFetch, options);
 			this.logger.debug(`Fetching from origin or CDN [fetchFromOriginOrCDN] - response`, response);
 			return response;
@@ -617,19 +616,19 @@ class CloudflareAdapter {
 	async getDatafile(sdkKey, ttl = 3600) {
 		this.logger.debugExt(`Getting datafile [getDatafile]: ${sdkKey}`);
 		const url = `https://cdn.optimizely.com/datafiles/${sdkKey}.json`;
-		
+
 		try {
-			const response = await this.fetchFromOriginOrCDN(url, { 
+			const response = await this.fetchFromOriginOrCDN(url, {
 				cf: { cacheTtl: ttl },
 				headers: {
-					'Content-Type': 'application/json'
-				}
+					'Content-Type': 'application/json',
+				},
 			});
-			
+
 			if (!response.ok) {
 				throw new Error(`Failed to fetch datafile: ${response.statusText}`);
 			}
-			
+
 			return await response.text();
 		} catch (error) {
 			this.logger.error(`Error fetching datafile for SDK key ${sdkKey}: ${error}`);
