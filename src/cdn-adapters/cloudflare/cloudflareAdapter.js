@@ -1274,7 +1274,7 @@ class CloudflareAdapter {
 	getRequestCookie(request, name) {
 		this.logger.debugExt(`Getting cookie [getRequestCookie]: ${name}`);
 		// Assuming there's a method in AbstractRequest to get cookies
-		return this.abstractionHelper.abstractRequest.getCookieFromRequest(name);
+		return this.abstractionHelper.abstractRequest.getCookieFromRequest(request, name);
 	}
 }
 
