@@ -775,7 +775,9 @@ class CloudflareAdapter {
 		if (jsonString) {
 			try {
 				this.logger.debug(`Datafile retrieved from KV [getDatafileFromKV]`);
-				return JSON.parse(jsonString);
+				const newParsedJson = JSON.parse(jsonString);
+				this.logger.debug(`Datafile parsed from KV with revision number [getDatafileFromKV]: ${newParsedJson.revision}`);
+				return newParsedJson;
 			} catch {
 				throw new Error('Invalid JSON for datafile from KV storage.');
 			}
