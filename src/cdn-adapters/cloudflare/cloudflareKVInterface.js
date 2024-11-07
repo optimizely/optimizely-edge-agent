@@ -27,8 +27,8 @@ class CloudflareKVInterface {
 	 * @param {string} key - The key to retrieve.
 	 * @returns {Promise<string|null>} - The value associated with the key.
 	 */
-	async get(key) {
-		return await this.namespace.get(key);
+	async get(key, options) {
+		return await this.namespace.get(key, options);
 	}
 
 	/**
