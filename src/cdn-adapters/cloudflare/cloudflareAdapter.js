@@ -771,7 +771,7 @@ class CloudflareAdapter {
 	 */
 	async getDatafileFromKV(sdkKey, kvStore) {
 		this.logger.debug(`Getting datafile from KV [getDatafileFromKV]`);
-		const jsonString = await kvStore.get(sdkKey, {cacheTtl: 0}); // Namespace must be updated manually
+		const jsonString = await kvStore.get(sdkKey, { cacheTtl: 0, cacheTtlBypass: true }); // Namespace must be updated manually
 		if (jsonString) {
 			try {
 				this.logger.debug(`Datafile retrieved from KV [getDatafileFromKV]`);
