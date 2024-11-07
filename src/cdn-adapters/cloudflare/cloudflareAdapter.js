@@ -324,7 +324,7 @@ class CloudflareAdapter {
 		let cacheKey;
 		const clonedRequest = this.cloneRequestWithNewUrl(request, originUrl);
 		const shouldUseCache =
-			this.coreLogic.requestConfig?.overrideCache !== true && cdnSettings?.cacheRequestToOrigin === true;
+			this.coreLogic.requestConfig?.overrideCache === true && cdnSettings?.cacheRequestToOrigin === true;
 
 		this.eventListenersResult = await this.eventListeners.trigger('beforeCreateCacheKey', request, this.result);
 		if (this.eventListenersResult && this.eventListenersResult.cacheKey) {
