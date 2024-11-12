@@ -667,67 +667,87 @@ export class AbstractRequest {
 	 * Supports Cloudflare, Akamai, Fastly, CloudFront, and Vercel.
 	 * @param {string|Request} input - The URL string or Request object.
 	 * @param {Object} [options={}] - Additional options for the request.
-	 * @returns {Promise<Response>} - The response from the fetch operation.
+	 * @returns {Promise<Response>} - The response from the fetch operation with headers from the origin.
 	 */
 	static async fetchRequest(input, options = {}) {
 		try {
-		logger().debugExt('AbstractRequest - Making HTTP request [fetchRequest]');
-		let url;
-		let requestOptions = options;
+			logger().debugExt('AbstractRequest - Making HTTP request [fetchRequest]');
+			let url;
+			let requestOptions = options;
 
-		if (typeof input === 'string') {
-			url = input;
-		} else if (input instanceof Request) {
-			url = input.url;
-			requestOptions = {
-				method: input.method,
-				headers: AbstractionHelper.getNewHeaders(input),
-				mode: input.mode,
-				credentials: input.credentials,
-				cache: input.cache,
-				redirect: input.redirect,
-				referrer: input.referrer,
-				integrity: input.integrity,
-				...options,
-			};
+			if (typeof input === 'string') {
+				url = input;
+			} else if (input instanceof Request) {
+				url = input.url;
+				requestOptions = {
+					method: input.method,
+					headers: AbstractionHelper.getNewHeaders(input),
+					mode: input.mode,
+					credentials: input.credentials,
+					cache: input.cache,
+					redirect: input.redirect,
+					referrer: input.referrer,
+					integrity: input.integrity,
+					...options,
+				};
 
-			// Ensure body is not assigned for GET or HEAD methods
-			if (
-				input.method !== 'GET' &&
-				input.method !== 'HEAD' &&
-				(!input.bodyUsed || (input.bodyUsed && input.bodyUsed === false))
-			) {
-				requestOptions.body = input.body;
+				// Ensure body is not assigned for GET or HEAD methods
+				if (
+					input.method !== 'GET' &&
+					input.method !== 'HEAD' &&
+					(!input.bodyUsed || (input.bodyUsed && input.bodyUsed === false))
+				) {
+					requestOptions.body = input.body;
+				}
+			} else {
+				throw new TypeError('Invalid input: must be a string URL or a Request object.');
 			}
-		} else {
-			throw new TypeError('Invalid input: must be a string URL or a Request object.');
-		}
 
-		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
+			const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 
-		switch (cdnProvider) {
-			case 'cloudflare':
-				const result = await fetch(new Request(url, requestOptions));
-				//logger().debugExt('AbstractRequest - Fetch request [fetchRequest] - result:', result);
-				return result;
-			case 'akamai':
-				return await AbstractRequest.akamaiFetch(url, requestOptions);
-			case 'fastly':
-				return await fetch(new Request(url, requestOptions));
-			case 'cloudfront':
-				return await AbstractRequest.cloudfrontFetch(url, requestOptions);
-			case 'vercel':
-				return await fetch(new Request(url, requestOptions));
-			default:
+			switch (cdnProvider) {
+				case 'cloudflare':
+				case 'fastly':
+				case 'vercel': {
+					const originResponse = await fetch(new Request(url, requestOptions));
+
+					// Clone the response to modify it
+					const response = new Response(originResponse.body, {
+						status: originResponse.status,
+						statusText: originResponse.statusText,
+						headers: new Headers(originResponse.headers),
+					});
+
+					// Handle Set-Cookie headers
+					const setCookieHeaders = originResponse.headers.getAll('Set-Cookie');
+					if (setCookieHeaders && setCookieHeaders.length > 0) {
+						// Delete existing Set-Cookie headers
+						response.headers.delete('Set-Cookie');
+						// Append each Set-Cookie header to the response
+						setCookieHeaders.forEach((cookie) => {
+							response.headers.append('Set-Cookie', cookie);
+						});
+					}
+
+					return response;
+				}
+				case 'akamai': {
+					const originResponse = await AbstractRequest.akamaiFetch(url, requestOptions);
+					return originResponse; // Ensure akamaiFetch returns a proper Response object
+				}
+				case 'cloudfront': {
+					const originResponse = await AbstractRequest.cloudfrontFetch(url, requestOptions);
+					return originResponse; // Ensure cloudfrontFetch returns a proper Response object
+				}
+				default:
 					throw new Error('Unsupported CDN provider.');
 			}
 		} catch (error) {
 			logger().error('Error fetching request:', error.message);
-			const _asbstractionHelper = AbstractionHelper.getAbstractionHelper();
-			return _asbstractionHelper.createResponse({ error: error.message }, 500);
+			const abstractionHelper = AbstractionHelper.getAbstractionHelper();
+			return abstractionHelper.createResponse({ error: error.message }, 500);
 		}
 	}
-
 	/**
 	 * Makes an HTTP request based on a string URL or a Request object.
 	 * Supports Cloudflare, Akamai, Fastly, CloudFront, and Vercel.
