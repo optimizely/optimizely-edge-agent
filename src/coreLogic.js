@@ -329,7 +329,7 @@ export default class CoreLogic {
 				this.abstractionHelper
 			);
 			this.logger.debug('RequestConfig initialized');
-			await requestConfig.initialize(request);
+			await requestConfig.initialize(request, env);
 			// this.logger.debugExt('RequestConfig: ', requestConfig);
 			this.requestConfig = requestConfig;
 
@@ -1042,7 +1042,7 @@ export default class CoreLogic {
 
 			// Set request cookies if configured
 			if (requestConfig.setRequestCookies) {
-				const [visitorCookie, modReqCookie] = await Promise.all([
+				const [visitorCookie, decisionsCookie] = await Promise.all([
 					optlyHelper.createCookie(requestConfig.settings.visitorIdCookieName, visitorId),
 					optlyHelper.createCookie(requestConfig.settings.decisionsCookieName, serializedDecisions),
 				]);
@@ -1052,16 +1052,16 @@ export default class CoreLogic {
 				// Prepare the cookies object based on conditions
 				let cookiesToSet = {};
 				if (visitorCookie) {
-					cookiesToSet['visitorCookie'] = visitorCookie;
+					cookiesToSet[requestConfig.settings.visitorIdCookieName] = visitorCookie;
 					this.cdnAdapter.cookiesToSetRequest.push(visitorCookie);
 				}
 
-				if (modReqCookie) {
-					cookiesToSet['modReqCookie'] = modReqCookie;
-					this.cdnAdapter.cookiesToSetRequest.push(modReqCookie);
+				if (decisionsCookie) {
+					cookiesToSet[requestConfig.settings.decisionsCookieName] = decisionsCookie;
+					this.cdnAdapter.cookiesToSetRequest.push(decisionsCookie);
 				}
 
-				// Use the new function to set multiple cookies at once
+				// Use the function to set multiple cookies at once
 				this.logger.debugExt('Setting request cookies [handleOriginForwarding]:', cookiesToSet);
 				if (Object.keys(cookiesToSet).length > 0) {
 					clonedRequest = this.cdnAdapter.setMultipleReqSerializedCookies(clonedRequest, cookiesToSet);
@@ -1069,7 +1069,13 @@ export default class CoreLogic {
 			}
 
 			// Forward the request to the origin
-			const fetchResponse = await fetch(clonedRequest || this.request);
+			let fetchResponse = await fetch(clonedRequest || this.request);
+
+			// Set the cookies on the response before returning it
+			if (requestConfig.setResponseCookies) {
+				fetchResponse = await this.setResponseCookies(fetchResponse, visitorId, serializedDecisions, requestConfig);
+			}
+
 			this.reqResponseObjectType = 'response';
 			return fetchResponse;
 		} catch (error) {
@@ -1134,24 +1140,61 @@ export default class CoreLogic {
 	 * @param {string} visitorId - The visitor ID.
 	 * @param {string} serializedDecisions - The serialized decisions string.
 	 * @param {RequestConfig} requestConfig - The request configuration object.
-	 * @returns {Promise<void>}
+	 * @returns {Response} - The modified response object with cookies set.
 	 */
 	async setResponseCookies(response, visitorId, serializedDecisions, requestConfig) {
 		this.logger.debug('Setting response cookies [setResponseCookies]');
-		const [visitorCookie, modRespCookie] = await Promise.all([
+		const [visitorCookie, decisionsCookie] = await Promise.all([
 			optlyHelper.createCookie(requestConfig.settings.visitorIdCookieName, visitorId),
 			optlyHelper.createCookie(requestConfig.settings.decisionsCookieName, serializedDecisions),
 		]);
 
+		let responseHeaders = new Headers(response.headers);
+
 		if (visitorCookie) {
 			this.cdnAdapter.cookiesToSetResponse.push(visitorCookie);
+			this.logger.debug(`Visitor cookie to set: ${visitorCookie}`);
 		}
-		if (modRespCookie) {
-			this.cdnAdapter.cookiesToSetResponse.push(modRespCookie);
+		if (decisionsCookie) {
+			this.cdnAdapter.cookiesToSetResponse.push(decisionsCookie);
+			this.logger.debug(`Decisions cookie to set: ${decisionsCookie}`);
 		}
 
-		response = this.cdnAdapter.setMultipleRespSerializedCookies(response, this.cdnAdapter.cookiesToSetResponse);
+		if (this.cdnAdapter.cookiesToSetResponse.length > 0) {
+			this.logger.debug('Adding Set-Cookie headers [setResponseCookies]');
+			this.cdnAdapter.cookiesToSetResponse.forEach((cookie) => {
+				responseHeaders.append('Set-Cookie', cookie);
+			});
+		}
+
+		// Create a new response with the updated headers
+		const updatedResponse = new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: responseHeaders,
+		});
+
 		this.cdnAdapter.responseCookiesSet = true;
+		return updatedResponse;
+	}
+
+	/**
+	 * Sets response headers based on the provided visitor ID and serialized decisions.
+	 * @param {Response} response - The response object to modify.
+	 * @param {string} visitorId - The visitor ID.
+	 * @param {string} serializedDecisions - The serialized decisions string.
+	 * @param {RequestConfig} requestConfig - The request configuration object.
+	 */
+	setResponseHeaders(response, visitorId, serializedDecisions, requestConfig) {
+		this.logger.debug('Setting response headers [setResponseHeaders]');
+		if (visitorId) {
+			this.cdnAdapter.headersToSetResponse[requestConfig.settings.visitorIdsHeaderName] = visitorId;
+			this.cdnAdapter.responseHeadersSet = true;
+		}
+		if (serializedDecisions) {
+			this.cdnAdapter.headersToSetResponse[requestConfig.settings.decisionsHeaderName] = serializedDecisions;
+			this.cdnAdapter.responseHeadersSet = true;
+		}
 	}
 
 	/**
