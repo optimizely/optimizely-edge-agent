@@ -10,6 +10,7 @@
  */
 
 import { logger } from '../../_helpers_/optimizelyHelper.js';
+import { kv } from '@vercel/kv';
 
 /**
  * Class representing the Vercel Edge Functions KV store interface.
@@ -17,11 +18,14 @@ import { logger } from '../../_helpers_/optimizelyHelper.js';
  */
 class VercelKVInterface {
 	/**
-	 * @param {Object} config - The configuration object containing KV store details.
-	 * @param {string} config.kvNamespace - The name of the KV namespace.
+	 * @param {Object} env - The environment object containing KV namespace bindings.
+	 * @param {string} kvNamespace - The name of the KV namespace.
 	 */
-	constructor(config) {
-		this.kvNamespace = config.kvNamespace;
+	constructor(env, kvNamespace) {
+		if (!env[kvNamespace]) {
+			throw new Error(`KV namespace ${kvNamespace} is not available in env.`);
+		}
+		this.kvNamespace = env[kvNamespace];
 	}
 
 	/**
@@ -31,7 +35,7 @@ class VercelKVInterface {
 	 */
 	async get(key) {
 		try {
-			const value = await EDGE_KV.get(`${this.kvNamespace}:${key}`);
+			const value = await kv.get(`${this.kvNamespace}:${key}`);
 			return value !== null ? value.toString() : null;
 		} catch (error) {
 			logger().error(`Error getting value for key ${key}:`, error);
@@ -47,7 +51,7 @@ class VercelKVInterface {
 	 */
 	async put(key, value) {
 		try {
-			await EDGE_KV.put(`${this.kvNamespace}:${key}`, value);
+			await kv.set(`${this.kvNamespace}:${key}`, value);
 		} catch (error) {
 			logger().error(`Error putting value for key ${key}:`, error);
 		}
@@ -60,9 +64,9 @@ class VercelKVInterface {
 	 */
 	async delete(key) {
 		try {
-			await EDGE_KV.remove(`${this.kvNamespace}:${key}`);
+			await kv.del(`${this.kvNamespace}:${key}`);
 		} catch (error) {
-			logger().error(`Error deleting key ${key}:`, error);
+			logger().error(`Error deleting namespace:key ${this.kvNamespace}:${key}:`, error);
 		}
 	}
 }
