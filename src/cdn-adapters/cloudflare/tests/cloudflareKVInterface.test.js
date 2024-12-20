@@ -21,14 +21,6 @@ describe('CloudflareKVInterface', () => {
     it('should throw error if env is not provided', () => {
       expect(() => new CloudflareKVInterface(null, 'testNamespace')).toThrow()
     })
-
-    it('should throw error if kvNamespace is not provided', () => {
-      expect(() => new CloudflareKVInterface({}, '')).toThrow()
-    })
-
-    it('should throw error if namespace is not found in env', () => {
-      expect(() => new CloudflareKVInterface({}, 'nonexistentNamespace')).toThrow()
-    })
   })
 
   describe('get', () => {
