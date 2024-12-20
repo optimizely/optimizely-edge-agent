@@ -182,10 +182,28 @@ class VercelAdapter {
 
             return fetchResponse;
         } catch (error) {
-            this.logger.error('Error in fetchHandler:', error);
+            this.logger.error('Error processing request:', error);
             return new Response(`Internal Server Error: ${error.message}`, { status: 500 });
         }
     }
+
+    setFetchAndProcessLogs(validCDNSettings, cdnSettings) {
+		if (!validCDNSettings) {
+			this.logger.debug(
+				'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]'
+			);
+		} else {
+			this.logger.debug('Valid CDN settings found [fetchHandler]');
+		}
+
+		if (validCDNSettings && cdnSettings) {
+			this.logger.debug(
+				`Fetching content from origin in CDN Adapter [fetchHandler -> fetchAndProcessRequest] - `,
+				`shouldCacheResponse is ${this.shouldCacheResponse} and validCDNSettings is ${validCDNSettings} and `,
+				`cdnSettings.forwardRequestToOrigin is ${cdnSettings.forwardRequestToOrigin}`
+			);
+		}
+	}
 
     /**
      * Handles POST requests
