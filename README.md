@@ -1,9 +1,9 @@
 
-# Hybrid Edge Serverless Agent
+# Optimizely Edge Agent
 
 ## Introduction
 
-Welcome to the Hybrid Edge Serverless Agent repository. This project leverages the power of edge computing to perform A/B testing directly at the edge, reducing dependency on central servers and enhancing the efficiency of content delivery. The Hybrid Edge Serverless Agent, developed by Optimizely, is designed to be a comprehensive, ready-to-deploy solution that incorporates caching, cookie management, visitor ID creation and management, with persistence. This repository contains the code and documentation necessary to implement and manage the edge worker for your A/B testing needs.
+Welcome to the Optimizely Edge Agent repository. This project leverages the power of edge computing to perform A/B testing directly at the edge, reducing dependency on central servers and enhancing the efficiency of content delivery. The Optimizely Edge Agent, developed by Optimizely, is designed to be a comprehensive, ready-to-deploy solution that incorporates caching, cookie management, visitor ID creation and management, with persistence. This repository contains the code and documentation necessary to implement and manage the edge worker for your A/B testing needs.
 
 ## Features
 
@@ -57,18 +57,18 @@ The edge worker includes a REST API for interacting with the KV store, enabling 
 
 ## Comparison with Traditional Server-Based Architectures
 
-The Hybrid Edge Serverless Agent offers significant improvements over traditional server setups:
+The Optimizely Edge Agent offers significant improvements over traditional server setups:
 - **Infrastructure Simplicity**: Reduces complexity and cost associated with maintaining traditional servers.
 - **Operational Efficiency**: Decentralizes decision-making processes, enhancing system responsiveness.
 - **Enhanced Performance**: Processes data at the edge, providing lower latency and higher throughput.
 
 ## Conclusion
 
-The Hybrid Edge Serverless Agent merges advanced A/B testing capabilities with the efficiency of edge computing, providing businesses with a powerful tool to optimize user experiences in real-time. This innovative approach accelerates experimentation, enhances performance, and simplifies infrastructure requirements, making it an indispensable solution for modern digital enterprises.
+The Optimizely Edge Agent merges advanced A/B testing capabilities with the efficiency of edge computing, providing businesses with a powerful tool to optimize user experiences in real-time. This innovative approach accelerates experimentation, enhances performance, and simplifies infrastructure requirements, making it an indispensable solution for modern digital enterprises.
 
 ## Getting Started
 
-To get started with the Hybrid Edge Serverless Agent, refer to the [Setup Guide](SETUP.md) for installation and configuration instructions.
+To get started with the Optimizely Edge Agent, refer to the [Developer Documentation](https://docs.developers.optimizely.com/feature-experimentation/docs/introduction-to-optimizely-edge-agent) for installation and configuration instructions.
 
 ## Contributing
 
@@ -76,10 +76,10 @@ We welcome contributions from the community. Please read our [Contributing Guide
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE.md) file for details.
+This project is licensed under the Apache License. See the [LICENSE](LICENSE.md) file for details.
 
 For more detailed information, refer to the [Detailed Architecture and Operational Guide](docs/ARCHITECTURE.md).
 
 ---
 
-Feel free to reach out with any questions or feedback. We hope you find the Hybrid Edge Serverless Agent to be a valuable addition to your A/B testing toolkit.
+Feel free to reach out with any questions or feedback. We hope you find the Optimizely Edge Agent to be a valuable addition to your A/B testing toolkit.
