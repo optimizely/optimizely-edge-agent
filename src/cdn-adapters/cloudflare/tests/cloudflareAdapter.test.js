@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CloudflareAdapter from '../cloudflareAdapter';
 
-vi.mock('../../../_helpers_/eventListeners', () => ({
+vi.mock('../../../_event_listeners_/eventListeners', () => ({
     default: {
         getInstance: vi.fn().mockReturnValue({
             emit: vi.fn(),
