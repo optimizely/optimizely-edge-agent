@@ -1,3 +1,7 @@
+/**
+ * @module VercelAdapter
+ */
+
 import * as optlyHelper from '../../_helpers_/optimizelyHelper';
 import { kv } from '@vercel/kv';
 import cookieDefaultOptions from '../../_config_/cookieOptions';
@@ -21,8 +25,9 @@ class VercelAdapter {
      * @param {string} pagesUrl - URL for Pages
      * @param {string} sdkKey - SDK key for Optimizely
      */
-    constructor(coreLogic, optimizelyProvider, abstractionHelper, kvStore, kvStoreUserProfile, logger, pagesUrl, sdkKey) {
+    constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper, kvStore, kvStoreUserProfile, logger, pagesUrl) {
         this.pagesUrl = pagesUrl;
+        this.sdkKey = sdkKey;
         this.logger = logger;
         this.kvStore = kvStore || kv;
         this.coreLogic = coreLogic;
@@ -44,13 +49,14 @@ class VercelAdapter {
         this.headersToSetResponse = {};
         this.optimizelyProvider = optimizelyProvider;
         this.kvStoreUserProfile = kvStoreUserProfile;
-        this.sdkKey = sdkKey;
         this.cdnSettingsMessage =
             'Failed to process the request. CDN settings are missing or require forwarding to origin.';
     }
 
     /**
-     * Processes incoming requests by either serving from cache or fetching from the origin
+     * Processes incoming requests by either serving from cache or fetching from the origin,
+     * based on CDN settings. POST requests are handled directly without caching.
+     * Errors in fetching or caching are handled and logged, ensuring stability.
      * @param {Request} request - The incoming request
      * @param {Object} env - Environment variables
      * @param {Object} ctx - Context object
@@ -68,33 +74,112 @@ class VercelAdapter {
         this.eventListeners = EventListeners.getInstance();
 
         try {
-            if (!this.coreLogic.requestConfig) {
-                this.logger.debug('CDN settings are undefined or invalid');
-                throw new Error('CDN settings are missing or invalid');
-            }
-
-            await this.eventListeners.trigger('beforeProcessingRequest', request, this.coreLogic.requestConfig);
-
             let originUrl = this.abstractionHelper.abstractRequest.getNewURL(request.url);
             this.logger.debug(`Origin URL [fetchHandler]: ${originUrl}`);
 
             if (originUrl.protocol !== 'https:') {
                 originUrl.protocol = 'https:';
             }
-
             originUrl = originUrl.toString();
             const httpMethod = request.method;
-
-            if (httpMethod === 'POST') {
-                fetchResponse = await this.handlePostRequest(request, originUrl);
-            } else {
-                const cdnSettings = this.coreLogic.requestConfig;
-                this.shouldCacheResponse = cdnSettings.cacheRequestToOrigin === true;
-                fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings);
+            let preRequest = request;
+            
+            this.eventListenersResult = await this.eventListeners.trigger(
+                'beforeProcessingRequest',
+                request,
+                this.coreLogic.requestConfig
+            );
+            if (this.eventListenersResult && this.eventListenersResult.modifiedRequest) {
+                preRequest = this.eventListenersResult.modifiedRequest;
             }
 
-            await this.eventListeners.trigger('afterProcessingRequest', request, fetchResponse, this.coreLogic.requestConfig);
-            await this.eventListeners.trigger('beforeResponse', request, fetchResponse, this.coreLogic.requestConfig);
+            const result = await this.coreLogic.processRequest(preRequest, env, ctx, this.sdkKey);
+            const reqResponse = result.reqResponse;
+            if (reqResponse === 'NO_MATCH') {
+                this.logger.debug('No cdnVariationSettings found. Fetching content from origin [cdnAdapter -> fetchHandler]');
+                const response = await this.fetchFromOriginOrCDN(request);
+                return response;
+            }
+
+            this.eventListenersResult = await this.eventListeners.trigger(
+                'afterProcessingRequest',
+                request,
+                result.reqResponse,
+                this.coreLogic.requestConfig,
+                result
+            );
+            let postResponse = result.reqResponse;
+            if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
+                postResponse = this.eventListenersResult.modifiedResponse;
+            }
+
+            this.result = result;
+            this.reqResponse = postResponse;
+            if (result && result.reqResponseObjectType === 'response') {
+                this.eventListenersResult = await this.eventListeners.trigger(
+                    'beforeResponse',
+                    request,
+                    result.reqResponse,
+                    result
+                );
+            }
+
+            const cdnSettings = result.cdnExperimentSettings;
+            let validCDNSettings = false;
+
+            if (cdnSettings && typeof cdnSettings === 'object') {
+                validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
+                this.logger.debug(
+                    `Valid CDN settings found [fetchHandler] - validCDNSettings: ${optlyHelper.safelyStringifyJSON(
+                        validCDNSettings
+                    )}`
+                );
+                this.logger.debug(
+                    `CDN settings found [fetchHandler] - cdnSettings: ${optlyHelper.safelyStringifyJSON(cdnSettings)}`
+                );
+            } else {
+                this.logger.debug('CDN settings are undefined or invalid');
+            }
+
+			if (validCDNSettings) {
+				originUrl = cdnSettings.cdnResponseURL || originUrl;
+				this.shouldCacheResponse = cdnSettings.cacheRequestToOrigin === true;
+				this.logger.debug(`CDN settings found [fetchHandler] - shouldCacheResponse: ${this.shouldCacheResponse}`);
+			}
+
+            if (httpMethod === 'POST') {
+                this.logger.debug('POST request detected. Returning response without caching [fetchHandler]');
+                this.eventListenersResult = await this.eventListeners.trigger(
+                    'afterResponse',
+                    request,
+                    result.reqResponse,
+                    result
+                );
+                fetchResponse = this.eventListenersResult.modifiedResponse || result.reqResponse;
+                return fetchResponse;
+            }
+
+            if (httpMethod === 'GET' && (this.coreLogic.datafileOperation || this.coreLogic.configOperation)) {
+                const fileType = this.coreLogic.datafileOperation ? 'datafile' : 'config file';
+                this.logger.debug(
+                    `GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey} [fetchHandler]`
+                );
+                return result.reqResponse;
+            }
+
+            if (originUrl && (!cdnSettings || validCDNSettings)) {
+                this.setFetchAndProcessLogs(validCDNSettings, cdnSettings);
+                fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings);
+            } else {
+                this.logger.debug(
+                    'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.'
+                );
+                fetchResponse = await this.fetchFromOriginOrCDN(request);
+            }
+
+            this.eventListenersResult = await this.eventListeners.trigger('afterResponse', request, fetchResponse, result);
+            fetchResponse = this.eventListenersResult.modifiedResponse || fetchResponse;
+
             return fetchResponse;
         } catch (error) {
             this.logger.error('Error in fetchHandler:', error);
