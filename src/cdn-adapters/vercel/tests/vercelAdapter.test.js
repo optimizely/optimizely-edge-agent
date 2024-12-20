@@ -106,6 +106,7 @@ describe('VercelAdapter', () => {
         adapter = new VercelAdapter(
             mockCoreLogic,
             mockOptimizelyProvider,
+            'test-sdk-key',
             mockAbstractionHelper,
             mockKvStore,
             mockKvStore,
@@ -119,23 +120,113 @@ describe('VercelAdapter', () => {
             const request = new Request('https://example.com/test-endpoint', { method: 'GET' });
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
+            const mockResponse = new Response('test');
+            const mockResult = {
+                reqResponse: mockResponse,
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://cdn.example.com/test',
+                    cacheRequestToOrigin: true
+                },
+                reqResponseObjectType: 'response'
+            };
 
             mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test-endpoint'));
-            mockAbstractionHelper.abstractRequest.createNewRequestFromUrl.mockReturnValue(request);
-            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
+            mockCoreLogic.processRequest.mockResolvedValue(mockResult);
+            global.fetch.mockResolvedValue(mockResponse);
 
             const response = await adapter.fetchHandler(request, env, ctx);
+            
             expect(response).toBeDefined();
+            expect(mockCoreLogic.processRequest).toHaveBeenCalledWith(request, env, ctx, 'test-sdk-key');
         });
 
-        it('should handle POST requests without caching', async () => {
+        it('should handle NO_MATCH response from processRequest', async () => {
+            const request = new Request('https://example.com/test-endpoint', { method: 'GET' });
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+            const mockResponse = new Response('test');
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test-endpoint'));
+            mockCoreLogic.processRequest.mockResolvedValue({ reqResponse: 'NO_MATCH' });
+            global.fetch.mockResolvedValue(mockResponse);
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            
+            expect(response).toBeDefined();
+            expect(mockCoreLogic.processRequest).toHaveBeenCalledWith(request, env, ctx, 'test-sdk-key');
+        });
+
+        it('should handle POST requests', async () => {
             const request = new Request('https://example.com/test-endpoint', { method: 'POST' });
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
+            const mockResponse = new Response('test');
+            const mockResult = {
+                reqResponse: mockResponse,
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://cdn.example.com/test',
+                    cacheRequestToOrigin: true
+                }
+            };
 
-            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test-endpoint'));
+            mockCoreLogic.processRequest.mockResolvedValue(mockResult);
+
             const response = await adapter.fetchHandler(request, env, ctx);
+            
             expect(response).toBeDefined();
+            expect(mockCoreLogic.processRequest).toHaveBeenCalledWith(request, env, ctx, 'test-sdk-key');
+        });
+
+        it('should handle modified requests from event listeners', async () => {
+            const request = new Request('https://example.com/test-endpoint', { method: 'GET' });
+            const modifiedRequest = new Request('https://example.com/modified', { method: 'GET' });
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+            const mockResponse = new Response('test');
+            const mockResult = {
+                reqResponse: mockResponse,
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://cdn.example.com/test',
+                    cacheRequestToOrigin: true
+                }
+            };
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test-endpoint'));
+            mockCoreLogic.processRequest.mockResolvedValue(mockResult);
+            adapter.eventListeners.trigger.mockImplementation((event) => {
+                if (event === 'beforeProcessingRequest') {
+                    return { modifiedRequest };
+                }
+                return {};
+            });
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            
+            expect(response).toBeDefined();
+            expect(mockCoreLogic.processRequest).toHaveBeenCalledWith(modifiedRequest, env, ctx, 'test-sdk-key');
+        });
+
+        it('should handle datafile operations', async () => {
+            const request = new Request('https://example.com/test-endpoint', { method: 'GET' });
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+            const mockResponse = new Response('test');
+            const mockResult = {
+                reqResponse: mockResponse,
+                cdnExperimentSettings: {}
+            };
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test-endpoint'));
+            mockCoreLogic.processRequest.mockResolvedValue(mockResult);
+            mockCoreLogic.datafileOperation = true;
+            adapter.eventListeners.trigger.mockResolvedValue({});
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            
+            expect(response).toBeDefined();
+            expect(response).toBe(mockResponse);
+            expect(mockCoreLogic.processRequest).toHaveBeenCalled();
         });
     });
 
@@ -261,16 +352,21 @@ describe('VercelAdapter', () => {
         });
 
         it('should handle invalid CDN settings', async () => {
-            const request = new Request('https://example.com/test');
+            const request = new Request('https://example.com/test', { method: 'GET' });
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
+            const mockResponse = new Response('test');
 
-            mockCoreLogic.requestConfig = undefined;
             mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
-            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
+            mockCoreLogic.processRequest.mockResolvedValue({ 
+                reqResponse: mockResponse,
+                cdnExperimentSettings: undefined
+            });
+            global.fetch.mockResolvedValue(mockResponse);
 
             const response = await adapter.fetchHandler(request, env, ctx);
             expect(response).toBeDefined();
+            expect(mockLogger.debug).toHaveBeenCalledWith('Origin URL [fetchHandler]: https://example.com/test');
             expect(mockLogger.debug).toHaveBeenCalledWith('CDN settings are undefined or invalid');
         });
     });
@@ -280,58 +376,84 @@ describe('VercelAdapter', () => {
             const request = new Request('https://example.com/test');
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
+            const modifiedRequest = new Request('https://example.com/modified');
+            const modifiedResponse = new Response('modified');
 
-            mockCoreLogic.requestConfig = {
-                cacheRequestToOrigin: true,
-                cdnExperimentSettings: {}
-            };
+            adapter.eventListeners.trigger = vi.fn().mockImplementation((event) => {
+                switch(event) {
+                    case 'beforeProcessingRequest':
+                        return Promise.resolve({ modifiedRequest });
+                    case 'afterProcessingRequest':
+                        return Promise.resolve({ modifiedResponse });
+                    case 'beforeResponse':
+                        return Promise.resolve({});
+                    default:
+                        return Promise.resolve({});
+                }
+            });
 
-            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
-            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
+            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
+                reqResponse: new Response('test'),
+                reqResponseObjectType: 'response',
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://example.com/cdn',
+                    cacheRequestToOrigin: false,
+                    forwardToOrigin: true
+                }
+            });
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/cdn'));
+            adapter.fetchFromOriginOrCDN = vi.fn().mockResolvedValue(new Response('cdn response'));
 
             const response = await adapter.fetchHandler(request, env, ctx);
             expect(response).toBeDefined();
-            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeProcessingRequest', request, mockCoreLogic.requestConfig);
-            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('afterProcessingRequest', request, expect.any(Response), mockCoreLogic.requestConfig);
-            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeResponse', request, expect.any(Response), mockCoreLogic.requestConfig);
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeProcessingRequest', request, adapter.coreLogic.requestConfig);
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('afterProcessingRequest', request, expect.any(Response), adapter.coreLogic.requestConfig, expect.any(Object));
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeResponse', request, expect.any(Response), expect.any(Object));
         });
     });
 
     describe('CDN Settings', () => {
         it('should handle valid CDN settings with caching', async () => {
-            const request = new Request('https://example.com/test');
+            const request = new Request('https://example.com/test', { method: 'GET' });
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
-
-            mockCoreLogic.requestConfig = {
-                cacheRequestToOrigin: true,
-                cdnExperimentSettings: {}
-            };
+            const mockResponse = new Response('test');
 
             mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
-            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
+            mockCoreLogic.processRequest.mockResolvedValue({
+                reqResponse: mockResponse,
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://cdn.example.com/test',
+                    cacheRequestToOrigin: true
+                }
+            });
+            global.fetch.mockResolvedValue(mockResponse);
 
             const response = await adapter.fetchHandler(request, env, ctx);
             expect(response).toBeDefined();
-            expect(adapter.shouldCacheResponse).toBe(true);
+            expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining('CDN settings found [fetchHandler]'));
         });
 
         it('should not cache response when cacheRequestToOrigin is false', async () => {
-            const request = new Request('https://example.com/test');
+            const request = new Request('https://example.com/test', { method: 'GET' });
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
-
-            mockCoreLogic.requestConfig = {
-                cacheRequestToOrigin: false,
-                cdnExperimentSettings: {}
-            };
+            const mockResponse = new Response('test');
 
             mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
-            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
+            mockCoreLogic.processRequest.mockResolvedValue({
+                reqResponse: mockResponse,
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://cdn.example.com/test',
+                    cacheRequestToOrigin: false
+                }
+            });
+            global.fetch.mockResolvedValue(mockResponse);
 
             const response = await adapter.fetchHandler(request, env, ctx);
             expect(response).toBeDefined();
-            expect(adapter.shouldCacheResponse).toBe(false);
+            expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining('CDN settings found [fetchHandler] - shouldCacheResponse: false'));
         });
     });
 });
