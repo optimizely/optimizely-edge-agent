@@ -1,7 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import CloudflareAdapter from '../cloudflareAdapter';
 
-// Mock EventListeners
 vi.mock('../../../_helpers_/eventListeners', () => ({
     default: {
         getInstance: vi.fn().mockReturnValue({
@@ -13,18 +12,16 @@ vi.mock('../../../_helpers_/eventListeners', () => ({
     }
 }));
 
-// Mock cookieDefaultOptions
 const cookieDefaultOptions = {
     path: '/',
     expires: new Date(Date.now() + 86400e3 * 365),
     maxAge: 86400 * 365,
-    domain: 'apidev.expedge.com',
+    domain: 'example.com',
     secure: true,
     httpOnly: true,
     sameSite: 'none'
 };
 
-// Mock dependencies
 const mockLogger = {
     debug: vi.fn(),
     debugExt: vi.fn(),
@@ -64,7 +61,6 @@ const mockKvStore = {
     put: vi.fn()
 };
 
-// Mock Response and Request globally
 global.Response = class Response {
     constructor(body, init) {
         this.body = body;
@@ -100,12 +96,8 @@ describe('CloudflareAdapter', () => {
     let adapter;
 
     beforeEach(() => {
-        // Reset all mocks before each test
         vi.clearAllMocks();
-        
-        // Reset global fetch mock
         global.fetch = vi.fn();
-        
         adapter = new CloudflareAdapter(
             mockCoreLogic,
             mockOptimizelyProvider,
@@ -114,17 +106,17 @@ describe('CloudflareAdapter', () => {
             mockKvStore,
             mockKvStore,
             mockLogger,
-            'https://test.pages.url'
+            'https://example.com'
         );
     });
 
-    describe('fetchHandler', () => {
+    describe('Request Processing', () => {
         it('should handle GET requests with caching', async () => {
-            const request = new Request('https://test.com/test-endpoint', { method: 'GET' });
+            const request = new Request('https://example.com/test-endpoint', { method: 'GET' });
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
 
-            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://test.com/test-endpoint'));
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test-endpoint'));
             mockAbstractionHelper.abstractRequest.createNewRequestFromUrl.mockReturnValue(request);
             global.fetch = vi.fn().mockResolvedValue(new Response('test'));
 
@@ -133,7 +125,7 @@ describe('CloudflareAdapter', () => {
         });
 
         it('should handle POST requests without caching', async () => {
-            const request = new Request('https://test.com/test-endpoint', { method: 'POST' });
+            const request = new Request('https://example.com/test-endpoint', { method: 'POST' });
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
 
@@ -149,7 +141,6 @@ describe('CloudflareAdapter', () => {
                 const response = new Response();
                 mockLogger.debugExt.mockImplementation(() => {});
                 adapter.setResponseCookie(response, 'testCookie', 'testValue', cookieDefaultOptions);
-                
                 expect(mockAbstractionHelper.abstractResponse.appendCookieToResponse)
                     .toHaveBeenCalledWith(response, expect.stringContaining('testCookie=testValue'));
             });
@@ -163,7 +154,7 @@ describe('CloudflareAdapter', () => {
 
         describe('setMultipleRequestCookies', () => {
             it('should set multiple cookies correctly', () => {
-                const request = new Request('https://test.com');
+                const request = new Request('https://example.com');
                 const cookies = {
                     session: { value: '12345', options: { path: '/' } },
                     user: { value: 'john', options: { secure: true } }
@@ -201,13 +192,13 @@ describe('CloudflareAdapter', () => {
     describe('Cache Management', () => {
         describe('createCacheKey', () => {
             it('should generate correct cache key with variation', () => {
-                const request = new Request('https://test.com/test');
+                const request = new Request('https://example.com/test');
                 const env = { ENVIRONMENT: 'test' };
                 
                 mockLogger.debugExt.mockImplementation(() => {});
                 mockCoreLogic.determineVariation.mockReturnValue('variant-a');
                 mockAbstractionHelper.abstractRequest.getNewURL
-                    .mockReturnValue(new URL('https://test.com/test'));
+                    .mockReturnValue(new URL('https://example.com/test'));
 
                 adapter.createCacheKey(request, env);
                 expect(mockAbstractionHelper.abstractRequest.createNewRequestFromUrl)
@@ -245,7 +236,7 @@ describe('CloudflareAdapter', () => {
         describe('dispatchEventToOptimizely', () => {
             it('should dispatch events correctly', async () => {
                 const eventData = {
-                    url: 'https://logx.optimizely.com/v1/events',
+                    url: 'https://logx.example.com/v1/events',
                     params: { 
                         visitors: [{ id: '1' }]
                     }
@@ -270,6 +261,134 @@ describe('CloudflareAdapter', () => {
                 expect(result.visitors).toBeDefined();
                 expect(result.visitors).toHaveLength(2);
             });
+        });
+    });
+
+    describe('Error Handling', () => {
+        it('should handle network failures gracefully', async () => {
+            const request = new Request('https://example.com/test');
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+
+            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
+                reqResponse: 'NO_MATCH'
+            });
+
+            global.fetch = vi.fn().mockRejectedValue(new Error('Network failure'));
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            expect(response.status).toBe(500);
+            expect(mockLogger.error).toHaveBeenCalled();
+        });
+
+        it('should handle invalid CDN settings', async () => {
+            const request = new Request('https://example.com/test');
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+
+            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
+                cdnExperimentSettings: 'invalid',
+                reqResponse: new Response('test')
+            });
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
+            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            expect(response).toBeDefined();
+            expect(mockLogger.debug).toHaveBeenCalledWith('CDN settings are undefined or invalid');
+        });
+    });
+
+    describe('Event Listeners', () => {
+        it('should handle complete event lifecycle', async () => {
+            const request = new Request('https://example.com/test');
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+            const modifiedRequest = new Request('https://example.com/modified');
+            const modifiedResponse = new Response('modified');
+
+            adapter.eventListeners.trigger = vi.fn().mockImplementation((event) => {
+                switch(event) {
+                    case 'beforeProcessingRequest':
+                        return Promise.resolve({ modifiedRequest });
+                    case 'afterProcessingRequest':
+                        return Promise.resolve({ modifiedResponse });
+                    case 'beforeResponse':
+                        return Promise.resolve({});
+                    default:
+                        return Promise.resolve({});
+                }
+            });
+
+            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
+                reqResponse: new Response('test'),
+                reqResponseObjectType: 'response',
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://example.com/cdn',
+                    cacheRequestToOrigin: false,
+                    forwardToOrigin: true
+                }
+            });
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/cdn'));
+            global.fetch = vi.fn().mockResolvedValue(new Response('cdn response'));
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            expect(response).toBeDefined();
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeProcessingRequest', request, adapter.coreLogic.requestConfig);
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('afterProcessingRequest', request, expect.any(Response), adapter.coreLogic.requestConfig, expect.any(Object));
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeResponse', request, expect.any(Response), expect.any(Object));
+        });
+    });
+
+    describe('CDN Settings', () => {
+        it('should handle valid CDN settings with caching', async () => {
+            const request = new Request('https://example.com/test');
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+
+            const cdnResponse = new Response('cdn response');
+            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://example.com/cdn',
+                    cacheRequestToOrigin: true,
+                    forwardToOrigin: true
+                },
+                reqResponse: cdnResponse
+            });
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/cdn'));
+            mockAbstractionHelper.abstractRequest.createNewRequestFromUrl.mockReturnValue(request);
+            global.fetch = vi.fn().mockResolvedValue(cdnResponse.clone());
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            expect(response).toBeDefined();
+            expect(adapter.shouldCacheResponse).toBe(true);
+        });
+
+        it('should not cache response when cacheRequestToOrigin is false', async () => {
+            const request = new Request('https://example.com/test');
+            const env = { ENVIRONMENT: 'test' };
+            const ctx = { waitUntil: vi.fn() };
+
+            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
+                cdnExperimentSettings: {
+                    cdnResponseURL: 'https://example.com/cdn',
+                    cacheRequestToOrigin: false,
+                    forwardToOrigin: true
+                },
+                reqResponse: new Response('test')
+            });
+
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/cdn'));
+            mockAbstractionHelper.abstractRequest.createNewRequestFromUrl.mockReturnValue(request);
+            global.fetch = vi.fn().mockResolvedValue(new Response('cdn response'));
+
+            const response = await adapter.fetchHandler(request, env, ctx);
+            expect(response).toBeDefined();
+            expect(adapter.shouldCacheResponse).toBe(false);
         });
     });
 });
