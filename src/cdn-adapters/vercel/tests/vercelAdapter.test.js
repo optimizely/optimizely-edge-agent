@@ -67,16 +67,16 @@ const mockKvStore = {
 };
 
 global.Response = class Response {
-    constructor(body, init) {
+    constructor(body, init = {}) {
         this.body = body;
         this.headers = new Map();
-        this.status = (init && init.status) || 200;
+        this.status = init.status || 200;
         this.ok = this.status >= 200 && this.status < 300;
-        this.text = async () => this.body;
+        this.text = async () => body;
     }
-    
+
     clone() {
-        return new Response(this.body, { status: this.status });
+        return new Response(this.body);
     }
 };
 
@@ -166,12 +166,13 @@ describe('VercelAdapter', () => {
 
                 mockLogger.debugExt.mockImplementation(() => {});
                 mockAbstractionHelper.abstractRequest.getHeaderFromRequest.mockReturnValue('');
-                mockAbstractionHelper.abstractRequest.setHeaderFromRequest.mockReturnValue(request);
+                const modifiedRequest = new Request('https://example.com');
+                mockAbstractionHelper.abstractRequest.setHeaderInRequest.mockReturnValue(modifiedRequest);
                 mockAbstractionHelper.abstractRequest.cloneRequest.mockReturnValue(request);
                 
                 const result = adapter.setMultipleRequestCookies(request, cookies);
                 expect(result).toBeDefined();
-                expect(mockAbstractionHelper.abstractRequest.setHeaderFromRequest).toHaveBeenCalled();
+                expect(mockAbstractionHelper.abstractRequest.setHeaderInRequest).toHaveBeenCalledTimes(2);
             });
         });
     });
@@ -264,11 +265,7 @@ describe('VercelAdapter', () => {
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
 
-            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
-                cdnExperimentSettings: 'invalid',
-                reqResponse: new Response('test')
-            });
-
+            mockCoreLogic.requestConfig = undefined;
             mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
             global.fetch = vi.fn().mockResolvedValue(new Response('test'));
 
@@ -283,40 +280,20 @@ describe('VercelAdapter', () => {
             const request = new Request('https://example.com/test');
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
-            const modifiedRequest = new Request('https://example.com/modified');
-            const modifiedResponse = new Response('modified');
 
-            adapter.eventListeners.trigger = vi.fn().mockImplementation((event) => {
-                switch(event) {
-                    case 'beforeProcessingRequest':
-                        return Promise.resolve({ modifiedRequest });
-                    case 'afterProcessingRequest':
-                        return Promise.resolve({ modifiedResponse });
-                    case 'beforeResponse':
-                        return Promise.resolve({});
-                    default:
-                        return Promise.resolve({});
-                }
-            });
+            mockCoreLogic.requestConfig = {
+                cacheRequestToOrigin: true,
+                cdnExperimentSettings: {}
+            };
 
-            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
-                reqResponse: new Response('test'),
-                reqResponseObjectType: 'response',
-                cdnExperimentSettings: {
-                    cdnResponseURL: 'https://example.com/cdn',
-                    cacheRequestToOrigin: false,
-                    forwardToOrigin: true
-                }
-            });
-
-            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/cdn'));
-            global.fetch = vi.fn().mockResolvedValue(new Response('cdn response'));
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
+            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
 
             const response = await adapter.fetchHandler(request, env, ctx);
             expect(response).toBeDefined();
-            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeProcessingRequest', request, adapter.coreLogic.requestConfig);
-            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('afterProcessingRequest', request, expect.any(Response), adapter.coreLogic.requestConfig, expect.any(Object));
-            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeResponse', request, expect.any(Response), expect.any(Object));
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeProcessingRequest', request, mockCoreLogic.requestConfig);
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('afterProcessingRequest', request, expect.any(Response), mockCoreLogic.requestConfig);
+            expect(adapter.eventListeners.trigger).toHaveBeenCalledWith('beforeResponse', request, expect.any(Response), mockCoreLogic.requestConfig);
         });
     });
 
@@ -326,19 +303,13 @@ describe('VercelAdapter', () => {
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
 
-            const cdnResponse = new Response('cdn response');
-            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
-                cdnExperimentSettings: {
-                    cdnResponseURL: 'https://example.com/cdn',
-                    cacheRequestToOrigin: true,
-                    forwardToOrigin: true
-                },
-                reqResponse: cdnResponse
-            });
+            mockCoreLogic.requestConfig = {
+                cacheRequestToOrigin: true,
+                cdnExperimentSettings: {}
+            };
 
-            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/cdn'));
-            mockAbstractionHelper.abstractRequest.createNewRequestFromUrl.mockReturnValue(request);
-            global.fetch = vi.fn().mockResolvedValue(cdnResponse.clone());
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
+            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
 
             const response = await adapter.fetchHandler(request, env, ctx);
             expect(response).toBeDefined();
@@ -350,18 +321,13 @@ describe('VercelAdapter', () => {
             const env = { ENVIRONMENT: 'test' };
             const ctx = { waitUntil: vi.fn() };
 
-            adapter.coreLogic.processRequest = vi.fn().mockResolvedValue({
-                cdnExperimentSettings: {
-                    cdnResponseURL: 'https://example.com/cdn',
-                    cacheRequestToOrigin: false,
-                    forwardToOrigin: true
-                },
-                reqResponse: new Response('test')
-            });
+            mockCoreLogic.requestConfig = {
+                cacheRequestToOrigin: false,
+                cdnExperimentSettings: {}
+            };
 
-            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/cdn'));
-            mockAbstractionHelper.abstractRequest.createNewRequestFromUrl.mockReturnValue(request);
-            global.fetch = vi.fn().mockResolvedValue(new Response('cdn response'));
+            mockAbstractionHelper.abstractRequest.getNewURL.mockReturnValue(new URL('https://example.com/test'));
+            global.fetch = vi.fn().mockResolvedValue(new Response('test'));
 
             const response = await adapter.fetchHandler(request, env, ctx);
             expect(response).toBeDefined();
