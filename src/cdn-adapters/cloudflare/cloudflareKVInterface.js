@@ -18,8 +18,18 @@ class CloudflareKVInterface {
 	/**
 	 * @param {Object} env - The environment object containing KV namespace bindings.
 	 * @param {string} kvNamespace - The name of the KV namespace.
+	 * @throws {Error} If env is not provided or if kvNamespace is not found in env
 	 */
 	constructor(env, kvNamespace) {
+		if (!env) {
+			throw new Error('Environment object must be provided');
+		}
+		if (!kvNamespace) {
+			throw new Error('KV namespace name must be provided');
+		}
+		if (!env[kvNamespace]) {
+			throw new Error(`KV namespace '${kvNamespace}' not found in environment`);
+		}
 		this.namespace = env[kvNamespace];
 	}
 	/**
