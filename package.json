@@ -1,19 +1,39 @@
 {
   "name": "optly-hybrid-agent",
   "version": "1.0.0",
-  "private": true,
   "scripts": {
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
+    "build": "npm run build:cloudflare && npm run build:vercel",
+    "build:cloudflare": "wrangler build",
+    "build:vercel": "npm run build:vercel:middleware && npm run build:vercel:function",
+    "build:vercel:middleware": "esbuild src/cdn-adapters/vercel/middleware.js --bundle --platform=node --format=esm --minify --sourcemap --external:next/* --outfile=dist/vercel/middleware.js",
+    "build:vercel:function": "esbuild src/cdn-adapters/vercel/function.js --bundle --platform=node --format=esm --minify --sourcemap --external:next/* --outfile=dist/vercel/function.js",
+    "deploy:cloudflare": "wrangler deploy",
+    "dev:cloudflare": "wrangler dev",
     "format": "prettier --loglevel warn --write \"src/**/*.{jsx,js}\"",
     "test": "vitest",
     "test:once": "vitest --run"
+  },
+  "main": "dist/vercel/index.js",
+  "exports": {
+    "./cloudflare": "./dist/cloudflare/index.js",
+    "./vercel": {
+      "middleware": "./dist/vercel/middleware.js",
+      "function": "./dist/vercel/function.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "peerDependencies": {
+    "next": ">=12"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.5.39",
     "@optimizely/optimizely-sdk": "^5.3.4",
     "cookie": "^1.0.2",
+    "esbuild": "^0.19.0",
+    "next": "^14.0.4",
     "vitest": "2.1.8",
     "wrangler": "^3.98.0"
   },
