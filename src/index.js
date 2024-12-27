@@ -167,8 +167,8 @@ function getCdnAdapter(coreLogic, optimizelyProvider, sdkKey, abstractionHelper,
 			//     return FastlyAdapter;
 			// case 'cloudfront':
 			//     return CloudfrontAdapter;
-			// case 'vercel':
-			//     return VercelAdapter;
+			case 'vercel':
+			    return VercelAdapter;
 			default:
 				throw new Error(`Unsupported CDN provider: ${defaultSettings.cdnProvider}`);
 		}

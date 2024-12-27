@@ -6,7 +6,7 @@
  */
 
 const defaultSettings = {
-	cdnProvider: 'cloudflare', // Default to Cloudflare - Possible values: cloudflare, fastly, cloudfront, akamai,
+	cdnProvider: 'cloudflare', // Default to Cloudflare - Possible values: cloudflare, fastly, cloudfront, akamai, vercel
 	/* Possible values:
         javascript-sdk/vercel-edge-agent
         javascript-sdk/akamai-edgeworker-agent
