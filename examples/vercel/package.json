@@ -9,18 +9,18 @@
     "lint": "next lint"
   },
   "dependencies": {
-    "@vercel/kv": "^3.0.0",
-    "next": "14.0.4",
+    "@vercel/kv": "^3",
+    "next": "^14",
+    "optimizely-edge-agent": "file:../../optimizely-edge-agent/vercel",
     "react": "^18",
-    "react-dom": "^18",
-    "optimizely-edge-agent": "file:../../"
+    "react-dom": "^18"
   },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",
-    "typescript": "^5",
     "eslint": "^8",
-    "eslint-config-next": "14.0.4"
+    "eslint-config-next": "^14",
+    "typescript": "^5"
   }
 }
