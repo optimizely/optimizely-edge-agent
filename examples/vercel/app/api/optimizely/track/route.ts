@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { handler as optimizelyHandler } from '@optimizely/optimizely-edge-agent/vercel/function';
+import optimizelyHandler from '@optimizely/optimizely-edge-agent/vercel/function';
 
 export const runtime = 'edge';
 

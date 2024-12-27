@@ -14,7 +14,7 @@ This example demonstrates how to integrate the Optimizely Edge Agent with a Next
 The Edge Middleware (`middleware.ts`) uses the optimizely-edge-agent's middleware handler to process incoming requests:
 
 ```typescript
-import { middleware as optimizelyMiddleware } from 'optimizely-edge-agent/vercel/middleware';
+import optimizelyMiddleware from '@optimizely/optimizely-edge-agent/vercel/middleware';
 
 export async function middleware(request: NextRequest) {
   const response = await optimizelyMiddleware(request);
@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
 The API route (`app/api/optimizely/track/route.ts`) uses the optimizely-edge-agent's function handler for event tracking:
 
 ```typescript
-import { handler as optimizelyHandler } from 'optimizely-edge-agent/vercel/function';
+import optimizelyHandler from 'optimizely-edge-agent/vercel/function';
 
 export async function POST(request: NextRequest) {
   return optimizelyHandler(request);

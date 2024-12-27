@@ -26,7 +26,7 @@ async function initializeCoreLogic(sdkKey, request, env, abstractionHelper) {
 }
 
 // Middleware function that handles GET requests (Edge mode)
-export async function middleware(request) {
+export default async function middleware(request) {
   // Only handle GET requests in middleware
   if (request.method !== 'GET') {
     return NextResponse.next();
