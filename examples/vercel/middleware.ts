@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { middleware as optimizelyMiddleware } from 'optimizely-edge-agent/vercel/middleware';
+import { middleware as optimizelyMiddleware } from '@optimizely/optimizely-edge-agent/vercel';
 
 export async function middleware(request: NextRequest) {
   // Skip API routes

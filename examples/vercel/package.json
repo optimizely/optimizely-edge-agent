@@ -11,7 +11,7 @@
   "dependencies": {
     "@vercel/kv": "^3",
     "next": "^14",
-    "optimizely-edge-agent": "file:../../optimizely-edge-agent/vercel",
+    "@optimizely/optimizely-edge-agent": "file:../../dist",
     "react": "^18",
     "react-dom": "^18"
   },
