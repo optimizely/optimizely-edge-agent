@@ -47,7 +47,7 @@ let globalKVStoreUserProfile = undefined;
  * - config() - Retrieves the Optimizely configuration.
  */
 export default class OptimizelyProvider {
-	constructor(request, env, ctx, requestConfig, abstractionHelper, kvStoreUserProfile) {
+	constructor(sdkKey, request, env, ctx, requestConfig, abstractionHelper, kvStoreUserProfile) {
 		logger().debug('Initializing OptimizelyProvider');
 		this.visitorId = undefined;
 		this.optimizelyClient = undefined;
