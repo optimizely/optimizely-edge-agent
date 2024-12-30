@@ -19,6 +19,7 @@
             "runtimeExecutable": "npm",
             "runtimeArgs": ["run", "dev"],
             "cwd": "${workspaceFolder}/examples/vercel",
+            "envFile": "${workspaceFolder}/examples/vercel/.env",
             "console": "integratedTerminal",
             "skipFiles": ["<node_internals>/**"],
             "resolveSourceMapLocations": [
