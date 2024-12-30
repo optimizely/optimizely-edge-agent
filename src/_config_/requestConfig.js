@@ -44,7 +44,7 @@ export default class RequestConfig {
 
 		// Configuration settings derived from environment and request
 		this.settings = {
-			cdnProvider: 'cloudflare', // Possible values: cloudflare, fastly, cloudfront, akamai
+			cdnProvider: 'cloudflare', // Possible values: cloudflare, fastly, cloudfront, akamai, vercel
 			responseJsonKeyName: 'decisions',
 			enableResponseMetadata: true,
 			flagsFromKV: false,

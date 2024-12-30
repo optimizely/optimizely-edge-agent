@@ -10,7 +10,28 @@
             "resolveSourceMapLocations": null,
             "attachExistingChildren": false,
             "autoAttachChildProcesses": false,
-            "sourceMaps": true // works with or without this line
+            "sourceMaps": true
+        },
+        {
+            "name": "Next.js: Vercel Example",
+            "type": "node",
+            "request": "launch",
+            "runtimeExecutable": "npm",
+            "runtimeArgs": ["run", "dev"],
+            "cwd": "${workspaceFolder}/examples/vercel",
+            "console": "integratedTerminal",
+            "skipFiles": ["<node_internals>/**"],
+            "resolveSourceMapLocations": [
+                "${workspaceFolder}/**",
+                "!**/node_modules/**"
+            ],
+            "outFiles": [
+                "${workspaceFolder}/examples/vercel/.next/**/*.js",
+                "${workspaceFolder}/src/**/*.js"
+            ],
+            "env": {
+                "NODE_OPTIONS": "--inspect"
+            }
         }
     ]
 }

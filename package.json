@@ -16,10 +16,8 @@
   "main": "dist/vercel/index.js",
   "exports": {
     "./cloudflare": "./dist/cloudflare/index.js",
-    "./vercel": {
-      "middleware": "./dist/vercel/middleware.js",
-      "function": "./dist/vercel/function.js"
-    }
+    "./vercel/middleware": "./src/cdn-adapters/vercel/middleware.js",
+    "./vercel/function": "./src/cdn-adapters/vercel/function.js"
   },
   "files": [
     "dist",
