@@ -10,9 +10,9 @@ import CloudflareKVInterface from './cloudflareKVInterface';
 // Application specific imports
 import CoreLogic from '../../core/providers/coreLogic'; // Assume this is your application logic module
 import OptimizelyProvider from '../../core/providers/optimizelyProvider';
-import defaultSettings from '../../utils/config/defaultSettings';
-import * as optlyHelper from '../../utils/optimizelyHelper';
-import { getAbstractionHelper } from '../../utils/abstractionHelper';
+import defaultSettings from '../../config/defaultSettings';
+import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
+import { getAbstractionHelper } from '../../utils/helpers/abstractionHelper';
 import Logger from '../../utils/logging/logger';
 import EventListeners from '../../core/providers/events/eventListeners';
 import handleRequest from '../../core/api/apiRouter';

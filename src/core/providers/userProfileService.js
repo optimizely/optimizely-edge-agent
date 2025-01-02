@@ -1,5 +1,5 @@
-import * as optlyHelper from '../../utils/optimizelyHelper';
-import { logger } from '../../utils/optimizelyHelper';
+import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
+import { logger } from '../../utils/helpers/optimizelyHelper';
 
 /**
  * Class representing a User Profile Service.

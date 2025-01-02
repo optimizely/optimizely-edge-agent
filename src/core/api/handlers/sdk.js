@@ -2,8 +2,8 @@
  * @module SDK
  */
 
-import { logger } from '../../../utils/optimizelyHelper.js';
-import defaultSettings from '../../../utils/config/defaultSettings.js';
+import { logger } from '../../../utils/helpers/optimizelyHelper.js';
+import defaultSettings from '../../../config/defaultSettings.js';
 
 /**
  * Fetches and updates the Optimizely JavaScript SDK based on the provided URL.

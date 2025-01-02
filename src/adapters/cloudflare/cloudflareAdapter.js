@@ -2,12 +2,12 @@
  * @module CloudflareAdapter
  */
 
-import * as optlyHelper from '../../utils/optimizelyHelper';
-import * as cookieDefaultOptions from '../../utils/config/cookieOptions';
-import defaultSettings from '../../utils/config/defaultSettings';
+import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
+import * as cookieDefaultOptions from '../../config/cookieOptions';
+import defaultSettings from '../../config/defaultSettings';
 import EventListeners from '../../core/providers/events/eventListeners';
-import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
-import { AbstractResponse } from '../../_helpers_/abstraction-classes/abstractResponse';
+import { AbstractRequest } from '../../core/interfaces/abstractRequest';
+import { AbstractResponse } from '../../core/interfaces/abstractResponse';
 
 /**
  * Adapter class for Cloudflare Workers environment.
@@ -950,7 +950,7 @@ class CloudflareAdapter {
 		try {
 			this.logger.debugExt(`Setting cookie [setResponseCookie]: ${name}, ${value}, ${options}`);
 			if (!(response instanceof Response)) {
-				throw new TypeError('Invalid response object');
+				throw new TypeError('Invalid response object')
 			}
 			if (typeof name !== 'string' || name.trim() === '') {
 				throw new TypeError('Invalid cookie name')

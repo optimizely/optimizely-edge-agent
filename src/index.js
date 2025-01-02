@@ -30,9 +30,9 @@ import './_event_listeners_/registered-listeners/registeredListeners';
 // Application specific imports
 import CoreLogic from './coreLogic';
 import OptimizelyProvider from './core/providers/optimizelyProvider';
-import defaultSettings from './utils/config/defaultSettings';
-import * as optlyHelper from './utils/optimizelyHelper';
-import { getAbstractionHelper } from './utils/abstractionHelper';
+import defaultSettings from './config/defaultSettings';
+import * as optlyHelper from './utils/helpers/optimizelyHelper';
+import { getAbstractionHelper } from './utils/helpers/abstractionHelper';
 import Logger from './utils/logging/logger';
 import handleRequest from './core/api/apiRouter';
 

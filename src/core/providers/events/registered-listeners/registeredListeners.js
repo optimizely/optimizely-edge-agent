@@ -1,8 +1,8 @@
 import EventListeners from '../eventListeners';
-import { logger } from '../../_helpers_/optimizelyHelper';
-import { AbstractionHelper } from '../../_helpers_/abstractionHelper';
-import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
-import { AbstractResponse } from '../../_helpers_/abstraction-classes/abstractResponse';
+import { logger } from '../../../../utils/helpers/optimizelyHelper';
+import { AbstractionHelper } from '../../../../utils/helpers/abstractionHelper';
+import { AbstractRequest } from '../../../core/interfaces/abstractRequest';
+import { AbstractResponse } from '../../../core/interfaces/abstractResponse';
 let eventListeners = EventListeners.getInstance();
 
 //// Register an async event listener for 'beforeCacheResponse'

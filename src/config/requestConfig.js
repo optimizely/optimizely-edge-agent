@@ -17,7 +17,7 @@
  */
 
 import Logger from '../logging/logger';
-import EventListeners from '../../core/providers/events/eventListeners';
+import EventListeners from '../core/providers/events/eventListeners';
 import { logger } from '../optimizelyHelper';
 
 /**

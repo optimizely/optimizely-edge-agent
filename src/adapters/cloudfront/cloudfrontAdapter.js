@@ -1,9 +1,9 @@
 // cloudFrontAdapter.js
 
-import * as optlyHelper from '../../utils/optimizelyHelper';
-import * as cookieDefaultOptions from '../../utils/config/cookieOptions';
-import defaultSettings from '../../utils/config/defaultSettings';
-import Logger from '../../_helpers_/logger';
+import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
+import * as cookieDefaultOptions from '../../config/cookieOptions';
+import defaultSettings from '../../config/defaultSettings';
+import Logger from '../../utils/logging/logger';
 import EventListeners from '../../core/providers/events/eventListeners';
 
 /**
@@ -13,6 +13,9 @@ class CloudfrontAdapter {
 	/**
 	 * Creates an instance of CloudFrontAdapter.
 	 * @param {Object} coreLogic - The core logic instance.
+	 * @param {Object} optimizelyProvider - The Optimizely provider instance.
+	 * @param {string} sdkKey - The SDK key.
+	 * @param {Object} abstractionHelper - The abstraction helper instance.
 	 */
 	constructor(coreLogic, optimizelyProvider, sdkKey, abstractionHelper) {
 		this.sdkKey = sdkKey;
@@ -722,10 +725,10 @@ class CloudfrontAdapter {
 				throw new TypeError('Invalid response object');
 			}
 			if (typeof name !== 'string' || name.trim() === '') {
-				throw new TypeError('Invalid cookie name');
+				throw new TypeError('Invalid cookie name')
 			}
 			if (typeof value !== 'string') {
-				throw new TypeError('Invalid cookie value');
+				throw new TypeError('Invalid cookie value')
 			}
 
 			// Merge default options with provided options, where provided options take precedence
@@ -777,13 +780,13 @@ class CloudfrontAdapter {
 	 */
 	setRequestCookie(request, name, value, options = cookieDefaultOptions) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 		if (typeof name !== 'string' || name.trim() === '') {
-			throw new TypeError('Invalid cookie name');
+			throw new TypeError('Invalid cookie name')
 		}
 		if (typeof value !== 'string') {
-			throw new TypeError('Invalid cookie value');
+			throw new TypeError('Invalid cookie value')
 		}
 
 		// Merge default options with provided options
@@ -833,7 +836,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleRequestCookies(request, cookies) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 
 		// Clone the original request
@@ -843,10 +846,10 @@ class CloudfrontAdapter {
 		try {
 			const cookieStrings = Object.entries(cookies).map(([name, { value, options }]) => {
 				if (typeof name !== 'string' || name.trim() === '') {
-					throw new TypeError('Invalid cookie name');
+					throw new TypeError('Invalid cookie name')
 				}
 				if (typeof value !== 'string') {
-					throw new TypeError('Invalid cookie value');
+					throw new TypeError('Invalid cookie value')
 				}
 				const optionsString = Object.entries(options || {})
 					.map(([key, val]) => {
@@ -888,7 +891,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleReqSerializedCookies(request, cookies) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 
 		// Clone the original request
@@ -922,7 +925,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleRespSerializedCookies(response, cookies) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object');
+			throw new TypeError('Invalid response object')
 		}
 
 		// Clone the original response to avoid modifying it directly
@@ -955,7 +958,7 @@ class CloudfrontAdapter {
 	 */
 	setRequestHeader(request, name, value) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 
 		// Clone the request and update the headers on the cloned object
@@ -983,7 +986,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleRequestHeaders(request, headers) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 
 		const newRequest = { ...request };
@@ -1012,7 +1015,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleResponseHeaders(response, headers) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object');
+			throw new TypeError('Invalid response object')
 		}
 
 		// Clone the original response with its body and status
@@ -1034,7 +1037,7 @@ class CloudfrontAdapter {
 	 */
 	getRequestHeader(request, name) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 
 		const headerValue = request.headers[name.toLowerCase()];
@@ -1050,7 +1053,7 @@ class CloudfrontAdapter {
 	 */
 	setResponseHeader(response, name, value) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object');
+			throw new TypeError('Invalid response object')
 		}
 
 		response.headers[name.toLowerCase()] = [{ key: name, value: value }];
@@ -1065,7 +1068,7 @@ class CloudfrontAdapter {
 	 */
 	getResponseHeader(response, name) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object');
+			throw new TypeError('Invalid response object')
 		}
 
 		const headerValue = response.headers[name.toLowerCase()];

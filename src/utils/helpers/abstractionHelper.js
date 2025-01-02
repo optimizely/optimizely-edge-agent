@@ -6,12 +6,12 @@
  */
 
 import { logger } from './optimizelyHelper.js';
-import EventListeners from '../core/providers/events/eventListeners';
-import defaultSettings from './config/defaultSettings';
-import { AbstractContext } from './abstraction-classes/abstractContext';
-import { AbstractRequest } from './abstraction-classes/abstractRequest';
-import { AbstractResponse } from './abstraction-classes/abstractResponse';
-import { KVStoreAbstractInterface } from './abstraction-classes/kvStoreAbstractInterface';
+import EventListeners from '../../core/providers/events/eventListeners';
+import defaultSettings from '../../config/defaultSettings';
+import { AbstractContext } from '../../core/interfaces/abstractContext';
+import { AbstractRequest } from '../../core/interfaces/abstractRequest';
+import { AbstractResponse } from '../../core/interfaces/abstractResponse';
+import { KVStoreAbstractInterface } from '../../core/interfaces/kvStoreAbstractInterface';
 
 /**
  * Class representing an abstraction helper.

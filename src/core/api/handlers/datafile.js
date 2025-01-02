@@ -9,9 +9,9 @@
  * - handleGetDatafile(request, abstractionHelper, kvStore, logger, defaultSettings, params) - Retrieves the current Optimizely SDK datafile from KV storage.
  */
 
-import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
-import { logger } from '../../../utils/optimizelyHelper';
-import defaultSettings from '../../../utils/config/defaultSettings';
+import { AbstractRequest } from '../../../core/interfaces/abstractRequest';
+import { logger } from '../../../utils/helpers/optimizelyHelper';
+import defaultSettings from '../../../config/defaultSettings';
 
 /**
  * Fetches and updates the Optimizely datafile based on the provided datafile key.

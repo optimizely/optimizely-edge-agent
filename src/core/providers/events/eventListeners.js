@@ -10,8 +10,8 @@
  * - trigger(event, ...args) - Triggers an event with optional arguments.
  */
 
-import { logger } from '../../../utils/optimizelyHelper';
-import defaultSettings from '../../../utils/config/defaultSettings';
+import { logger } from '../../../utils/helpers/optimizelyHelper';
+import defaultSettings from '../../../config/defaultSettings';
 
 /**
  * Class representing the EventListeners.

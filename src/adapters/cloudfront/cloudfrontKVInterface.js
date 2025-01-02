@@ -11,8 +11,8 @@
  */
 
 import { DynamoDB } from 'aws-sdk';
-import { logger } from '../../utils/optimizelyHelper.js';
-import { KVStoreAbstractInterface } from '../../utils/abstraction-classes/kvStoreAbstractInterface.js';
+import { logger } from '../../utils/helpers/optimizelyHelper.js';
+import { KVStoreAbstractInterface } from '../../core/interfaces/kvStoreAbstractInterface.js';
 
 /**
  * AWS CloudFront Lambda@Edge does not provide a built-in key-value (KV) store like Cloudflare Workers 

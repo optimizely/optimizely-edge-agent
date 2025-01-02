@@ -9,9 +9,9 @@
  * - handleGetFlagKeys(request, abstractionHelper, kvStore, logger, defaultSettings) - Retrieves flag keys stored in the KV store under the namespace 'optly_flagKeys'.
  */
 
-import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
-import { logger } from '../../../utils/optimizelyHelper';
-import defaultSettings from '../../../utils/config/defaultSettings';
+import { AbstractRequest } from '../../../core/interfaces/abstractRequest';
+import { logger } from '../../../utils/helpers/optimizelyHelper';
+import defaultSettings from '../../../config/defaultSettings';
 
 /**
  * Checks if the given object is a valid array.
