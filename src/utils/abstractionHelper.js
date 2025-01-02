@@ -5,9 +5,9 @@
  * It is designed to be used as a base for building more specific implementations of the OptimizelyProvider class.
  */
 
-import { logger } from '../_helpers_/optimizelyHelper.js';
-import EventListeners from '../_event_listeners_/eventListeners';
-import defaultSettings from '../_config_/defaultSettings';
+import { logger } from './optimizelyHelper.js';
+import EventListeners from '../core/providers/events/eventListeners';
+import defaultSettings from './config/defaultSettings';
 import { AbstractContext } from './abstraction-classes/abstractContext';
 import { AbstractRequest } from './abstraction-classes/abstractRequest';
 import { AbstractResponse } from './abstraction-classes/abstractResponse';

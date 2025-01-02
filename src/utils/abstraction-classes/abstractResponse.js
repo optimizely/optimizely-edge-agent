@@ -2,9 +2,9 @@
  * @module AbstractResponse
  */
 
-import defaultSettings from '../../_config_/defaultSettings';
+import defaultSettings from '../config/defaultSettings';
 import { AbstractionHelper } from '../abstractionHelper';
-import { logger } from '../../_helpers_/optimizelyHelper';
+import { logger } from '../optimizelyHelper';
 
 /**
  * The AbstractResponse class is an abstract class that provides a common interface for handling responses.
@@ -376,7 +376,7 @@ export class AbstractResponse {
 			case 'cloudfront':
 				return response.headers[name.toLowerCase()]?.[0]?.value || null;
 			default:
-				throw new Error('Unsupported CDN provider.');
+				throw new Error('Unsupported CDN provider');
 		}
 	}
 
@@ -407,7 +407,7 @@ export class AbstractResponse {
 				response.headers[name.toLowerCase()] = [{ key: name, value: value }];
 				break;
 			default:
-				throw new Error('Unsupported CDN provider.');
+				throw new Error('Unsupported CDN provider');
 		}
 	}
 

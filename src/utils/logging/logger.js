@@ -16,8 +16,8 @@
  * - getInstance(env, defaultLevel) - Returns the singleton instance of the Logger.
  */
 
-import defaultSettings from '../_config_/defaultSettings.js';
-import * as optlyHelper from '../_helpers_/optimizelyHelper.js';
+import defaultSettings from '../config/defaultSettings.js';
+import * as optlyHelper from '../optimizelyHelper.js';
 
 /**
  * Class representing a singleton logger.

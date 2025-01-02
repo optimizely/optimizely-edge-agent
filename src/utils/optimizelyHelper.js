@@ -19,10 +19,10 @@
  */
 
 import * as cookie from 'cookie';
-import * as cookieDefaultOptions from '../_config_/cookieOptions';
-import defaultSettings from '../_config_/defaultSettings';
-import Logger from './logger';
-import EventListeners from '../_event_listeners_/eventListeners';
+import * as cookieDefaultOptions from './config/cookieOptions';
+import defaultSettings from './config/defaultSettings';
+import Logger from './logging/logger';
+import EventListeners from '../core/providers/events/eventListeners';
 import { AbstractionHelper } from './abstractionHelper';
 
 let https;

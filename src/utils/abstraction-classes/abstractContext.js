@@ -2,8 +2,8 @@
  * @module AbstractContext
  */
 
-import defaultSettings from '../../_config_/defaultSettings';
-import { logger } from '../../_helpers_/optimizelyHelper';
+import defaultSettings from '../config/defaultSettings';
+import { logger } from '../optimizelyHelper';
 
 /**
  *

@@ -16,9 +16,9 @@
  *
  */
 
-import Logger from '../_helpers_/logger';
-import EventListeners from '../_event_listeners_/eventListeners';
-import { logger } from '../_helpers_/optimizelyHelper';
+import Logger from '../logging/logger';
+import EventListeners from '../../core/providers/events/eventListeners';
+import { logger } from '../optimizelyHelper';
 
 /**
  * Manages the configuration settings for a request, including headers, query parameters, and body content.

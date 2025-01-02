@@ -3,8 +3,8 @@
  *
  */
 
-import defaultSettings from '../../_config_/defaultSettings';
-import { logger } from '../../_helpers_/optimizelyHelper';
+import defaultSettings from '../config/defaultSettings';
+import { logger } from '../optimizelyHelper';
 import { AbstractionHelper } from '../abstractionHelper';
 
 /**
@@ -280,34 +280,6 @@ export class AbstractRequest {
 		}
 
 		return headers.get(name);
-	}
-
-	/**
-	 * Normalize the headers for CloudFront.
-	 * @param {Object} headers - The headers to normalize.
-	 * @returns {Headers} - The normalized headers.
-	 */
-	static _normalizeCloudFrontHeaders(headers) {
-		const normalizedHeaders = new Headers();
-		for (const [key, values] of Object.entries(headers)) {
-			for (const { value } of values) {
-				normalizedHeaders.append(key, value);
-			}
-		}
-		return normalizedHeaders;
-	}
-
-	/**
-	 * Normalize the headers for Akamai.
-	 * @param {Request} request - The request object.
-	 * @returns {Headers} - The normalized headers.
-	 */
-	static _normalizeAkamaiHeaders(request) {
-		const normalizedHeaders = new Headers();
-		for (const [key, value] of Object.entries(request.getHeaders())) {
-			normalizedHeaders.append(key, value);
-		}
-		return normalizedHeaders;
 	}
 
 	/**
