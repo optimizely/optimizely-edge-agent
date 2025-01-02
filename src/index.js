@@ -29,12 +29,12 @@ import CloudflareKVInterface from './cdn-adapters/cloudflare/cloudflareKVInterfa
 import './_event_listeners_/registered-listeners/registeredListeners';
 // Application specific imports
 import CoreLogic from './coreLogic';
-import OptimizelyProvider from './_optimizely_/optimizelyProvider';
-import defaultSettings from './_config_/defaultSettings';
-import * as optlyHelper from './_helpers_/optimizelyHelper';
-import { getAbstractionHelper } from './_helpers_/abstractionHelper';
-import Logger from './_helpers_/logger';
-import handleRequest from './_api_/apiRouter';
+import OptimizelyProvider from './core/providers/optimizelyProvider';
+import defaultSettings from './config/defaultSettings';
+import * as optlyHelper from './utils/helpers/optimizelyHelper';
+import { getAbstractionHelper } from './utils/helpers/abstractionHelper';
+import Logger from './utils/logging/logger';
+import handleRequest from './core/api/apiRouter';
 
 let abstractionHelper, logger, abstractRequest, incomingRequest, environmentVariables, context;
 let optimizelyProvider, coreLogic, cdnAdapter;
