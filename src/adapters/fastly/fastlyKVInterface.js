@@ -9,7 +9,8 @@
  * - delete(key) - Deletes a key from the Fastly EdgeWorkers KV store.
  */
 
-import { logger } from '../../_helpers_/optimizelyHelper.js';
+import { logger } from '../../utils/optimizelyHelper.js';
+import { KVStoreAbstractInterface } from '../../utils/abstraction-classes/kvStoreAbstractInterface';
 
 /**
  * Class representing the Fastly EdgeWorkers KV store interface.

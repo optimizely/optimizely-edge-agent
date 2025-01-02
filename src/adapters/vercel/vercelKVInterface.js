@@ -9,7 +9,8 @@
  * - delete(key) - Deletes a key from the Vercel Edge Functions KV store.
  */
 
-import { logger } from '../../_helpers_/optimizelyHelper.js';
+import { logger } from '../../utils/optimizelyHelper';
+import { KVStoreAbstractInterface } from '../../utils/abstraction-classes/kvStoreAbstractInterface';
 
 /**
  * Class representing the Vercel Edge Functions KV store interface.

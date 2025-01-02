@@ -10,6 +10,9 @@
  * - delete(key) - Deletes a key from the KV store.
  */
 
+import { logger } from '../../utils/optimizelyHelper';
+import { KVStoreAbstractInterface } from '../../utils/abstraction-classes/kvStoreAbstractInterface';
+
 /**
  * Class representing the Cloudflare KV store interface.
  * @class

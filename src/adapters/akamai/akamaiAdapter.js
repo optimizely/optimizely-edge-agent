@@ -1,9 +1,9 @@
 // akamaiAdapter.js
 
-import * as optlyHelper from '../../_helpers_/optimizelyHelper';
-import * as cookieDefaultOptions from '../../_config_/cookieOptions';
-import defaultSettings from '../../_config_/defaultSettings';
-import EventListeners from '../../_event_listeners_/eventListeners';
+import * as optlyHelper from '../../utils/optimizelyHelper';
+import * as cookieDefaultOptions from '../../utils/config/cookieOptions';
+import defaultSettings from '../../utils/config/defaultSettings';
+import EventListeners from '../../core/providers/events/eventListeners';
 
 /**
  * Adapter class for Akamai EdgeWorkers environment.
@@ -854,7 +854,7 @@ class AkamaiAdapter {
 	 *   @param {boolean} [options.httpOnly=true] - Indicates that the cookie is accessible only through the HTTP protocol.
 	 *   @param {string} [options.sameSite="none"] - Same-site policy for the cookie. Valid options are "Strict", "Lax", or "None".
 	 * @returns {Request} - A new request object with the updated cookie header.
-	 * @throws {TypeError} If the request, name, or value parameter is not provided or has an invalid type.
+	 * @throws {TypeError} - If the request, name, or value parameter is not provided or has an invalid type.
 	 */
 	setRequestCookie(request, name, value, options = cookieDefaultOptions) {
 		if (!(request instanceof Request)) {
@@ -880,7 +880,6 @@ class AkamaiAdapter {
 				}
 				return `${key}=${val}`;
 			})
-			.filter(Boolean) // Remove any empty strings (from false boolean values)
 			.join('; ');
 
 		const cookieValue = `${name}=${encodeURIComponent(value)}; ${optionsString}`;

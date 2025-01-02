@@ -1,10 +1,10 @@
 // cloudFrontAdapter.js
 
-import * as optlyHelper from '../../_helpers_/optimizelyHelper';
-import * as cookieDefaultOptions from '../../_config_/cookieOptions';
-import defaultSettings from '../../_config_/defaultSettings';
+import * as optlyHelper from '../../utils/optimizelyHelper';
+import * as cookieDefaultOptions from '../../utils/config/cookieOptions';
+import defaultSettings from '../../utils/config/defaultSettings';
 import Logger from '../../_helpers_/logger';
-import EventListeners from '../../_event_listeners_/eventListeners';
+import EventListeners from '../../core/providers/events/eventListeners';
 
 /**
  * Adapter class for AWS CloudFront Lambda@Edge environment.

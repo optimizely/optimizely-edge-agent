@@ -2,10 +2,10 @@
  * @module CloudflareAdapter
  */
 
-import * as optlyHelper from '../../_helpers_/optimizelyHelper';
-import * as cookieDefaultOptions from '../../_config_/cookieOptions';
-import defaultSettings from '../../_config_/defaultSettings';
-import EventListeners from '../../_event_listeners_/eventListeners';
+import * as optlyHelper from '../../utils/optimizelyHelper';
+import * as cookieDefaultOptions from '../../utils/config/cookieOptions';
+import defaultSettings from '../../utils/config/defaultSettings';
+import EventListeners from '../../core/providers/events/eventListeners';
 import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
 import { AbstractResponse } from '../../_helpers_/abstraction-classes/abstractResponse';
 
@@ -396,7 +396,6 @@ class CloudflareAdapter {
 	}
 
 	/**
-
 	 * Generates a cache key based on CDN settings, enhancing cache control by adding
 	 * A/B test identifiers or using specific CDN URLs as query parameters.
 	 * @param {Object} cdnSettings - The CDN configuration settings.
@@ -829,14 +828,12 @@ class CloudflareAdapter {
 		return flagsString;
 	}
 	/**
-
-    /**
-     * Clones a request object with a new URL, ensuring that GET and HEAD requests do not include a body.
-     * @param {Request} request - The original request object to be cloned.
-     * @param {string} newUrl - The new URL to be set for the cloned request.
-     * @returns {Request} - The cloned request object with the new URL.
-     * @throws {TypeError} - If the provided request is not a valid Request object or the new URL is not a valid string.
-     */
+	 * Clones a request object with a new URL, ensuring that GET and HEAD requests do not include a body.
+	 * @param {Request} request - The original request object to be cloned.
+	 * @param {string} newUrl - The new URL to be set for the cloned request.
+	 * @returns {Request} - The cloned request object with the new URL.
+	 * @throws {TypeError} - If the provided request is not a valid Request object or the new URL is not a valid string.
+	 */
 	cloneRequestWithNewUrl(request, newUrl) {
 		try {
 			// Validate the request and new URL
@@ -956,10 +953,10 @@ class CloudflareAdapter {
 				throw new TypeError('Invalid response object');
 			}
 			if (typeof name !== 'string' || name.trim() === '') {
-				throw new TypeError('Invalid cookie name');
+				throw new TypeError('Invalid cookie name')
 			}
 			if (typeof value !== 'string') {
-				throw new TypeError('Invalid cookie value');
+				throw new TypeError('Invalid cookie value')
 			}
 
 			// Merge default options with provided options, where provided options take precedence
@@ -1007,13 +1004,13 @@ class CloudflareAdapter {
 	setRequestCookie(request, name, value, options = cookieDefaultOptions) {
 		this.logger.debugExt(`Setting cookie [setRequestCookie]: ${name}, ${value}, ${options}`);
 		if (!(request instanceof Request)) {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 		if (typeof name !== 'string' || name.trim() === '') {
-			throw new TypeError('Invalid cookie name');
+			throw new TypeError('Invalid cookie name')
 		}
 		if (typeof value !== 'string') {
-			throw new TypeError('Invalid cookie value');
+			throw new TypeError('Invalid cookie value')
 		}
 
 		// Merge default options with provided options
@@ -1046,7 +1043,7 @@ class CloudflareAdapter {
 	setMultipleRequestCookies(request, cookies) {
 		this.logger.debugExt(`Setting multiple cookies [setMultipleRequestCookies]: ${cookies}`);
 		if (!(request instanceof Request)) {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 
 		// Clone the original request
@@ -1056,10 +1053,10 @@ class CloudflareAdapter {
 		try {
 			const cookieStrings = Object.entries(cookies).map(([name, { value, options }]) => {
 				if (typeof name !== 'string' || name.trim() === '') {
-					throw new TypeError('Invalid cookie name');
+					throw new TypeError('Invalid cookie name')
 				}
 				if (typeof value !== 'string') {
-					throw new TypeError('Invalid cookie value');
+					throw new TypeError('Invalid cookie value')
 				}
 				const optionsString = Object.entries(options || {})
 					.map(([key, val]) => {
@@ -1103,7 +1100,7 @@ class CloudflareAdapter {
 	setMultipleReqSerializedCookies(request, cookies) {
 		this.logger.debugExt('Setting multiple serialized cookies [setMultipleReqSerializedCookies]: ', cookies);
 		if (!(request instanceof Request)) {
-			throw new TypeError('Invalid request object');
+			throw new TypeError('Invalid request object')
 		}
 
 		// Clone the original request
@@ -1138,7 +1135,7 @@ class CloudflareAdapter {
 	setMultipleRespSerializedCookies(response, cookies) {
 		this.logger.debugExt('Setting multiple serialized cookies [setMultipleRespSerializedCookies]: ', cookies);
 		if (!(response instanceof Response)) {
-			throw new TypeError('Invalid response object');
+			throw new TypeError('Invalid response object')
 		}
 
 		// Clone the original response to avoid modifying it directly
