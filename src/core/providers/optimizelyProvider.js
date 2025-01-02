@@ -2,11 +2,12 @@
  * @module OptimizelyProvider
  */
 
-import * as optlyHelper from '../_helpers_/optimizelyHelper';
-import { logger } from '../_helpers_/optimizelyHelper';
-// import EventListeners from '../_event_listeners_/eventListeners';
-import defaultSettings from '../_config_/defaultSettings';
+import * as optlyHelper from '../../utils/optimizelyHelper';
+import { logger } from '../../utils/optimizelyHelper';
+import { AbstractionHelper } from '../../utils/abstractionHelper';
+import defaultSettings from '../../utils/config/defaultSettings';
 import UserProfileService from './userProfileService';
+import EventListeners from './events/eventListeners';
 
 import {
 	createInstance,

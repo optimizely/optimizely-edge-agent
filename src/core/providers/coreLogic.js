@@ -2,10 +2,12 @@
  * @module coreLogic
  */
 
-import * as optlyHelper from './_helpers_/optimizelyHelper';
-import RequestConfig from './_config_/requestConfig';
-import defaultSettings from './_config_/defaultSettings';
-import EventListeners from './_event_listeners_/eventListeners';
+import * as optlyHelper from '../../utils/optimizelyHelper';
+import RequestConfig from '../../utils/config/requestConfig';
+import defaultSettings from '../../utils/config/defaultSettings';
+import { logger } from '../../utils/optimizelyHelper';
+import { AbstractionHelper } from '../../utils/abstractionHelper';
+import EventListeners from './events/eventListeners';
 
 /**
  * Optimizely Feature Variable Name for Settings: "cdnVariationSettings"
@@ -29,15 +31,16 @@ import EventListeners from './_event_listeners_/eventListeners';
  *     // If true for GET requests, decisions made by Optimizely (e.g., which variation to serve) are forwarded to the
  *     // origin server as part of the request, encapsulated in cookies or headers. If the cdnResponseURL is a valid URL,
  *     // the request is forwarded to this URL instead of the original request URL.
- *     forwardRequestToOrigin: 'true',
+ *     forwardRequestToOrigin:
+ *         (settings.forwardRequestToOrigin && settings.forwardRequestToOrigin === 'true') || false,
  *
  *     // If set to true, any requests that are forwarded to the origin are cached, optimizing subsequent requests for
  *     // the same content and reducing load on the origin server.
- *     cacheRequestToOrigin: 'true',
+ *     cacheRequestToOrigin: (settings.cacheRequestToOrigin && settings.cacheRequestToOrigin === 'true') || false,
  *
  *     // Indicates whether the settings being used are for the control group in an A/B test. When false, it implies that
  *     // the variation is experimental.
- *     isControlVariation: 'false'
+ *     isControlVariation: (settings.isControlVariation && settings.isControlVariation === 'true') || false,
  * },
  */
 

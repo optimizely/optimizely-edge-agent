@@ -10,6 +10,8 @@
  */
 
 import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
+import { logger } from '../../../utils/optimizelyHelper';
+import defaultSettings from '../../../utils/config/defaultSettings';
 
 /**
  * Checks if the given object is a valid array.

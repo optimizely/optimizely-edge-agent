@@ -10,10 +10,9 @@
  */
 
 // Define your route handlers as before
-import { handleDatafile, handleGetDatafile } from './handlers/datafile';
-import { handleFlagKeys, handleGetFlagKeys } from './handlers/flagKeys';
-import handleSDK from './handlers/sdk';
-import handleVariationChanges from './handlers/variationChanges';
+import defaultSettings from '../../utils/config/defaultSettings';
+import { logger } from '../../utils/optimizelyHelper';
+import * as handlers from './handlers';
 
 /**
  * Manually handle routing based on URL and method.
@@ -28,19 +27,19 @@ async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSet
 	// Define route patterns and corresponding handlers
 	const routes = {
 		'/v1/api/datafiles/:key': {
-			GET: handleGetDatafile,
-			POST: handleDatafile,
+			GET: handlers.handleGetDatafile,
+			POST: handlers.handleDatafile,
 		},
 		'/v1/api/flag_keys': {
-			POST: handleFlagKeys,
-			GET: handleGetFlagKeys,
+			POST: handlers.handleFlagKeys,
+			GET: handlers.handleGetFlagKeys,
 		},
 		'/v1/api/sdk/:sdk_url': {
-			GET: handleSDK,
+			GET: handlers.handleSDK,
 		},
 		'/v1/api/variation_changes/:experiment_id/:api_token': {
-			GET: handleVariationChanges,
-			POST: handleVariationChanges,
+			GET: handlers.handleVariationChanges,
+			POST: handlers.handleVariationChanges,
 		},
 	};
 

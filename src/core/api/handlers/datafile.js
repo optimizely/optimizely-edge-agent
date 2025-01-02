@@ -10,6 +10,8 @@
  */
 
 import { AbstractRequest } from '../../_helpers_/abstraction-classes/abstractRequest';
+import { logger } from '../../../utils/optimizelyHelper';
+import defaultSettings from '../../../utils/config/defaultSettings';
 
 /**
  * Fetches and updates the Optimizely datafile based on the provided datafile key.

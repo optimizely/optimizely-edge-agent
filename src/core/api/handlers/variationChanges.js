@@ -2,7 +2,8 @@
  * @module VariationChanges
  */
 
-import { logger } from '../../_helpers_/optimizelyHelper.js';
+import { logger } from '../../../utils/optimizelyHelper.js';
+import defaultSettings from '../../../utils/config/defaultSettings.js';
 
 /**
  * Fetches and updates the variation changes from the Optimizely API.
