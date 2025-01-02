@@ -5,18 +5,18 @@
  */
 import { NextResponse } from 'next/server';
 // CDN specific imports
-import VercelAdapter from './cdn-adapters/vercel/vercelAdapter';
-import VercelKVInterface from './cdn-adapters/vercel/vercelKVInterface';
+import VercelAdapter from './vercelAdapter';
+import VercelKVInterface from './vercelKVInterface';
 
 // Application specific imports
-import CoreLogic from './coreLogic'; // Assume this is your application logic module
-import OptimizelyProvider from './_optimizely_/optimizelyProvider';
-import defaultSettings from './_config_/defaultSettings';
-import * as optlyHelper from './_helpers_/optimizelyHelper';
-import { getAbstractionHelper } from './_helpers_/abstractionHelper';
-import Logger from './_helpers_/logger';
-import EventListeners from './_event_listeners_/eventListeners';
-import handleRequest from './_api_/apiRouter';
+import CoreLogic from '../../core/providers/coreLogic'; 
+import OptimizelyProvider from '../../core/providers/optimizelyProvider';
+import defaultSettings from '../../utils/config/defaultSettings';
+import * as optlyHelper from '../../utils/optimizelyHelper';
+import { getAbstractionHelper } from '../../utils/abstractionHelper';
+import Logger from '../../utils/logging/logger';
+import EventListeners from '../../core/providers/events/eventListeners';
+import handleRequest from '../../core/api/apiRouter';
 //
 let abstractionHelper, logger;
 // Define the request, environment, and context objects after initializing the AbstractionHelper
