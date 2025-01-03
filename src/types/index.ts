@@ -3,3 +3,4 @@ export * from './core';
 export * from './optimizely';
 export * from './request';
 export * from './response';
+export * from './events';

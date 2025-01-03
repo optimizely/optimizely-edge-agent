@@ -1,71 +1,81 @@
 import { EventListeners } from '../EventListeners';
 import { logger } from '../../../../utils/helpers/optimizelyHelper';
-import { AbstractRequest } from '../../../core/interfaces/abstractRequest';
-import { AbstractResponse } from '../../../core/interfaces/abstractResponse';
-
-// Types for event parameters
-interface CdnExperimentSettings {
-  // Add CDN experiment settings properties
-  [key: string]: unknown;
-}
-
-interface RequestConfig {
-  // Add request config properties
-  [key: string]: unknown;
-}
-
-interface Decision {
-  // Add decision properties
-  [key: string]: unknown;
-}
-
-interface ProcessedResult {
-  // Add processed result properties
-  [key: string]: unknown;
-}
-
-interface OperationResult {
-  // Add operation result properties
-  [key: string]: unknown;
-}
+import { IRequest } from '../../../../types/request';
+import { IResponse } from '../../../../types/response';
+import {
+  CdnExperimentSettings,
+  RequestConfig,
+  Decision,
+  ProcessedResult,
+  OperationResult
+} from '../../../../types/events';
 
 // Get singleton instance
 const eventListeners = EventListeners.getInstance();
 
 // Register event listeners
-eventListeners.on('beforeCacheResponse', async (request: AbstractRequest, response: AbstractResponse) => {
+eventListeners.on('beforeCacheResponse', async (request: IRequest, response: IResponse) => {
   logger().debug('Before cache response event triggered');
   return {};
 });
 
 eventListeners.on('afterCacheResponse', async (
-  request: AbstractRequest,
-  response: AbstractResponse,
+  request: IRequest,
+  response: IResponse,
   cdnExperimentSettings: CdnExperimentSettings
 ) => {
   logger().debug('After cache response event triggered');
 });
 
 eventListeners.on('beforeResponse', async (
-  request: AbstractRequest,
-  response: AbstractResponse,
-  cdnExperimentSettings: CdnExperimentSettings
+  request: IRequest,
+  response: IResponse
 ) => {
   logger().debug('Before response event triggered');
-  return {};
 });
 
 eventListeners.on('afterResponse', async (
-  request: AbstractRequest,
-  response: AbstractResponse,
-  cdnExperimentSettings: CdnExperimentSettings
+  request: IRequest,
+  response: IResponse
 ) => {
   logger().debug('After response event triggered');
-  return {};
+});
+
+eventListeners.on('beforeDecide', async (config: RequestConfig) => {
+  logger().debug('Before decide event triggered');
+});
+
+eventListeners.on('afterDecide', async (
+  config: RequestConfig,
+  decisions: Decision[]
+) => {
+  logger().debug('After decide event triggered');
+});
+
+eventListeners.on('beforeProcessingRequest', async (request: IRequest) => {
+  logger().debug('Before processing request event triggered');
+});
+
+eventListeners.on('afterProcessingRequest', async (
+  request: IRequest,
+  result: ProcessedResult
+) => {
+  logger().debug('After processing request event triggered');
+});
+
+eventListeners.on('beforeDispatchingEvents', async (events: Record<string, unknown>[]) => {
+  logger().debug('Before dispatching events triggered');
+});
+
+eventListeners.on('afterDispatchingEvents', async (
+  events: Record<string, unknown>[],
+  result: OperationResult
+) => {
+  logger().debug('After dispatching events triggered');
 });
 
 eventListeners.on('beforeCreateCacheKey', async (
-  request: AbstractRequest,
+  request: IRequest,
   cdnExperimentSettings: CdnExperimentSettings
 ) => {
   logger().debug('Before create cache key event triggered');
@@ -80,47 +90,30 @@ eventListeners.on('afterCreateCacheKey', async (
 });
 
 eventListeners.on('beforeRequest', async (
-  request: AbstractRequest,
+  request: IRequest,
   cdnExperimentSettings: CdnExperimentSettings
 ) => {
   logger().debug('Before request event triggered');
 });
 
 eventListeners.on('afterRequest', async (
-  request: AbstractRequest,
-  response: AbstractResponse,
+  request: IRequest,
+  response: IResponse,
   cdnExperimentSettings: CdnExperimentSettings
 ) => {
   logger().debug('After request event triggered');
   return {};
 });
 
-eventListeners.on('beforeDecide', async (
-  request: AbstractRequest,
-  requestConfig: RequestConfig,
-  flagsToDecide: string[],
-  flagsToForce: Record<string, unknown>
-) => {
-  // logger().debug('Before decide event triggered');
-});
-
-eventListeners.on('afterDecide', async (
-  request: AbstractRequest,
-  requestConfig: RequestConfig,
-  decisions: Decision[]
-) => {
-  // logger().debug('After decide event triggered');
-});
-
 eventListeners.on('beforeDetermineFlagsToDecide', async (
-  request: AbstractRequest,
+  request: IRequest,
   requestConfig: RequestConfig
 ) => {
   // logger().debug('Before determine flags to decide event triggered');
 });
 
 eventListeners.on('afterDetermineFlagsToDecide', async (
-  request: AbstractRequest,
+  request: IRequest,
   requestConfig: RequestConfig,
   flagsToForce: Record<string, unknown>,
   flagsToDecide: string[],
@@ -130,14 +123,14 @@ eventListeners.on('afterDetermineFlagsToDecide', async (
 });
 
 eventListeners.on('beforeReadingCookie', async (
-  request: AbstractRequest,
+  request: IRequest,
   cookieHeaderString: string
 ) => {
   // logger().debug('Before reading cookie event triggered');
 });
 
 eventListeners.on('afterReadingCookie', async (
-  request: AbstractRequest,
+  request: IRequest,
   savedCookieDecisions: Decision[],
   validStoredDecisions: Decision[],
   invalidCookieDecisions: Decision[]
@@ -155,7 +148,7 @@ eventListeners.on('afterReadingCookie', async (
 });
 
 eventListeners.on('beforeReadingCache', async (
-  request: AbstractRequest,
+  request: IRequest,
   requestConfig: RequestConfig,
   cdnExperimentSettings: CdnExperimentSettings
 ) => {
@@ -163,44 +156,12 @@ eventListeners.on('beforeReadingCache', async (
 });
 
 eventListeners.on('afterReadingCache', async (
-  request: AbstractRequest,
-  responseFromCache: AbstractResponse,
+  request: IRequest,
+  responseFromCache: IResponse,
   requestConfig: RequestConfig,
   cdnExperimentSettings: CdnExperimentSettings
 ) => {
   logger().debug('After reading cache event triggered');
-});
-
-eventListeners.on('beforeProcessingRequest', async (
-  request: AbstractRequest,
-  requestConfig: RequestConfig
-) => {
-  // logger().debug('Before processing request event triggered');
-});
-
-eventListeners.on('afterProcessingRequest', async (
-  request: AbstractRequest,
-  response: AbstractResponse,
-  requestConfig: RequestConfig,
-  processedResult: ProcessedResult
-) => {
-  // logger().debug('After processing request event triggered');
-});
-
-eventListeners.on('beforeDispatchingEvents', async (
-  url: string,
-  events: unknown[]
-) => {
-  logger().debug('Before dispatching events event triggered');
-});
-
-eventListeners.on('afterDispatchingEvents', async (
-  request: AbstractRequest,
-  response: AbstractResponse,
-  events: unknown[],
-  operationResult: OperationResult
-) => {
-  logger().debug('After dispatching events event triggered');
 });
 
 export default eventListeners;

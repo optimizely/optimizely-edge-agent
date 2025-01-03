@@ -45,16 +45,10 @@ export interface CDNVariationSettings {
 export interface Decision {
 	flagKey: string;
 	variationKey: string;
+	enabled?: boolean;
+	variables?: Record<string, unknown>;
 	ruleKey?: string;
-	enabled: boolean;
-	variables: {
-		cdnVariationSettings?: CDNVariationSettings;
-		[key: string]: unknown;
-	};
-	userContext?: {
-		userId: string;
-		attributes?: Record<string, unknown>;
-	};
+	reasons?: string[];
 }
 
 export interface CoreLogicDependencies {

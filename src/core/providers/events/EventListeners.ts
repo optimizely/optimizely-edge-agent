@@ -1,33 +1,10 @@
 import { logger } from '../../../utils/helpers/optimizelyHelper';
+import { EventType, EventListener, EventListenerParameters } from '../../../types/events';
 
-type EventListener = (...args: unknown[]) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
-
-type EventType =
-  | 'beforeResponse'
-  | 'afterResponse'
-  | 'beforeCreateCacheKey'
-  | 'afterCreateCacheKey'
-  | 'beforeCacheResponse'
-  | 'afterCacheResponse'
-  | 'beforeRequest'
-  | 'afterRequest'
-  | 'beforeDecide'
-  | 'afterDecide'
-  | 'beforeDetermineFlagsToDecide'
-  | 'afterDetermineFlagsToDecide'
-  | 'beforeReadingCookie'
-  | 'afterReadingCookie'
-  | 'beforeReadingCache'
-  | 'afterReadingCache'
-  | 'beforeProcessingRequest'
-  | 'afterProcessingRequest'
-  | 'beforeReadingRequestConfig'
-  | 'afterReadingRequestConfig'
-  | 'beforeDispatchingEvents'
-  | 'afterDispatchingEvents';
+type TypedEventListener<K extends EventType> = EventListener<EventListenerParameters[K]>;
 
 type EventListenersMap = {
-  [K in EventType]: EventListener[];
+  [K in EventType]: TypedEventListener<K>[];
 };
 
 /**
@@ -71,13 +48,14 @@ export class EventListeners {
       afterDispatchingEvents: []
     };
 
-    this.registeredEvents = new Set();
+    this.registeredEvents = new Set<EventType>();
   }
 
   /**
    * Gets the singleton instance of EventListeners.
+   * @returns The EventListeners instance
    */
-  static getInstance(): EventListeners {
+  public static getInstance(): EventListeners {
     if (!EventListeners.instance) {
       EventListeners.instance = new EventListeners();
     }
@@ -85,78 +63,71 @@ export class EventListeners {
   }
 
   /**
-   * Registers a listener for a given event.
+   * Registers an event listener for a specific event type.
+   * @param event - The event type to listen for
+   * @param listener - The listener function to call when the event occurs
    */
-  on(event: EventType, listener: EventListener): void {
-    if (this.listeners[event]) {
-      this.listeners[event].push(listener);
-      this.registeredEvents.add(event);
-    } else {
-      logger().error(`Event ${event} not supported`);
+  public on<K extends EventType>(event: K, listener: TypedEventListener<K>): void {
+    logger().debug(`Registering listener for event: ${event}`);
+    this.listeners[event].push(listener);
+    this.registeredEvents.add(event);
+  }
+
+  /**
+   * Removes an event listener for a specific event type.
+   * @param event - The event type to remove the listener from
+   * @param listener - The listener function to remove
+   */
+  public off<K extends EventType>(event: K, listener: TypedEventListener<K>): void {
+    logger().debug(`Removing listener for event: ${event}`);
+    const index = this.listeners[event].indexOf(listener);
+    if (index !== -1) {
+      this.listeners[event].splice(index, 1);
+    }
+    if (this.listeners[event].length === 0) {
+      this.registeredEvents.delete(event);
     }
   }
 
   /**
-   * Triggers an event with optional arguments.
+   * Emits an event with the provided arguments.
+   * @param event - The event type to emit
+   * @param args - The arguments to pass to the event listeners
+   * @returns A promise that resolves when all listeners have been called
    */
-  async trigger(event: EventType, ...args: unknown[]): Promise<Record<string, unknown>> {
-    const combinedResults: Record<string, unknown> = {};
-
-    if (this.registeredEvents.has(event)) {
-      for (const listener of this.listeners[event]) {
-        try {
-          const result = await listener(...args);
-          if (result !== undefined) {
-            Object.assign(combinedResults, result);
-          }
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          logger().error(`Error in listener for event ${event}: ${message}`);
-        }
-      }
-    } else {
-      logger().error(`Event ${event} not registered`);
+  public async emit<K extends EventType>(
+    event: K,
+    ...args: EventListenerParameters[K]
+  ): Promise<void> {
+    logger().debug(`Emitting event: ${event}`);
+    if (!this.registeredEvents.has(event)) {
+      return;
     }
 
-    return combinedResults;
+    const listeners = this.listeners[event] as TypedEventListener<K>[];
+    for (const listener of listeners) {
+      try {
+        await listener(...args);
+      } catch (error) {
+        logger().error(`Error in event listener for ${event}: ${error}`);
+      }
+    }
+  }
+
+  /**
+   * Checks if there are any listeners registered for a specific event type.
+   * @param event - The event type to check
+   * @returns True if there are listeners registered for the event, false otherwise
+   */
+  public hasListeners(event: EventType): boolean {
+    return this.registeredEvents.has(event);
   }
 
   /**
    * Gets all registered event types.
+   * @returns An array of registered event types
    */
-  getRegisteredEvents(): EventType[] {
+  public getRegisteredEvents(): EventType[] {
     return Array.from(this.registeredEvents);
-  }
-
-  /**
-   * Gets all listeners for a specific event.
-   */
-  getListeners(event: EventType): EventListener[] {
-    return this.listeners[event] || [];
-  }
-
-  /**
-   * Removes a specific listener from an event.
-   */
-  off(event: EventType, listener: EventListener): void {
-    if (this.listeners[event]) {
-      const index = this.listeners[event].indexOf(listener);
-      if (index !== -1) {
-        this.listeners[event].splice(index, 1);
-        if (this.listeners[event].length === 0) {
-          this.registeredEvents.delete(event);
-        }
-      }
-    }
-  }
-
-  /**
-   * Removes all listeners for a specific event.
-   */
-  removeAllListeners(event: EventType): void {
-    if (this.listeners[event]) {
-      this.listeners[event] = [];
-      this.registeredEvents.delete(event);
-    }
   }
 }
