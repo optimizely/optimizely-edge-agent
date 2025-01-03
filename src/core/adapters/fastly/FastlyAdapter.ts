@@ -1,16 +1,26 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions } from '../../../types';
+import { CookieOptions, CDNSettings } from '../../../types';
+import { FastlyKVStore } from './FastlyKVStore';
 
 /**
- * TODO: Implement Fastly Compute@Edge adapter
- * This adapter is currently a placeholder and needs to be implemented based on
- * the CloudflareAdapter implementation as a model.
- * See: src/core/adapters/cloudflare/CloudflareAdapter.ts
+ * Fastly Compute@Edge adapter implementation
  */
 export class FastlyAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'FastlyAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
+    private kvStore?: FastlyKVStore;
+
+    constructor(private coreLogic: any) {
+        super();
+    }
+
+    setKVStore(kvStore: FastlyKVStore): void {
+        this.kvStore = kvStore;
+    }
 
     async handleRequest(request: Request): Promise<Response> {
+        if (!this.kvStore) {
+            throw new Error('KVStore not initialized');
+        }
         throw new Error(this.NOT_IMPLEMENTED);
     }
 

@@ -45,14 +45,14 @@ export abstract class BaseAdapter implements ICDNAdapter {
 		const cookies = new Map<string, string>();
 		if (!cookieString) return cookies;
 
-		cookieString.split(';').forEach((cookie) => {
+		for (const cookie of cookieString.split(';')) {
 			const parts = cookie.split('=');
 			const name = parts[0]?.trim();
 			const value = parts[1]?.trim();
 			if (name && value) {
 				cookies.set(name, value);
 			}
-		});
+		}
 
 		return cookies;
 	}

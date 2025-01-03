@@ -1,16 +1,26 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions } from '../../../types';
+import { CookieOptions, CDNSettings } from '../../../types';
+import { AkamaiKVStore } from './AkamaiKVStore';
 
 /**
- * TODO: Implement Akamai EdgeWorkers adapter
- * This adapter is currently a placeholder and needs to be implemented based on
- * the CloudflareAdapter implementation as a model.
- * See: src/core/adapters/cloudflare/CloudflareAdapter.ts
+ * Akamai EdgeWorkers adapter implementation
  */
 export class AkamaiAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'AkamaiAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
+    private kvStore?: AkamaiKVStore;
+
+    constructor(private coreLogic: any) {
+        super();
+    }
+
+    setKVStore(kvStore: AkamaiKVStore): void {
+        this.kvStore = kvStore;
+    }
 
     async handleRequest(request: Request): Promise<Response> {
+        if (!this.kvStore) {
+            throw new Error('KVStore not initialized');
+        }
         throw new Error(this.NOT_IMPLEMENTED);
     }
 

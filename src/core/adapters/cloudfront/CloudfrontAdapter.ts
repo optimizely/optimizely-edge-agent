@@ -1,16 +1,26 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions } from '../../../types';
+import { CookieOptions, CDNSettings } from '../../../types';
+import { CloudfrontKVStore } from './CloudfrontKVStore';
 
 /**
- * TODO: Implement AWS CloudFront Functions adapter
- * This adapter is currently a placeholder and needs to be implemented based on
- * the CloudflareAdapter implementation as a model.
- * See: src/core/adapters/cloudflare/CloudflareAdapter.ts
+ * AWS Cloudfront adapter implementation
  */
 export class CloudfrontAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'CloudfrontAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
+    private kvStore?: CloudfrontKVStore;
+
+    constructor(private coreLogic: any) {
+        super();
+    }
+
+    setKVStore(kvStore: CloudfrontKVStore): void {
+        this.kvStore = kvStore;
+    }
 
     async handleRequest(request: Request): Promise<Response> {
+        if (!this.kvStore) {
+            throw new Error('KVStore not initialized');
+        }
         throw new Error(this.NOT_IMPLEMENTED);
     }
 

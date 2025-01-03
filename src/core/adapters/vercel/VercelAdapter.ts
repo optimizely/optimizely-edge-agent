@@ -1,16 +1,26 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions } from '../../../types';
+import { CookieOptions, CDNSettings } from '../../../types';
+import { VercelKVStore } from './VercelKVStore';
 
 /**
- * TODO: Implement Vercel Edge Functions adapter
- * This adapter is currently a placeholder and needs to be implemented based on
- * the CloudflareAdapter implementation as a model.
- * See: src/core/adapters/cloudflare/CloudflareAdapter.ts
+ * Vercel Edge Functions adapter implementation
  */
 export class VercelAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'VercelAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
+    private kvStore?: VercelKVStore;
+
+    constructor(private coreLogic: any) {
+        super();
+    }
+
+    setKVStore(kvStore: VercelKVStore): void {
+        this.kvStore = kvStore;
+    }
 
     async handleRequest(request: Request): Promise<Response> {
+        if (!this.kvStore) {
+            throw new Error('KVStore not initialized');
+        }
         throw new Error(this.NOT_IMPLEMENTED);
     }
 

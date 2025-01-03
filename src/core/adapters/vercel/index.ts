@@ -1,1 +1,2 @@
-export * from './VercelAdapter';
+export { VercelAdapter } from './VercelAdapter';
+export { VercelKVStore } from './VercelKVStore';

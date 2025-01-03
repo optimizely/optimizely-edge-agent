@@ -1,1 +1,2 @@
-export * from './AkamaiAdapter';
+export { AkamaiAdapter } from './AkamaiAdapter';
+export { AkamaiKVStore } from './AkamaiKVStore';
