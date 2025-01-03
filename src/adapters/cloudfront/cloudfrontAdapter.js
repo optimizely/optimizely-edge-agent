@@ -76,14 +76,22 @@ class CloudfrontAdapter {
 			}
 
 			// Handle specific GET requests immediately without caching
-			if (httpMethod === 'GET' && (this.coreLogic.datafileOperation || this.coreLogic.configOperation)) {
+			if (
+				httpMethod === 'GET' &&
+				(this.coreLogic.datafileOperation || this.coreLogic.configOperation)
+			) {
 				const fileType = this.coreLogic.datafileOperation ? 'datafile' : 'config file';
-				this.logger.debug(`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`);
+				this.logger.debug(
+					`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`,
+				);
 				return this.buildResponse(result.reqResponse);
 			}
 
 			// Evaluate if we should fetch from the origin and/or cache
-			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
+			if (
+				originUrl &&
+				(!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))
+			) {
 				fetchResponse = await this.fetchAndProcessRequest(this.request, originUrl, cdnSettings);
 			} else {
 				this.logger.debug(
@@ -95,7 +103,10 @@ class CloudfrontAdapter {
 			return this.buildResponse(fetchResponse);
 		} catch (error) {
 			this.logger.error('Error processing request:', error);
-			return this.buildResponse({ status: '500', body: `Internal Server Error: ${error.toString()}` });
+			return this.buildResponse({
+				status: '500',
+				body: `Internal Server Error: ${error.toString()}`,
+			});
 		}
 	}
 
@@ -197,7 +208,9 @@ class CloudfrontAdapter {
 			let cacheKeyUrl = new URL(originUrl);
 
 			// Ensure that the pathname ends properly before appending
-			let basePath = cacheKeyUrl.pathname.endsWith('/') ? cacheKeyUrl.pathname.slice(0, -1) : cacheKeyUrl.pathname;
+			let basePath = cacheKeyUrl.pathname.endsWith('/')
+				? cacheKeyUrl.pathname.slice(0, -1)
+				: cacheKeyUrl.pathname;
 
 			if (cdnSettings.cacheKey === 'VARIATION_KEY') {
 				cacheKeyUrl.pathname = `${basePath}/${cdnSettings.flagKey}-${cdnSettings.variationKey}`;
@@ -221,7 +234,9 @@ class CloudfrontAdapter {
 	 */
 	async fetchFromOrigin(cdnSettings, reqResponse) {
 		try {
-			const urlToFetch = cdnSettings.forwardRequestToOrigin ? reqResponse.uri : cdnSettings.cdnResponseURL;
+			const urlToFetch = cdnSettings.forwardRequestToOrigin
+				? reqResponse.uri
+				: cdnSettings.cdnResponseURL;
 			return await this.fetch({ uri: urlToFetch });
 		} catch (error) {
 			this.logger.error('Error fetching from origin:', error);
@@ -243,7 +258,10 @@ class CloudfrontAdapter {
 		) {
 			try {
 				const allEvents = await this.consolidateVisitorsInEvents(this.eventQueue);
-				await this.dispatchAllEventsToOptimizely(defaultSettings.optimizelyEventsEndpoint, allEvents).catch((err) => {
+				await this.dispatchAllEventsToOptimizely(
+					defaultSettings.optimizelyEventsEndpoint,
+					allEvents,
+				).catch((err) => {
 					this.logger.error('Failed to dispatch event:', err);
 				});
 			} catch (error) {
@@ -379,7 +397,8 @@ class CloudfrontAdapter {
 	 * @returns {Object} - An object containing detailed error information.
 	 */
 	createErrorDetails(request, url, message, errorMessage = '', cdnSettingsVariable) {
-		const _errorMessage = errorMessage || 'An error occurred during request processing the request.';
+		const _errorMessage =
+			errorMessage || 'An error occurred during request processing the request.';
 		return {
 			requestUrl: url || request.uri,
 			message: message,
@@ -725,10 +744,10 @@ class CloudfrontAdapter {
 				throw new TypeError('Invalid response object');
 			}
 			if (typeof name !== 'string' || name.trim() === '') {
-				throw new TypeError('Invalid cookie name')
+				throw new TypeError('Invalid cookie name');
 			}
 			if (typeof value !== 'string') {
-				throw new TypeError('Invalid cookie value')
+				throw new TypeError('Invalid cookie value');
 			}
 
 			// Merge default options with provided options, where provided options take precedence
@@ -780,13 +799,13 @@ class CloudfrontAdapter {
 	 */
 	setRequestCookie(request, name, value, options = cookieDefaultOptions) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object')
+			throw new TypeError('Invalid request object');
 		}
 		if (typeof name !== 'string' || name.trim() === '') {
-			throw new TypeError('Invalid cookie name')
+			throw new TypeError('Invalid cookie name');
 		}
 		if (typeof value !== 'string') {
-			throw new TypeError('Invalid cookie value')
+			throw new TypeError('Invalid cookie value');
 		}
 
 		// Merge default options with provided options
@@ -836,7 +855,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleRequestCookies(request, cookies) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object')
+			throw new TypeError('Invalid request object');
 		}
 
 		// Clone the original request
@@ -846,10 +865,10 @@ class CloudfrontAdapter {
 		try {
 			const cookieStrings = Object.entries(cookies).map(([name, { value, options }]) => {
 				if (typeof name !== 'string' || name.trim() === '') {
-					throw new TypeError('Invalid cookie name')
+					throw new TypeError('Invalid cookie name');
 				}
 				if (typeof value !== 'string') {
-					throw new TypeError('Invalid cookie value')
+					throw new TypeError('Invalid cookie value');
 				}
 				const optionsString = Object.entries(options || {})
 					.map(([key, val]) => {
@@ -863,7 +882,9 @@ class CloudfrontAdapter {
 				return `${encodeURIComponent(name)}=${encodeURIComponent(value)}; ${optionsString}`;
 			});
 
-			existingCookies = existingCookies ? `${existingCookies}; ${cookieStrings.join('; ')}` : cookieStrings.join('; ');
+			existingCookies = existingCookies
+				? `${existingCookies}; ${cookieStrings.join('; ')}`
+				: cookieStrings.join('; ');
 			clonedRequest.headers.cookie = existingCookies;
 		} catch (error) {
 			this.logger.error('Error setting cookies:', error);
@@ -891,7 +912,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleReqSerializedCookies(request, cookies) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object')
+			throw new TypeError('Invalid request object');
 		}
 
 		// Clone the original request
@@ -925,7 +946,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleRespSerializedCookies(response, cookies) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object')
+			throw new TypeError('Invalid response object');
 		}
 
 		// Clone the original response to avoid modifying it directly
@@ -958,7 +979,7 @@ class CloudfrontAdapter {
 	 */
 	setRequestHeader(request, name, value) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object')
+			throw new TypeError('Invalid request object');
 		}
 
 		// Clone the request and update the headers on the cloned object
@@ -986,7 +1007,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleRequestHeaders(request, headers) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object')
+			throw new TypeError('Invalid request object');
 		}
 
 		const newRequest = { ...request };
@@ -1015,7 +1036,7 @@ class CloudfrontAdapter {
 	 */
 	setMultipleResponseHeaders(response, headers) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object')
+			throw new TypeError('Invalid response object');
 		}
 
 		// Clone the original response with its body and status
@@ -1037,7 +1058,7 @@ class CloudfrontAdapter {
 	 */
 	getRequestHeader(request, name) {
 		if (!request || typeof request !== 'object') {
-			throw new TypeError('Invalid request object')
+			throw new TypeError('Invalid request object');
 		}
 
 		const headerValue = request.headers[name.toLowerCase()];
@@ -1053,7 +1074,7 @@ class CloudfrontAdapter {
 	 */
 	setResponseHeader(response, name, value) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object')
+			throw new TypeError('Invalid response object');
 		}
 
 		response.headers[name.toLowerCase()] = [{ key: name, value: value }];
@@ -1068,7 +1089,7 @@ class CloudfrontAdapter {
 	 */
 	getResponseHeader(response, name) {
 		if (!response || typeof response !== 'object') {
-			throw new TypeError('Invalid response object')
+			throw new TypeError('Invalid response object');
 		}
 
 		const headerValue = response.headers[name.toLowerCase()];

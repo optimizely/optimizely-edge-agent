@@ -23,7 +23,14 @@ import defaultSettings from '../../../config/defaultSettings';
  * @param {object} logger - The logger object for logging errors.
  * @returns {Promise<Response>} - A promise that resolves to the response object.
  */
-const handleDatafile = async (request, abstractionHelper, kvStore, logger, defaultSettings, params = {}) => {
+const handleDatafile = async (
+	request,
+	abstractionHelper,
+	kvStore,
+	logger,
+	defaultSettings,
+	params = {},
+) => {
 	logger.debug('API Router - Handling Datafile via POST [handleDatafile]');
 
 	// Check if the incoming request is a POST method, return 405 if not allowed
@@ -46,7 +53,10 @@ const handleDatafile = async (request, abstractionHelper, kvStore, logger, defau
 	}
 
 	if (!datafileKey)
-		return abstractionHelper.createResponse('Datafile SDK key is required but it is missing from the request.', 400);
+		return abstractionHelper.createResponse(
+			'Datafile SDK key is required but it is missing from the request.',
+			400,
+		);
 
 	try {
 		logger.debug('API Router - Fetching datafile [fetchRequest]');
@@ -61,10 +71,15 @@ const handleDatafile = async (request, abstractionHelper, kvStore, logger, defau
 			datafile: kvDatafile,
 		};
 
-		return abstractionHelper.createResponse(responseObject, 200, { 'Content-Type': 'application/json' });
+		return abstractionHelper.createResponse(responseObject, 200, {
+			'Content-Type': 'application/json',
+		});
 	} catch (error) {
 		logger.error('Error in handleDatafile:', error.message);
-		return abstractionHelper.createResponse(`Error updating datafile: ${JSON.stringify(error)}`, 500);
+		return abstractionHelper.createResponse(
+			`Error updating datafile: ${JSON.stringify(error)}`,
+			500,
+		);
 	}
 };
 
@@ -79,7 +94,14 @@ const handleDatafile = async (request, abstractionHelper, kvStore, logger, defau
  * @param {object} logger - The logger object for logging errors.
  * @returns {Promise<Response>} - A promise that resolves to the response containing the datafile.
  */
-const handleGetDatafile = async (request, abstractionHelper, kvStore, logger, defaultSettings, params) => {
+const handleGetDatafile = async (
+	request,
+	abstractionHelper,
+	kvStore,
+	logger,
+	defaultSettings,
+	params,
+) => {
 	logger.debug('API Router - Handling Datafile via GET [handleGetDatafile]');
 	// Check if the incoming request is a GET method, return 405 if not allowed
 	if (abstractionHelper.abstractRequest.getHttpMethodFromRequest(request) !== 'GET') {

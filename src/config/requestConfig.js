@@ -243,20 +243,33 @@ export default class RequestConfig {
 	async initializeFromHeaders() {
 		logger().debugExt('RequestConfig - Initializing from headers [initializeFromHeaders]');
 		this.sdkKey = this.getHeader(this.settings.sdkKeyHeader);
-		this.overrideCache = this.getHeader(this.settings.overrideCacheHeader) === 'true' ? true : false;
-		this.overrideVisitorId = this.parseBoolean(this.getHeader(this.settings.overrideVisitorIdHeader));
-		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Headers';
+		this.overrideCache =
+			this.getHeader(this.settings.overrideCacheHeader) === 'true' ? true : false;
+		this.overrideVisitorId = this.parseBoolean(
+			this.getHeader(this.settings.overrideVisitorIdHeader),
+		);
+		if (this.sdkKey && this.settings.enableResponseMetadata)
+			this.configMetadata.sdkKeyFrom = 'Headers';
 		this.attributes = this.parseJson(this.getHeader(this.settings.attributesHeader));
-		if (this.attributes && this.settings.enableResponseMetadata) this.configMetadata.attributesFrom = 'body';
+		if (this.attributes && this.settings.enableResponseMetadata)
+			this.configMetadata.attributesFrom = 'body';
 		this.eventTags = this.parseJson(this.getHeader(this.settings.eventTagsHeader));
-		if (this.eventTags && this.settings.enableResponseMetadata) this.configMetadata.eventTagsFrom = 'headers';
+		if (this.eventTags && this.settings.enableResponseMetadata)
+			this.configMetadata.eventTagsFrom = 'headers';
 		this.datafileAccessToken = this.getHeader(this.settings.datafileAccessToken);
-		this.optimizelyEnabled = this.parseBoolean(this.getHeader(this.settings.enableOptimizelyHeader));
+		this.optimizelyEnabled = this.parseBoolean(
+			this.getHeader(this.settings.enableOptimizelyHeader),
+		);
 		this.decideOptions = this.parseJson(this.getHeader(this.settings.decideOptionsHeader));
-		this.enableOptimizelyHeader = this.parseJson(this.getHeader(this.settings.enableOptimizelyHeader));
-		this.enableResponseMetadata = this.parseBoolean(this.getHeader(this.settings.enableRespMetadataHeader));
+		this.enableOptimizelyHeader = this.parseJson(
+			this.getHeader(this.settings.enableOptimizelyHeader),
+		);
+		this.enableResponseMetadata = this.parseBoolean(
+			this.getHeader(this.settings.enableRespMetadataHeader),
+		);
 		this.excludeVariables = this.decideOptions && this.decideOptions?.includes('EXCLUDE_VARIABLES');
-		this.enabledFlagsOnly = this.decideOptions && this.decideOptions?.includes('ENABLED_FLAGS_ONLY');
+		this.enabledFlagsOnly =
+			this.decideOptions && this.decideOptions?.includes('ENABLED_FLAGS_ONLY');
 		this.visitorId = this.getHeader(this.settings.visitorIdHeader);
 		const trimmedDecisionsHeader = this.getHeader(this.settings.trimmedDecisionsHeader);
 		if (trimmedDecisionsHeader === 'false') {
@@ -269,7 +282,9 @@ export default class RequestConfig {
 		this.enableFlagsFromKV = this.parseBoolean(this.getHeader(this.settings.enableFlagsFromKV));
 		this.eventKey = this.getHeader(this.settings.eventKeyHeader);
 		this.datafileFromKV = this.parseBoolean(this.getHeader(this.settings.enableDatafileFromKV));
-		this.enableRespMetadataHeader = this.parseBoolean(this.getHeader(this.settings.enableRespMetadataHeader));
+		this.enableRespMetadataHeader = this.parseBoolean(
+			this.getHeader(this.settings.enableRespMetadataHeader),
+		);
 		this.setResponseCookies = this.parseBoolean(this.getHeader(this.settings.setResponseCookies));
 		this.setResponseHeaders = this.parseBoolean(this.getHeader(this.settings.setResponseHeaders));
 		this.setRequestHeaders = this.parseBoolean(this.getHeader(this.settings.setRequestHeader));
@@ -312,7 +327,9 @@ export default class RequestConfig {
 	 * @returns {Promise<void>}
 	 */
 	async initializeFromQueryParams() {
-		logger().debugExt('RequestConfig - Initializing from query parameters [initializeFromQueryParams]');
+		logger().debugExt(
+			'RequestConfig - Initializing from query parameters [initializeFromQueryParams]',
+		);
 		const qp = this.url.searchParams;
 		const prioritizeHeaders = this.settings.prioritizeHeadersOverQueryParams;
 
@@ -326,13 +343,13 @@ export default class RequestConfig {
 		this.overrideVisitorId = updateValue(
 			this.overrideVisitorId,
 			qp.get(this.queryParameters.overrideVisitorId) === 'true',
-			this.settings.defaultOverrideVisitorId
+			this.settings.defaultOverrideVisitorId,
 		);
 
 		this.overrideCache = updateValue(
 			this.overrideCache,
 			qp.get(this.queryParameters.overrideCache) === 'true',
-			this.settings.defaultOverrideCache
+			this.settings.defaultOverrideCache,
 		);
 
 		this.serverMode = updateValue(this.serverMode, qp.get(this.queryParameters.serverMode), null);
@@ -344,76 +361,81 @@ export default class RequestConfig {
 		this.enableResponseMetadata = updateValue(
 			this.enableResponseMetadata,
 			this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata)),
-			null
+			null,
 		);
 
 		if (this.sdkKey && this.settings.enableResponseMetadata) {
 			this.configMetadata.sdkKeyFrom = 'Query Parameters';
 		}
 
-		this.decideAll = updateValue(this.decideAll, this.parseBoolean(qp.get(this.queryParameters.decideAll)), false);
+		this.decideAll = updateValue(
+			this.decideAll,
+			this.parseBoolean(qp.get(this.queryParameters.decideAll)),
+			false,
+		);
 
 		const trimmedDecisionsQueryParam = qp.get(this.queryParameters.trimmedDecisions);
 		if (!prioritizeHeaders && trimmedDecisionsQueryParam !== null) {
 			this.trimmedDecisions = trimmedDecisionsQueryParam === 'true';
 		} else if (this.trimmedDecisions === undefined) {
-			this.trimmedDecisions = trimmedDecisionsQueryParam === 'true' || this.settings.defaultTrimmedDecisions;
+			this.trimmedDecisions =
+				trimmedDecisionsQueryParam === 'true' || this.settings.defaultTrimmedDecisions;
 		}
 
 		this.disableDecisionEvent = updateValue(
 			this.disableDecisionEvent,
 			this.parseBoolean(qp.get(this.queryParameters.disableDecisionEvent)),
-			false
+			false,
 		);
 
 		this.enabledFlagsOnly = updateValue(
 			this.enabledFlagsOnly,
 			this.parseBoolean(qp.get(this.queryParameters.enabledFlagsOnly)),
-			false
+			false,
 		);
 
 		this.includeReasons = updateValue(
 			this.includeReasons,
 			this.parseBoolean(qp.get(this.queryParameters.includeReasons)),
-			false
+			false,
 		);
 
 		this.ignoreUserProfileService = updateValue(
 			this.ignoreUserProfileService,
 			this.parseBoolean(qp.get(this.queryParameters.ignoreUserProfileService)),
-			false
+			false,
 		);
 
 		this.excludeVariables = updateValue(
 			this.excludeVariables,
 			this.parseBoolean(qp.get(this.queryParameters.excludeVariables)),
-			false
+			false,
 		);
 
 		if (!this.isPostMethod || this.isPostMethod === undefined) {
 			this.setRequestHeaders = updateValue(
 				this.setRequestHeaders,
 				this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)),
-				this.settings.defaultSetRequestHeaders
+				this.settings.defaultSetRequestHeaders,
 			);
 
 			this.setRequestCookies = updateValue(
 				this.setRequestCookies,
 				this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)),
-				this.settings.defaultSetRequestCookies
+				this.settings.defaultSetRequestCookies,
 			);
 		}
 
 		this.setResponseHeaders = updateValue(
 			this.setResponseHeaders,
 			this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)),
-			this.settings.defaultSetResponseHeaders
+			this.settings.defaultSetResponseHeaders,
 		);
 
 		this.setResponseCookies = updateValue(
 			this.setResponseCookies,
 			this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)),
-			this.settings.defaultSetResponseCookies
+			this.settings.defaultSetResponseCookies,
 		);
 	}
 
@@ -425,16 +447,22 @@ export default class RequestConfig {
 		if (this.body) {
 			this.visitorId = this.visitorId || this.body.visitorId;
 			this.overrideVisitorId =
-				this.overrideVisitorId || this.body.overrideVisitorId || this.settings.defaultOverrideVisitorId;
-			this.overrideCache = this.overrideCache || this.body.overrideCache || this.settings.defaultOverrideCache;
+				this.overrideVisitorId ||
+				this.body.overrideVisitorId ||
+				this.settings.defaultOverrideVisitorId;
+			this.overrideCache =
+				this.overrideCache || this.body.overrideCache || this.settings.defaultOverrideCache;
 			this.flagKeys = this.flagKeys.length > 0 ? this.flagKeys : this.body.flagKeys;
 			this.sdkKey = this.sdkKey || this.body.sdkKey;
 			this.eventKey = this.eventKey || this.body.eventKey;
-			if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'body';
+			if (this.sdkKey && this.settings.enableResponseMetadata)
+				this.configMetadata.sdkKeyFrom = 'body';
 			this.attributes = this.attributes || this.body.attributes;
-			if (this.body.attributes && this.settings.enableResponseMetadata) this.configMetadata.attributesFrom = 'body';
+			if (this.body.attributes && this.settings.enableResponseMetadata)
+				this.configMetadata.attributesFrom = 'body';
 			this.eventTags = this.eventTags || this.body.eventTags;
-			if (this.body.eventTags && this.settings.enableResponseMetadata) this.configMetadata.eventTagsFrom = 'body';
+			if (this.body.eventTags && this.settings.enableResponseMetadata)
+				this.configMetadata.eventTagsFrom = 'body';
 			this.enableResponseMetadata = this.enableResponseMetadata || this.body.enableResponseMetadata;
 			this.forcedDecisions = this.body.forcedDecisions;
 			this.enableFlagsFromKV = this.enableFlagsFromKV || this.body.enableFlagsFromKV === true;
@@ -443,7 +471,8 @@ export default class RequestConfig {
 			this.disableDecisionEvent = this.disableDecisionEvent || this.body.disableDecisionEvent;
 			this.enabledFlagsOnly = this.enabledFlagsOnly || this.body.enabledFlagsOnly;
 			this.includeReasons = this.includeReasons || this.body.includeReasons;
-			this.ignoreUserProfileService = this.ignoreUserProfileService || this.body.ignoreUserProfileService;
+			this.ignoreUserProfileService =
+				this.ignoreUserProfileService || this.body.ignoreUserProfileService;
 			this.excludeVariables = this.excludeVariables || this.body.excludeVariables;
 			// this.trimmedDecisions = this.trimmedDecisions || this.body.trimmedDecisions || this.settings.defaultTrimmedDecisions;
 			if (this.trimmedDecisions === undefined && this.body.hasOwnProperty('trimmedDecisions')) {
@@ -458,13 +487,21 @@ export default class RequestConfig {
 			}
 
 			this.setRequestHeaders =
-				this.setRequestHeaders || this.body.setRequestHeaders || this.settings.defaultSetRequestHeaders;
+				this.setRequestHeaders ||
+				this.body.setRequestHeaders ||
+				this.settings.defaultSetRequestHeaders;
 			this.setResponseHeaders =
-				this.setResponseHeaders || this.body.setResponseHeaders || this.settings.defaultSetResponseHeaders;
+				this.setResponseHeaders ||
+				this.body.setResponseHeaders ||
+				this.settings.defaultSetResponseHeaders;
 			this.setRequestCookies =
-				this.setRequestCookies || this.body.setRequestCookies || this.settings.defaultSetRequestCookies;
+				this.setRequestCookies ||
+				this.body.setRequestCookies ||
+				this.settings.defaultSetRequestCookies;
 			this.setResponseCookies =
-				this.setResponseCookies || this.body.setResponseCookies || this.settings.defaultSetResponseCookies;
+				this.setResponseCookies ||
+				this.body.setResponseCookies ||
+				this.settings.defaultSetResponseCookies;
 		}
 	}
 

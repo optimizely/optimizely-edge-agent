@@ -111,7 +111,8 @@ export async function onClientRequest(request) {
 	logger.debug(`Matched route for API: ${normalizedPathname}`);
 
 	// Check if the request is for the worker operation, similar to request for asset
-	let workerOperation = _abstractRequest.getHeader(defaultSettings.workerOperationHeader) === 'true';
+	let workerOperation =
+		_abstractRequest.getHeader(defaultSettings.workerOperationHeader) === 'true';
 
 	// Regular expression to match common asset extensions
 	const assetsRegex = /\.(jpg|jpeg|png|gif|svg|css|js|ico|woff|woff2|ttf|eot)$/i;
@@ -147,21 +148,30 @@ export async function onClientRequest(request) {
 	let sdkKey = _abstractRequest.getHeader(defaultSettings.sdkKeyHeader);
 
 	// Check if the "X-Optimizely-Enable-FEX" header is set to "true"
-	let optimizelyEnabled = _abstractRequest.getHeader(defaultSettings.enableOptimizelyHeader) === 'true';
+	let optimizelyEnabled =
+		_abstractRequest.getHeader(defaultSettings.enableOptimizelyHeader) === 'true';
 
 	// Verify if the "X-Optimizely-Enable-FEX" header is set to "true" and the sdkKey is not provided in the request headers,
 	// if enabled and no sdkKey, attempt to get sdkKey from query parameter
 	if (optimizelyEnabled && !sdkKey) {
 		sdkKey = _abstractRequest.URL.searchParams.get('sdkKey');
 		if (!sdkKey) {
-			logger.error(`Optimizely is enabled but an SDK Key was not found in the request headers or query parameters.`);
+			logger.error(
+				`Optimizely is enabled but an SDK Key was not found in the request headers or query parameters.`,
+			);
 		}
 	}
 
 	if (!requestIsForAsset && matchedRouteForAPI) {
 		try {
 			if (handleRequest) {
-				const handlerResponse = handleRequest(_request, abstractionHelper, kvStore, logger, defaultSettings);
+				const handlerResponse = handleRequest(
+					_request,
+					abstractionHelper,
+					kvStore,
+					logger,
+					defaultSettings,
+				);
 				return handlerResponse;
 			} else {
 				// Handle any issues during the API request handling that were not captured by the custom router
@@ -172,7 +182,8 @@ export async function onClientRequest(request) {
 			}
 		} catch (error) {
 			const errorMessage = {
-				errorMessage: 'Failed to load API functionality. Please check configuration and dependencies.',
+				errorMessage:
+					'Failed to load API functionality. Please check configuration and dependencies.',
 				error: error,
 			};
 			logger.error(errorMessage);

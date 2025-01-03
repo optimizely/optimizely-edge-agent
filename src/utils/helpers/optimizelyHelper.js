@@ -429,7 +429,9 @@ export function getSerializedArray(
 			return (
 				(!enabledFlagsOnly || decision.enabled) && // Filter based on flag enabled status
 				(httpMethod === 'POST' ||
-					(httpMethod === 'GET' && decision.variationKey && !decision.ruleKey.includes('-rollout-')))
+					(httpMethod === 'GET' &&
+						decision.variationKey &&
+						!decision.ruleKey.includes('-rollout-')))
 			);
 		})
 		.map((decision) => {
@@ -497,7 +499,6 @@ export function getValidCookieDecisions(decisions, activeFlags) {
 	return decisions.filter((decision) => activeFlagsSet.has(decision.flagKey));
 }
 
-
 /**
  * Serializes an array of decision objects into a string.
  * @param {Object[]} decisions - The array of decision objects.
@@ -508,7 +509,9 @@ export function serializeDecisions(decisions) {
 		return undefined;
 	}
 	return decisions
-		.map((d) => `${d.flagKey}${FLAG_VAR_DELIMITER}${d.variationKey}${FLAG_VAR_DELIMITER}${d.ruleKey}`)
+		.map(
+			(d) => `${d.flagKey}${FLAG_VAR_DELIMITER}${d.variationKey}${FLAG_VAR_DELIMITER}${d.ruleKey}`,
+		)
 		.join(DELIMITER);
 }
 

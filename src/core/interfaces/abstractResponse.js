@@ -56,7 +56,10 @@ export class AbstractResponse {
 		let responseBody;
 		if (headers['Content-Type'].includes('application/json')) {
 			responseBody = JSON.stringify(body);
-		} else if (headers['Content-Type'].includes('text/plain') || headers['Content-Type'].includes('text/html')) {
+		} else if (
+			headers['Content-Type'].includes('text/plain') ||
+			headers['Content-Type'].includes('text/html')
+		) {
 			responseBody = body.toString();
 		} else {
 			responseBody = body; // For other content types, use the body as is
@@ -286,7 +289,10 @@ export class AbstractResponse {
 	 * @returns {string|null} - The value of the cookie, or null if not found.
 	 */
 	static getCookieFromResponse(response, name) {
-		logger().debugExt('AbstractResponse - Getting cookie from response [getCookieFromResponse]', `Name: ${name}`);
+		logger().debugExt(
+			'AbstractResponse - Getting cookie from response [getCookieFromResponse]',
+			`Name: ${name}`,
+		);
 
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		let cookies;
@@ -365,7 +371,10 @@ export class AbstractResponse {
 	 * @returns {string|null} - The value of the header, or null if not found.
 	 */
 	static getHeaderFromResponse(response, name) {
-		logger().debugExt('AbstractResponse - Getting header from response [getHeaderFromResponse]', `Name: ${name}`);
+		logger().debugExt(
+			'AbstractResponse - Getting header from response [getHeaderFromResponse]',
+			`Name: ${name}`,
+		);
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		switch (cdnProvider) {
 			case 'cloudflare':
@@ -422,7 +431,10 @@ export class AbstractResponse {
 	 * @returns {string|null} - The value of the cookie, or null if not found.
 	 */
 	static getCookieFromResponse(response, name) {
-		logger().debugExt('AbstractResponse - Getting cookie from response [getCookieFromResponse]', `Name: ${name}`);
+		logger().debugExt(
+			'AbstractResponse - Getting cookie from response [getCookieFromResponse]',
+			`Name: ${name}`,
+		);
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 		let cookies;
 
@@ -604,7 +616,13 @@ export class AbstractResponse {
 	 * @returns {Response} - The new response object.
 	 */
 	static createNewResponse(body, options) {
-		logger().debugExt('AbstractResponse - Creating new response [createNewResponse]', 'Body', body, 'Options', options);
+		logger().debugExt(
+			'AbstractResponse - Creating new response [createNewResponse]',
+			'Body',
+			body,
+			'Options',
+			options,
+		);
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 
 		switch (cdnProvider) {

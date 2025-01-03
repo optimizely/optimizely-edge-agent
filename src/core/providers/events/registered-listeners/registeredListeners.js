@@ -210,13 +210,16 @@ eventListeners.on('beforeReadingCache', async (request, requestConfig, cdnExperi
 });
 
 // Register an async event listener for 'afterReadingCache'
-eventListeners.on('afterReadingCache', async (request, responseFromCache, requestConfig, cdnExperimentSettings) => {
-	logger().debug('After reading cache event triggered');
-	// This must be an async operation
-	// const modifiedResponse = await new Promise(resolve => { return AbstractRequest.cloneResponse(responseFromCache) });
-	// Log information without modifying the request
-	// return { modifiedResponse };
-});
+eventListeners.on(
+	'afterReadingCache',
+	async (request, responseFromCache, requestConfig, cdnExperimentSettings) => {
+		logger().debug('After reading cache event triggered');
+		// This must be an async operation
+		// const modifiedResponse = await new Promise(resolve => { return AbstractRequest.cloneResponse(responseFromCache) });
+		// Log information without modifying the request
+		// return { modifiedResponse };
+	},
+);
 
 // Register an async event listener for 'beforeProcessingRequest'
 eventListeners.on('beforeProcessingRequest', async (request, requestConfig) => {
@@ -228,13 +231,16 @@ eventListeners.on('beforeProcessingRequest', async (request, requestConfig) => {
 });
 
 // Register an async event listener for 'afterProcessingRequest'
-eventListeners.on('afterProcessingRequest', async (request, response, requestConfig, processedResult) => {
-	// logger().debug('After processing request event triggered');
-	// This must be an async operation
-	// await new Promise(resolve => { return AbstractRequest.cloneRequest(request) });
-	// Log information without modifying the request
-	// return { modfiedResponse };
-});
+eventListeners.on(
+	'afterProcessingRequest',
+	async (request, response, requestConfig, processedResult) => {
+		// logger().debug('After processing request event triggered');
+		// This must be an async operation
+		// await new Promise(resolve => { return AbstractRequest.cloneRequest(request) });
+		// Log information without modifying the request
+		// return { modfiedResponse };
+	},
+);
 
 eventListeners.on('beforeDispatchingEvents', async (url, events) => {
 	logger().debug('Before dispatching events event triggered');

@@ -32,7 +32,10 @@ export class KVStoreAbstractInterface {
 	 * @returns {Promise<string|null>} - The value associated with the key.
 	 */
 	async get(key) {
-		logger().debugExt('KVStoreAbstractInterface - Getting value from KV store [get]', `Key: ${key}`);
+		logger().debugExt(
+			'KVStoreAbstractInterface - Getting value from KV store [get]',
+			`Key: ${key}`,
+		);
 		return this.provider.get(key);
 	}
 
@@ -43,7 +46,10 @@ export class KVStoreAbstractInterface {
 	 * @returns {Promise<void>}
 	 */
 	async put(key, value) {
-		logger().debugExt('KVStoreAbstractInterface - Putting value into KV store [put]', `Key: ${key}, Value: ${value}`);
+		logger().debugExt(
+			'KVStoreAbstractInterface - Putting value into KV store [put]',
+			`Key: ${key}, Value: ${value}`,
+		);
 		return this.provider.put(key, value);
 	}
 
@@ -53,7 +59,10 @@ export class KVStoreAbstractInterface {
 	 * @returns {Promise<void>}
 	 */
 	async delete(key) {
-		logger().debugExt('KVStoreAbstractInterface - Deleting key from KV store [delete]', `Key: ${key}`);
+		logger().debugExt(
+			'KVStoreAbstractInterface - Deleting key from KV store [delete]',
+			`Key: ${key}`,
+		);
 		return this.provider.delete(key);
 	}
 }

@@ -58,7 +58,15 @@ class FastlyAdapter {
 			// Convert URL object back to string
 			originUrl = originUrl.toString();
 			const httpMethod = request.method;
-			const result = await this.coreLogic.processRequest(request, env, ctx, sdkKey, abstractionHelper, kvStore, logger);
+			const result = await this.coreLogic.processRequest(
+				request,
+				env,
+				ctx,
+				sdkKey,
+				abstractionHelper,
+				kvStore,
+				logger,
+			);
 			const cdnSettings = result.cdnExperimentSettings;
 			const validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
 
@@ -74,14 +82,22 @@ class FastlyAdapter {
 			}
 
 			// Handle specific GET requests immediately without caching
-			if (httpMethod === 'GET' && (this.coreLogic.datafileOperation || this.coreLogic.configOperation)) {
+			if (
+				httpMethod === 'GET' &&
+				(this.coreLogic.datafileOperation || this.coreLogic.configOperation)
+			) {
 				const fileType = this.coreLogic.datafileOperation ? 'datafile' : 'config file';
-				this.logger.debug(`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`);
+				this.logger.debug(
+					`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey}`,
+				);
 				return result.reqResponse;
 			}
 
 			// Evaluate if we should fetch from the origin and/or cache
-			if (originUrl && (!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))) {
+			if (
+				originUrl &&
+				(!cdnSettings || (validCDNSettings && !cdnSettings.forwardRequestToOrigin))
+			) {
 				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings);
 			} else {
 				this.logger.debug(
@@ -227,7 +243,9 @@ class FastlyAdapter {
 			let cacheKeyUrl = new URL(originUrl);
 
 			// Ensure that the pathname ends properly before appending
-			let basePath = cacheKeyUrl.pathname.endsWith('/') ? cacheKeyUrl.pathname.slice(0, -1) : cacheKeyUrl.pathname;
+			let basePath = cacheKeyUrl.pathname.endsWith('/')
+				? cacheKeyUrl.pathname.slice(0, -1)
+				: cacheKeyUrl.pathname;
 
 			if (cdnSettings.cacheKey === 'VARIATION_KEY') {
 				cacheKeyUrl.pathname = `${basePath}/${cdnSettings.flagKey}-${cdnSettings.variationKey}`;
@@ -254,7 +272,9 @@ class FastlyAdapter {
 			// for (const [key, value] of reqResponse.headers) { // Debugging headers
 			// 	this.logger.debug(`${key}: ${value}`);
 			// }
-			const urlToFetch = cdnSettings.forwardRequestToOrigin ? reqResponse.url : cdnSettings.cdnResponseURL;
+			const urlToFetch = cdnSettings.forwardRequestToOrigin
+				? reqResponse.url
+				: cdnSettings.cdnResponseURL;
 			return await fetch(urlToFetch);
 		} catch (error) {
 			this.logger.error('Error fetching from origin:', error);
@@ -295,7 +315,10 @@ class FastlyAdapter {
 			try {
 				const allEvents = await this.consolidateVisitorsInEvents(this.eventQueue);
 				ctx.waitUntil(
-					this.dispatchAllEventsToOptimizely(defaultSettings.optimizelyEventsEndpoint, allEvents).catch((err) => {
+					this.dispatchAllEventsToOptimizely(
+						defaultSettings.optimizelyEventsEndpoint,
+						allEvents,
+					).catch((err) => {
 						this.logger.error('Failed to dispatch event:', err);
 					}),
 				);
@@ -426,7 +449,8 @@ class FastlyAdapter {
 	 * @returns {Object} - An object containing detailed error information.
 	 */
 	createErrorDetails(request, url, message, errorMessage = '', cdnSettingsVariable) {
-		const _errorMessage = errorMessage || 'An error occurred during request processing the request.';
+		const _errorMessage =
+			errorMessage || 'An error occurred during request processing the request.';
 		return {
 			requestUrl: url || request.url,
 			message: message,
@@ -933,7 +957,9 @@ class FastlyAdapter {
 				return `${encodeURIComponent(name)}=${encodeURIComponent(value)}; ${optionsString}`;
 			});
 
-			existingCookies = existingCookies ? `${existingCookies}; ${cookieStrings.join('; ')}` : cookieStrings.join('; ');
+			existingCookies = existingCookies
+				? `${existingCookies}; ${cookieStrings.join('; ')}`
+				: cookieStrings.join('; ');
 			clonedRequest.headers.set('Cookie', existingCookies);
 		} catch (error) {
 			this.logger.error('Error setting cookies:', error);

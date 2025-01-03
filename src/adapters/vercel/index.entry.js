@@ -9,7 +9,7 @@ import VercelAdapter from './vercelAdapter';
 import VercelKVInterface from './vercelKVInterface';
 
 // Application specific imports
-import CoreLogic from '../../core/providers/coreLogic'; 
+import CoreLogic from '../../core/providers/coreLogic';
 import OptimizelyProvider from '../../core/providers/optimizelyProvider';
 import defaultSettings from '../../config/defaultSettings';
 import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
@@ -72,7 +72,8 @@ export default async function handler(request) {
 	logger.debug(`Matched route for API: ${normalizedPathname}`);
 
 	// Check if the request is for the worker operation, similar to request for asset
-	let workerOperation = _abstractRequest.getHeader(defaultSettings.workerOperationHeader) === 'true';
+	let workerOperation =
+		_abstractRequest.getHeader(defaultSettings.workerOperationHeader) === 'true';
 
 	// Regular expression to match common asset extensions
 	const assetsRegex = /\.(jpg|jpeg|png|gif|svg|css|js|ico|woff|woff2|ttf|eot)$/i;
@@ -108,21 +109,31 @@ export default async function handler(request) {
 	let sdkKey = _abstractRequest.getHeader(defaultSettings.sdkKeyHeader);
 
 	// Check if the "X-Optimizely-Enable-FEX" header is set to "true"
-	let optimizelyEnabled = _abstractRequest.getHeader(defaultSettings.enableOptimizelyHeader) === 'true';
+	let optimizelyEnabled =
+		_abstractRequest.getHeader(defaultSettings.enableOptimizelyHeader) === 'true';
 
 	// Verify if the "X-Optimizely-Enable-FEX" header is set to "true" and the sdkKey is not provided in the request headers,
 	// if enabled and no sdkKey, attempt to get sdkKey from query parameter
 	if (optimizelyEnabled && !sdkKey) {
 		sdkKey = _abstractRequest.URL.searchParams.get('sdkKey');
 		if (!sdkKey) {
-			logger.error(`Optimizely is enabled but an SDK Key was not found in the request headers or query parameters.`);
+			logger.error(
+				`Optimizely is enabled but an SDK Key was not found in the request headers or query parameters.`,
+			);
 		}
 	}
 
 	if (!requestIsForAsset && matchedRouteForAPI) {
 		try {
 			if (handleRequest) {
-				const handlerResponse = handleRequest(_request, _env, abstractionHelper, kvStore, logger, defaultSettings);
+				const handlerResponse = handleRequest(
+					_request,
+					_env,
+					abstractionHelper,
+					kvStore,
+					logger,
+					defaultSettings,
+				);
 				return new NextResponse(handlerResponse.body, { ...handlerResponse });
 			} else {
 				// Handle any issues during the API request handling that were not captured by the custom router
@@ -133,7 +144,8 @@ export default async function handler(request) {
 			}
 		} catch (error) {
 			const errorMessage = {
-				errorMessage: 'Failed to load API functionality. Please check configuration and dependencies.',
+				errorMessage:
+					'Failed to load API functionality. Please check configuration and dependencies.',
 				error: error,
 			};
 			logger.error(errorMessage);
@@ -151,7 +163,9 @@ export default async function handler(request) {
 				return cdnAdapter.handler(_request, _env, abstractionHelper);
 			} catch (error) {
 				logger.error('Error during core logic initialization:', error);
-				return new NextResponse(JSON.stringify({ module: 'index.js', error: error.message }), { status: 500 });
+				return new NextResponse(JSON.stringify({ module: 'index.js', error: error.message }), {
+					status: 500,
+				});
 			}
 		} else {
 			if (requestIsForAsset || !optimizelyEnabled || !sdkKey) {

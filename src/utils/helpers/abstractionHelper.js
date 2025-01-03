@@ -77,7 +77,11 @@ export class AbstractionHelper {
 	 * @returns {Object|Headers} - A new headers object with the same headers as the existing one.
 	 */
 	static getNewHeaders(existingHeaders) {
-		logger().debugExt('AbstractionHelper - Getting new headers [getNewHeaders]', 'Existing headers:', existingHeaders);
+		logger().debugExt(
+			'AbstractionHelper - Getting new headers [getNewHeaders]',
+			'Existing headers:',
+			existingHeaders,
+		);
 
 		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 
@@ -138,7 +142,11 @@ export class AbstractionHelper {
 	 * @throws {Error} - If an unsupported CDN provider is provided or if the response object is invalid.
 	 */
 	static getHeaderValue(response, headerName) {
-		logger().debugExt('AbstractionHelper - Getting header value [getHeaderValue]', 'Header name:', headerName);
+		logger().debugExt(
+			'AbstractionHelper - Getting header value [getHeaderValue]',
+			'Header name:',
+			headerName,
+		);
 
 		const cdnProvider = defaultSettings.cdnProvider;
 		try {
@@ -242,7 +250,11 @@ export class AbstractionHelper {
 	 * @throws {Error} If the environment variable is not found.
 	 */
 	getEnvVariableValue(name, environmentVariables) {
-		logger().debugExt('AbstractionHelper - Getting environment variable value [getEnvVariableValue]', 'Name:', name);
+		logger().debugExt(
+			'AbstractionHelper - Getting environment variable value [getEnvVariableValue]',
+			'Name:',
+			name,
+		);
 		const env = environmentVariables || this.env;
 		if (env && env[name] !== undefined) {
 			return env[name];

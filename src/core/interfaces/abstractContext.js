@@ -37,7 +37,10 @@ export class AbstractContext {
 	 * @returns {Promise} The original promise or a custom handling promise.
 	 */
 	waitUntil(promise) {
-		logger().debugExt('AbstractContext - Waiting for promise [waitUntil]', `CDN provider: ${this.cdnProvider}`);
+		logger().debugExt(
+			'AbstractContext - Waiting for promise [waitUntil]',
+			`CDN provider: ${this.cdnProvider}`,
+		);
 
 		switch (this.cdnProvider) {
 			case 'cloudflare':

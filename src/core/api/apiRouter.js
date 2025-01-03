@@ -57,7 +57,14 @@ async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSet
 				});
 			}
 
-			const result = routes[route][method](request, abstractionHelper, kvStore, logger, defaultSettings, params);
+			const result = routes[route][method](
+				request,
+				abstractionHelper,
+				kvStore,
+				logger,
+				defaultSettings,
+				params,
+			);
 			logger.debug('ApiRouter: Handled request for URL ', url.href, '- Method:', method);
 			return result;
 		}
@@ -72,7 +79,13 @@ async function apiRouter(request, abstractionHelper, kvStore, logger, defaultSet
  * @param {Request} request - The incoming request object.
  * @returns {Promise<Response>} - A promise that resolves to the response.
  */
-export default async function handleRequest(request, abstractionHelper, kvStore, logger, defaultSettings) {
+export default async function handleRequest(
+	request,
+	abstractionHelper,
+	kvStore,
+	logger,
+	defaultSettings,
+) {
 	logger.debug('Api Router: Handling API request.');
 	return await apiRouter(request, abstractionHelper, kvStore, logger, defaultSettings);
 }
