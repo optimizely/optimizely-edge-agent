@@ -508,6 +508,258 @@ export class CoreLogic {
 	}
 
 	/**
+	 * Determines which flags need decisions and processes any forced decisions.
+	 */
+	private async determineFlagsToDecide(
+		requestConfig: RequestConfigType
+	): Promise<{
+		flagsToDecide: string[];
+		flagsToForce: Record<string, Decision>;
+		validStoredDecisions: Decision[];
+	}> {
+		const flagsToForce = this.parseForcedDecisions(requestConfig);
+		const storedDecisions = await this.parseStoredDecisions(requestConfig);
+		const { validDecisions, invalidDecisions } = this.validateStoredDecisions(storedDecisions);
+
+		// Store invalid decisions for metadata
+		this.state.invalidCookieDecisions = invalidDecisions;
+
+		// Determine which flags need new decisions
+		const flagsToDecide = this.determineMissingFlags(
+			requestConfig.flags || [],
+			flagsToForce,
+			validDecisions
+		);
+
+		return {
+			flagsToDecide,
+			flagsToForce,
+			validStoredDecisions: validDecisions
+		};
+	}
+
+	/**
+	 * Parses forced decisions from the request configuration.
+	 */
+	private parseForcedDecisions(requestConfig: RequestConfigType): Record<string, Decision> {
+		const forcedDecisions: Record<string, Decision> = {};
+		if (!requestConfig.forcedDecisions) {
+			return forcedDecisions;
+		}
+
+		try {
+			for (const [flagKey, decision] of Object.entries(requestConfig.forcedDecisions)) {
+				forcedDecisions[flagKey] = {
+					flagKey,
+					variationKey: decision.variation,
+					enabled: decision.enabled ?? true,
+					variables: decision.variables || {},
+					ruleKey: decision.ruleKey || 'forced',
+					reasons: ['forced-decision']
+				};
+			}
+		} catch (error) {
+			this.logger.error(`Error parsing forced decisions: ${error}`);
+		}
+
+		return forcedDecisions;
+	}
+
+	/**
+	 * Parses stored decisions from cookies or headers.
+	 */
+	private async parseStoredDecisions(requestConfig: RequestConfigType): Promise<Decision[]> {
+		if (!this.state.request || !requestConfig.settings.enableCookies) {
+			return [];
+		}
+
+		try {
+			// Try to get decisions from header first
+			const headerDecisions = this.state.request.headers.get('x-optimizely-decisions');
+			if (headerDecisions) {
+				return JSON.parse(headerDecisions);
+			}
+
+			// Fall back to cookie if header not found
+			if (this.state.cdnAdapter) {
+				const cookieDecisions = this.state.cdnAdapter.getRequestCookie(
+					this.state.request,
+					'optimizely_decisions'
+				);
+				if (cookieDecisions) {
+					return JSON.parse(cookieDecisions);
+				}
+			}
+		} catch (error) {
+			this.logger.error(`Error parsing stored decisions: ${error}`);
+		}
+
+		return [];
+	}
+
+	/**
+	 * Validates stored decisions and separates them into valid and invalid decisions.
+	 */
+	private validateStoredDecisions(decisions: Decision[]): {
+		validDecisions: Decision[];
+		invalidDecisions: Decision[];
+	} {
+		const validDecisions: Decision[] = [];
+		const invalidDecisions: Decision[] = [];
+
+		for (const decision of decisions) {
+			try {
+				if (this.isValidDecision(decision)) {
+					validDecisions.push(decision);
+				} else {
+					invalidDecisions.push(decision);
+				}
+			} catch (error) {
+				this.logger.error(`Error validating decision: ${error}`);
+				invalidDecisions.push(decision);
+			}
+		}
+
+		return { validDecisions, invalidDecisions };
+	}
+
+	/**
+	 * Validates a single decision object.
+	 */
+	private isValidDecision(decision: unknown): decision is Decision {
+		if (!decision || typeof decision !== 'object') {
+			return false;
+		}
+
+		const d = decision as Record<string, unknown>;
+		return (
+			typeof d.flagKey === 'string' &&
+			typeof d.variationKey === 'string' &&
+			(typeof d.enabled === 'boolean' || d.enabled === undefined) &&
+			(typeof d.variables === 'object' || d.variables === undefined) &&
+			(typeof d.ruleKey === 'string' || d.ruleKey === undefined) &&
+			(Array.isArray(d.reasons) || d.reasons === undefined)
+		);
+	}
+
+	/**
+	 * Determines which flags need new decisions.
+	 */
+	private determineMissingFlags(
+		requestedFlags: string[],
+		forcedFlags: Record<string, Decision>,
+		validStoredFlags: Decision[]
+	): string[] {
+		const missingFlags = new Set<string>(requestedFlags);
+
+		// Remove forced flags
+		Object.keys(forcedFlags).forEach(flag => missingFlags.delete(flag));
+
+		// Remove valid stored flags
+		validStoredFlags.forEach(decision => missingFlags.delete(decision.flagKey));
+
+		return Array.from(missingFlags);
+	}
+
+	/**
+	 * Processes raw decisions into a standardized format.
+	 */
+	private processDecisions(decisions: Decision[]): Decision[] {
+		return decisions.map(decision => ({
+			flagKey: decision.flagKey,
+			variationKey: decision.variationKey,
+			enabled: decision.enabled ?? true,
+			variables: decision.variables || {},
+			ruleKey: decision.ruleKey || 'default',
+			reasons: decision.reasons || []
+		}));
+	}
+
+	/**
+	 * Sets CDN configuration properties based on variation settings.
+	 */
+	private setCdnConfigProperties(
+		settings: CDNVariationSettings,
+		flagKey: string,
+		variationKey: string
+	): void {
+		try {
+			if (settings.forwardRequestToOrigin !== undefined) {
+				this.state.forwardRequestToOrigin = settings.forwardRequestToOrigin;
+			}
+
+			if (settings.cdnResponseURL) {
+				this.state.cdnResponseURL = settings.cdnResponseURL;
+			}
+
+			this.logger.debug(`Applied CDN settings for flag ${flagKey}, variation ${variationKey}`);
+		} catch (error) {
+			this.logger.error(`Error setting CDN properties: ${error}`);
+		}
+	}
+
+	/**
+	 * Custom error class for CoreLogic errors.
+	 */
+	private class CoreLogicError extends Error {
+		constructor(
+			message: string,
+			public readonly code: string,
+			public readonly details?: Record<string, unknown>
+		) {
+			super(message);
+			this.name = 'CoreLogicError';
+		}
+	}
+
+	/**
+	 * Handles errors in a consistent way across CoreLogic.
+	 */
+	private handleError(
+		error: unknown,
+		context: string,
+		details?: Record<string, unknown>
+	): CoreLogicError {
+		// Convert unknown error to CoreLogicError
+		if (error instanceof CoreLogicError) {
+			return error;
+		}
+
+		const message = error instanceof Error ? error.message : String(error);
+		const code = `ERROR_${context.toUpperCase().replace(/\s+/g, '_')}`;
+
+		const coreError = new CoreLogicError(message, code, details);
+		this.logger.error(`${code}: ${message}`, details);
+
+		return coreError;
+	}
+
+	/**
+	 * Validates cookie values for security.
+	 */
+	private validateCookieValue(value: string): boolean {
+		// Check for common XSS patterns
+		const xssPatterns = [
+			/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
+			/javascript:/gi,
+			/data:/gi,
+			/vbscript:/gi,
+			/on\w+=/gi
+		];
+
+		// Check if value contains any XSS patterns
+		return !xssPatterns.some(pattern => pattern.test(value));
+	}
+
+	/**
+	 * Sanitizes cookie values for security.
+	 */
+	private sanitizeCookieValue(value: string): string {
+		// Remove potentially dangerous characters
+		return value.replace(/[<>(){}[\]'"`]/g, '');
+	}
+
+	/**
 	 * Handles forwarding the request to the origin with necessary headers and cookies.
 	 */
 	private async handleOriginForwarding(
