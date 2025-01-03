@@ -1,6 +1,7 @@
 import { BaseAdapter } from '../BaseAdapter';
 import { CookieOptions, CDNSettings } from '../../../types';
 import { FastlyKVStore } from './FastlyKVStore';
+import { CoreLogic } from '../../providers/CoreLogic';
 
 /**
  * Fastly Compute@Edge adapter implementation
@@ -9,7 +10,7 @@ export class FastlyAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'FastlyAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
     private kvStore?: FastlyKVStore;
 
-    constructor(private coreLogic: any) {
+    constructor(private coreLogic: CoreLogic) {
         super();
     }
 

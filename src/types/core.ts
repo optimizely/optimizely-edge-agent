@@ -1,3 +1,5 @@
+import { OptimizelyProvider } from '../core/providers/OptimizelyProvider';
+import { AbstractionHelper } from '../utils/helpers/AbstractionHelper';
 import { ICDNAdapter, IKVStore } from './cdn';
 
 export interface RequestMetadata {
@@ -56,14 +58,14 @@ export interface Decision {
 }
 
 export interface CoreLogicDependencies {
-	optimizelyProvider: any; // TODO: Add proper type when OptimizelyProvider is converted
+	optimizelyProvider: OptimizelyProvider;
 	env: Record<string, unknown>;
 	ctx: {
 		waitUntil: (promise: Promise<unknown>) => void;
 		passThroughOnException: () => void;
 	};
 	sdkKey: string;
-	abstractionHelper: any; // TODO: Add proper type when AbstractionHelper is converted
+	abstractionHelper: AbstractionHelper;
 	kvStore?: IKVStore;
 	kvStoreUserProfile?: IKVStore;
 	logger: {

@@ -1,6 +1,7 @@
 import { BaseAdapter } from '../BaseAdapter';
 import { CookieOptions, CDNSettings } from '../../../types';
 import { AkamaiKVStore } from './AkamaiKVStore';
+import { CoreLogic } from '../../providers/CoreLogic';
 
 /**
  * Akamai EdgeWorkers adapter implementation
@@ -9,7 +10,7 @@ export class AkamaiAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'AkamaiAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
     private kvStore?: AkamaiKVStore;
 
-    constructor(private coreLogic: any) {
+    constructor(private coreLogic: CoreLogic) {
         super();
     }
 

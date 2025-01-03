@@ -1,6 +1,7 @@
 import { BaseAdapter } from '../BaseAdapter';
 import { CookieOptions, CDNSettings } from '../../../types';
 import { VercelKVStore } from './VercelKVStore';
+import { CoreLogic } from '../../providers/CoreLogic';
 
 /**
  * Vercel Edge Functions adapter implementation
@@ -9,7 +10,7 @@ export class VercelAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'VercelAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
     private kvStore?: VercelKVStore;
 
-    constructor(private coreLogic: any) {
+    constructor(private coreLogic: CoreLogic) {
         super();
     }
 

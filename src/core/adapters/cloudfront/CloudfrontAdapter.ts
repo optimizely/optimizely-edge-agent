@@ -1,6 +1,7 @@
 import { BaseAdapter } from '../BaseAdapter';
 import { CookieOptions, CDNSettings } from '../../../types';
 import { CloudfrontKVStore } from './CloudfrontKVStore';
+import { CoreLogic } from '../../providers/CoreLogic';
 
 /**
  * AWS Cloudfront adapter implementation
@@ -9,7 +10,7 @@ export class CloudfrontAdapter extends BaseAdapter {
     private readonly NOT_IMPLEMENTED = 'CloudfrontAdapter is not implemented yet. See CloudflareAdapter for reference implementation.';
     private kvStore?: CloudfrontKVStore;
 
-    constructor(private coreLogic: any) {
+    constructor(private coreLogic: CoreLogic) {
         super();
     }
 
