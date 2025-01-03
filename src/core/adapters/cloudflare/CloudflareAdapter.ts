@@ -1,10 +1,7 @@
 import { BaseAdapter } from '../BaseAdapter';
 import { CookieOptions, CDNSettings, EventBatchSettings } from '../../../types';
-import { IRequest } from '../../../types/request';
-import { IResponse } from '../../../types/response';
-import * as optlyHelper from '../../../utils/helpers/optimizelyHelper';
-import * as cookieDefaultOptions from '../../../legacy/config/cookieOptions';
-import defaultSettings from '../../../legacy/config/defaultSettings';
+import type { HttpRequest, HttpResponse } from '../../../types/http';
+import DefaultSettings from '../../../core/config/DefaultSettings';
 import { EventListeners } from '../../providers/events/EventListeners';
 import type { CoreLogic } from '../../providers/CoreLogic';
 
@@ -47,7 +44,7 @@ export class CloudflareAdapter extends BaseAdapter {
 	}
 
 	async handleRequest(request: Request): Promise<Response> {
-		const req: IRequest = {
+		const req: HttpRequest = {
 			url: request.url,
 			method: request.method,
 			headers: Object.fromEntries(request.headers.entries()),
@@ -60,7 +57,7 @@ export class CloudflareAdapter extends BaseAdapter {
 			req.body = await request.json();
 		}
 
-		const res: IResponse = await this.coreLogic.handleRequest(req);
+		const res: HttpResponse = await this.coreLogic.handleRequest(req);
 		return new Response(JSON.stringify(res.body), {
 			status: res.status,
 			statusText: res.statusText,
@@ -100,7 +97,7 @@ export class CloudflareAdapter extends BaseAdapter {
 		this.eventListeners.push(event);
 
 		// Check if we should flush events
-		const settings = defaultSettings.events as EventBatchSettings;
+		const settings = DefaultSettings.events as EventBatchSettings;
 		if (
 			this.eventListeners.length >= settings.maxSize ||
 			Date.now() - this.lastEventFlush >= settings.flushInterval
@@ -118,7 +115,7 @@ export class CloudflareAdapter extends BaseAdapter {
 		this.eventListeners = [];
 		this.lastEventFlush = Date.now();
 
-		const settings = defaultSettings.events as EventBatchSettings;
+		const settings = DefaultSettings.events as EventBatchSettings;
 		await fetch(settings.endpoint, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
@@ -195,7 +192,7 @@ export class CloudflareAdapter extends BaseAdapter {
 		return fetch(url.toString(), fetchOptions);
 	}
 
-	private async handleApiRequest(abstractRequest: AbstractRequest): Promise<Response> {
+	private async handleApHttpRequest(abstractRequest: AbstractRequest): Promise<Response> {
 		// TODO: Implement API request handling
 		throw new Error('API request handling not implemented');
 	}

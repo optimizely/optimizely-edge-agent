@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 export default defineConfig({
   build: {
     lib: {
-      entry: resolve(__dirname, '../src/adapters/vercel/index.ts'),
+      entry: resolve(__dirname, '../src/core/adapters/vercel/index.ts'),
       formats: ['es'],
       fileName: () => 'index.js',
     },

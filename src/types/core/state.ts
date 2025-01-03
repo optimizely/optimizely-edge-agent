@@ -1,5 +1,5 @@
-import { CDNAdapter } from '../cdn';
-import { Decision } from '../events';
+import type { CDNAdapter } from '../cdn';
+import type { Decision } from '../events';
 
 type CoreLogicState = {
   cdnAdapter?: CDNAdapter;
