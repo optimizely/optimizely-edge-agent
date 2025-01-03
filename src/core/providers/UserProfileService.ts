@@ -1,4 +1,3 @@
-import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
 import { Logger } from '../../utils/logging/Logger';
 import type { KVStore } from '../../types/cdn/store';
 
@@ -56,8 +55,15 @@ export class UserProfileService {
     let userProfileData = await this.kvStore.get(key);
 
     if (userProfileData) {
-      userProfileData = optlyHelper.safelyParseJSON(userProfileData);
-      this.cache.set(key, userProfileData as unknown as UserProfile);
+      try {
+        userProfileData = JSON.parse(userProfileData);
+      } catch (error) {
+        this.logger.error('UserProfileService - read() - error parsing JSON:', error);
+        userProfileData = null;
+      }
+      if (userProfileData) {
+        this.cache.set(key, userProfileData as unknown as UserProfile);
+      }
     }
 
     if (this.cache.has(key)) {
@@ -76,8 +82,8 @@ export class UserProfileService {
     this.logger.debug('UserProfileService - write() - writing data:', data);
     const existingData = this.cache.get(key);
 
-    if (existingData && optlyHelper.isValidObject(existingData, true)) {
-      // Merge experiment_bucket_map properties
+    let mergedData = data;
+    if (existingData && typeof existingData === 'object' && existingData !== null) {
       const newExperimentBucketMap = data.experiment_bucket_map;
       const existingExperimentBucketMap = existingData.experiment_bucket_map || {};
 
@@ -87,12 +93,12 @@ export class UserProfileService {
 
       // Update the existing data with the merged experiment_bucket_map
       existingData.experiment_bucket_map = existingExperimentBucketMap;
-      data = existingData;
+      mergedData = existingData;
     }
 
-    const parsedData = optlyHelper.safelyStringifyJSON(data);
+    const parsedData = JSON.stringify(mergedData);
     await this.kvStore.put(key, parsedData);
-    this.cache.set(key, data);
+    this.cache.set(key, mergedData);
   }
 
   /**
