@@ -5,7 +5,7 @@
  */
 // CDN specific imports
 import CloudflareAdapter from './cloudflareAdapter';
-import CloudflareKVInterface from './cloudflareKVInterface';
+import CloudflareKVStore from './cloudflareKVStore';
 
 // Application specific imports
 import CoreLogic from '../../core/providers/coreLogic'; // Assume this is your application logic module
@@ -86,7 +86,7 @@ export default {
 
 		// Initialize the KV store based on the CDN provider
 		// ToDo - Check if KV support is enabled in headers and conditionally instantiate the KV store
-		// const kvInterfaceAdapter = new CloudflareKVInterface(env, defaultSettings.kv_namespace);
+		// const kvInterfaceAdapter = new CloudflareKVStore(env, defaultSettings.kv_namespace);
 		// const kvStore = abstractionHelper.initializeKVStore(defaultSettings.cdnProvider, kvInterfaceAdapter);
 
 		// Use the KV store methods

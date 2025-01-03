@@ -15,7 +15,7 @@
 
 // CDN specific imports
 import CloudflareAdapter from './cdn-adapters/cloudflare/cloudflareAdapter';
-import CloudflareKVInterface from './cdn-adapters/cloudflare/cloudflareKVInterface';
+import CloudflareKVStore from './cdn-adapters/cloudflare/cloudflareKVStore';
 // import AkamaiAdapter from './cdn-adapters/akamai/akamaiAdapter';
 // import AkamaiKVInterface from './cdn-adapters/akamai/akamaiKVInterface';
 // import FastlyAdapter from './cdn-adapters/fastly/fastlyAdapter';
@@ -33,7 +33,7 @@ import OptimizelyProvider from './core/providers/optimizelyProvider';
 import defaultSettings from './legacy/config/defaultSettings';
 import * as optlyHelper from './utils/helpers/optimizelyHelper';
 import { getAbstractionHelper } from './utils/helpers/abstractionHelper';
-import Logger from './utils/logging/logger';
+import Logger from './legacy/utils/logger';
 import handleRequest from './core/api/apiRouter';
 
 let abstractionHelper, logger, abstractRequest, incomingRequest, environmentVariables, context;
@@ -133,7 +133,7 @@ function initializeKVStoreUserProfile(env) {
 		logger.debug(
 			'Edgeworker index.js - Initializing KV store for user profile [initializeKVStoreUserProfile]',
 		);
-		const kvInterfaceAdapterUserProfile = new CloudflareKVInterface(
+		const kvInterfaceAdapterUserProfile = new CloudflareKVStore(
 			env,
 			defaultSettings.kv_namespace_user_profile,
 		);
@@ -156,7 +156,7 @@ function initializeKVStoreUserProfile(env) {
  */
 function initializeKVStore(env) {
 	logger.debug('Edgeworker index.js - Initializing KV store [initializeKVStore]');
-	const kvInterfaceAdapter = new CloudflareKVInterface(env, defaultSettings.kv_namespace);
+	const kvInterfaceAdapter = new CloudflareKVStore(env, defaultSettings.kv_namespace);
 	return abstractionHelper.initializeKVStore(defaultSettings.cdnProvider, kvInterfaceAdapter);
 }
 
