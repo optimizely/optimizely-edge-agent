@@ -10,7 +10,7 @@
  */
 
 // Define your route handlers as before
-import defaultSettings from '../../config/defaultSettings';
+import defaultSettings from '../../legacy/config/defaultSettings';
 import { logger } from '../../utils/helpers/optimizelyHelper';
 import * as handlers from './handlers';
 

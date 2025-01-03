@@ -11,7 +11,7 @@
 
 import { AbstractRequest } from '../../../core/interfaces/abstractRequest';
 import { logger } from '../../../utils/helpers/optimizelyHelper';
-import defaultSettings from '../../../config/defaultSettings';
+import defaultSettings from '../../../legacy/config/defaultSettings';
 
 /**
  * Fetches and updates the Optimizely datafile based on the provided datafile key.

@@ -1,6 +1,6 @@
 import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
-import RequestConfig from '../../config/requestConfig';
-import defaultSettings from '../../config/defaultSettings';
+import RequestConfig from '../../legacy/config/requestConfig';
+import defaultSettings from '../../legacy/config/defaultSettings';
 import { logger } from '../../utils/helpers/optimizelyHelper';
 import { AbstractionHelper } from '../../utils/helpers/abstractionHelper';
 import EventListeners from './events/eventListeners';

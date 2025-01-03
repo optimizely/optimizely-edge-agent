@@ -11,7 +11,7 @@
 
 import { AbstractRequest } from '../../../core/interfaces/abstractRequest';
 import { logger } from '../../../utils/helpers/optimizelyHelper';
-import defaultSettings from '../../../config/defaultSettings';
+import defaultSettings from '../../../legacy/config/defaultSettings';
 
 /**
  * Checks if the given object is a valid array.

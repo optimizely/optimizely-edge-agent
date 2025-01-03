@@ -3,8 +3,8 @@ import { CookieOptions, CDNSettings, EventBatchSettings } from '../../../types';
 import { AbstractRequest } from '../../interfaces/abstractRequest';
 import { AbstractResponse } from '../../interfaces/abstractResponse';
 import * as optlyHelper from '../../../utils/helpers/optimizelyHelper';
-import * as cookieDefaultOptions from '../../../config/cookieOptions';
-import defaultSettings from '../../../config/defaultSettings';
+import * as cookieDefaultOptions from '../../../legacy/config/cookieOptions';
+import defaultSettings from '../../../legacy/config/defaultSettings';
 import EventListeners from '../../providers/events/eventListeners';
 
 interface CloudflareEnv {
@@ -79,7 +79,7 @@ export class CloudflareAdapter extends BaseAdapter {
 
 		// Fetch from origin
 		const response = await this.fetchFromOrigin(request, settings);
-		
+
 		// Cache the response
 		if (response.ok) {
 			this.ctx?.waitUntil(this.cacheResponse(cacheKey, response, settings));
@@ -145,7 +145,11 @@ export class CloudflareAdapter extends BaseAdapter {
 		return Date.now() - cached.timestamp > ttl * 1000;
 	}
 
-	private async cacheResponse(key: string, response: Response, settings: CDNSettings): Promise<void> {
+	private async cacheResponse(
+		key: string,
+		response: Response,
+		settings: CDNSettings,
+	): Promise<void> {
 		if (!this.env?.OPTIMIZELY_KV) return;
 
 		const headers: Record<string, string> = {};
@@ -193,11 +197,16 @@ export class CloudflareAdapter extends BaseAdapter {
 		return fetch(request);
 	}
 
-	setRequestCookie(request: Request, name: string, value: string, options?: CookieOptions): Request {
+	setRequestCookie(
+		request: Request,
+		name: string,
+		value: string,
+		options?: CookieOptions,
+	): Request {
 		const cookieValue = this.serializeCookie(name, value, options);
 		const newHeaders = new Headers(request.headers);
 		newHeaders.append('Cookie', cookieValue);
-		
+
 		return new Request(request.url, {
 			method: request.method,
 			headers: newHeaders,
@@ -206,7 +215,12 @@ export class CloudflareAdapter extends BaseAdapter {
 		});
 	}
 
-	setResponseCookie(response: Response, name: string, value: string, options?: CookieOptions): Response {
+	setResponseCookie(
+		response: Response,
+		name: string,
+		value: string,
+		options?: CookieOptions,
+	): Response {
 		const cookieValue = this.serializeCookie(name, value, options);
 		const newHeaders = new Headers(response.headers);
 		newHeaders.append('Set-Cookie', cookieValue);

@@ -5,7 +5,7 @@
 import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
 import { logger } from '../../utils/helpers/optimizelyHelper';
 import { AbstractionHelper } from '../../utils/helpers/abstractionHelper';
-import defaultSettings from '../../config/defaultSettings';
+import defaultSettings from '../../legacy/config/defaultSettings';
 import UserProfileService from './userProfileService';
 import EventListeners from './events/eventListeners';
 
