@@ -60,7 +60,7 @@ export class AbstractionHelper {
 	 * Returns new headers based on the provided headers and the CDN provider.
 	 */
 	static getNewHeaders(existingHeaders: Headers | HeadersObject): Headers | HeadersObject {
-		logger().debugExt(
+		logger().debug(
 			'AbstractionHelper - Getting new headers [getNewHeaders]',
 			'Existing headers:',
 			existingHeaders,
@@ -118,7 +118,7 @@ export class AbstractionHelper {
 	 * Retrieves the value of a specific header from the response based on the CDN provider.
 	 */
 	static getHeaderValue(response: ResponseLike, headerName: string): string | null {
-		logger().debugExt(
+		logger().debug(
 			'AbstractionHelper - Getting header value [getHeaderValue]',
 			'Header name:',
 			headerName,
@@ -163,7 +163,7 @@ export class AbstractionHelper {
 	 * Retrieves the response content as stringified JSON or text based on the CDN provider.
 	 */
 	async getResponseContent(response: ResponseLike): Promise<string> {
-		logger().debugExt('AbstractionHelper - Getting response content [getResponseContent]');
+		logger().debug('AbstractionHelper - Getting response content [getResponseContent]');
 
 		try {
 			if (!response || typeof response !== 'object') {
@@ -220,7 +220,7 @@ export class AbstractionHelper {
 	 * Retrieves the value of an environment variable.
 	 */
 	getEnvVariableValue(name: string, environmentVariables?: Record<string, unknown>): string {
-		logger().debugExt(
+		logger().debug(
 			'AbstractionHelper - Getting environment variable value [getEnvVariableValue]',
 			'Name:',
 			name,
