@@ -1,6 +1,6 @@
-import { CookieOptions, ICDNAdapter } from '../../types';
+import { CookieOptions, CDNAdapter } from '../../types';
 
-export abstract class BaseAdapter implements ICDNAdapter {
+export abstract class BaseAdapter implements CDNAdapter {
 	abstract handleRequest(request: Request): Promise<Response>;
 
 	abstract setRequestCookie(

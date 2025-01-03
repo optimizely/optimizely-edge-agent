@@ -1,4 +1,4 @@
-import { IKVStore } from '../../../types/cdn';
+import { KVStore } from '../../../types/cdn';
 import { Logger } from '../../../utils/logging/Logger';
 
 /**
@@ -19,9 +19,9 @@ interface FastlyEnv {
 
 /**
  * FastlyKVStore provides a concrete implementation for interacting with Fastly's KV store.
- * It implements the IKVStore interface to ensure consistent KV store operations across different platforms.
+ * It implements the KVStore interface to ensure consistent KV store operations across different platforms.
  */
-export class FastlyKVStore implements IKVStore {
+export class FastlyKVStore implements KVStore {
 	private readonly NOT_IMPLEMENTED = 'FastlyKVStore is not implemented yet';
 	private logger?: Logger;
 

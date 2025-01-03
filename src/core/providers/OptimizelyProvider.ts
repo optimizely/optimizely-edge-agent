@@ -1,5 +1,5 @@
 import { Logger } from '../../utils/logging/Logger';
-import { ICDNAdapter, IKVStore } from '../../types/cdn';
+import { CDNAdapter, KVStore } from '../../types/cdn';
 import { OptimizelyConfig, OptimizelyUserContext } from '../../types/optimizely';
 import * as optimizely from '@optimizely/optimizely-sdk';
 
@@ -28,7 +28,7 @@ export class OptimizelyProvider {
   private visitorId?: string;
   private optimizelyClient?: optimizely.Client;
   private optimizelyUserContext?: optimizely.OptimizelyUserContext;
-  private cdnAdapter?: ICDNAdapter;
+  private cdnAdapter?: CDNAdapter;
   private readonly httpMethod: string;
   private readonly kvStoreUserProfileEnabled: boolean;
   private readonly abstractContext: Record<string, unknown>;
@@ -52,7 +52,7 @@ export class OptimizelyProvider {
       };
       abstractContext: Record<string, unknown>;
     },
-    private readonly kvStoreUserProfile?: IKVStore
+    private readonly kvStoreUserProfile?: KVStore
   ) {
     logger.debug('Initializing OptimizelyProvider');
     this.httpMethod = abstractionHelper.abstractRequest.method;
@@ -63,7 +63,7 @@ export class OptimizelyProvider {
   /**
    * Sets the CDN adapter.
    */
-  setCdnAdapter(adapter: ICDNAdapter): void {
+  setCdnAdapter(adapter: CDNAdapter): void {
     if (!adapter || typeof adapter !== 'object') {
       throw new TypeError('Invalid CDN adapter provided');
     }

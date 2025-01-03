@@ -1,4 +1,4 @@
-import { IKVStore } from '../../../types/cdn';
+import { KVStore } from '../../../types/cdn';
 import { Logger } from '../../../utils/logging/Logger';
 
 /**
@@ -19,9 +19,9 @@ interface CloudfrontEnv {
 
 /**
  * CloudfrontKVStore provides a concrete implementation for interacting with Cloudfront's KV store.
- * It implements the IKVStore interface to ensure consistent KV store operations across different platforms.
+ * It implements the KVStore interface to ensure consistent KV store operations across different platforms.
  */
-export class CloudfrontKVStore implements IKVStore {
+export class CloudfrontKVStore implements KVStore {
 	private readonly NOT_IMPLEMENTED = 'CloudfrontKVStore is not implemented yet';
 	private logger?: Logger;
 

@@ -1,6 +1,6 @@
 import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
 import { Logger } from '../../utils/logging/Logger';
-import { IKVStore } from '../../types/cdn';
+import { KVStore } from '../../types/cdn';
 
 // Get singleton instances
 const logger = Logger.getInstance({});
@@ -31,7 +31,7 @@ export class UserProfileService {
    * Create a User Profile Service instance.
    */
   constructor(
-    private readonly kvStore: IKVStore,
+    private readonly kvStore: KVStore,
     private readonly sdkKey: string
   ) {
     this.cache = new Map();

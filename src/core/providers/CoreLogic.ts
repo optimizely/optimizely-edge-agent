@@ -4,7 +4,7 @@ import defaultSettings from '../../legacy/config/defaultSettings';
 import { logger } from '../../utils/helpers/optimizelyHelper';
 import { AbstractionHelper } from '../../utils/helpers/abstractionHelper';
 import { EventListeners } from './events/EventListeners';
-import { ICDNAdapter, IKVStore } from '../../types/cdn';
+import { CDNAdapter, KVStore } from '../../types/cdn';
 import { 
 	CoreLogicDependencies, 
 	CoreLogicState, 
@@ -34,11 +34,11 @@ export class CoreLogic {
 	private logger: CoreLogicDependencies['logger'];
 	private env: CoreLogicDependencies['env'];
 	private ctx: CoreLogicDependencies['ctx'];
-	private kvStore?: IKVStore;
+	private kvStore?: KVStore;
 	private sdkKey: string;
 	private abstractionHelper: AbstractionHelper;
 	private optimizelyProvider: OptimizelyProvider;
-	private kvStoreUserProfile?: IKVStore;
+	private kvStoreUserProfile?: KVStore;
 	private eventListeners: EventListeners;
 	private state: CoreLogicState;
 
@@ -76,14 +76,14 @@ export class CoreLogic {
 	/**
 	 * Sets the CDN adapter for the instance.
 	 */
-	setCdnAdapter(cdnAdapter: ICDNAdapter): void {
+	setCdnAdapter(cdnAdapter: CDNAdapter): void {
 		this.state.cdnAdapter = cdnAdapter;
 	}
 
 	/**
 	 * Retrieves the current CDN adapter.
 	 */
-	getCdnAdapter(): ICDNAdapter | undefined {
+	getCdnAdapter(): CDNAdapter | undefined {
 		return this.state.cdnAdapter;
 	}
 

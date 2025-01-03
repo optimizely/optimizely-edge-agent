@@ -1,4 +1,4 @@
-import { IKVStore } from '../../../types/cdn';
+import { KVStore } from '../../../types/cdn';
 import { Logger } from '../../../utils/logging/Logger';
 
 /**
@@ -19,9 +19,9 @@ interface CloudflareEnv {
 
 /**
  * CloudflareKVStore provides a concrete implementation for interacting with Cloudflare's KV store.
- * It implements the IKVStore interface to ensure consistent KV store operations across different platforms.
+ * It implements the KVStore interface to ensure consistent KV store operations across different platforms.
  */
-export class CloudflareKVStore implements IKVStore {
+export class CloudflareKVStore implements KVStore {
 	private namespace: CloudflareKVNamespace;
 	private logger?: Logger;
 
