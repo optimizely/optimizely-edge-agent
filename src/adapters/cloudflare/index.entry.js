@@ -98,10 +98,10 @@ export default {
 		const isGetMethod = httpMethod === 'GET';
 
 		// Check if the request is for the datafile operation
-		const datafileOperation = pathName === '/v1/datafile";
+		const datafileOperation = pathName === '/v1/datafile';
 
 		// Check if the request is for the config operation
-		const configOperation = pathName === '/v1/config";
+		const configOperation = pathName === '/v1/config';
 
 		// Check if the sdkKey is provided in the request headers
 		let sdkKey = _abstractRequest.getHeader(defaultSettings.sdkKeyHeader);
@@ -121,7 +121,7 @@ export default {
 		if (!requestIsForAsset && matchedRouteForAPI) {
 			try {
 				if (handleRequest) {
-					const handlerResponse = handleRequest(_request, abstractionHelper, kvStore, logger, defaultSettings);
+					const handlerResponse = handleRequest(_request, abstractionHelper, null, logger, defaultSettings);
 					return handlerResponse;
 				} else {
 					// Handle any issues during the API request handling that were not captured by the custom router

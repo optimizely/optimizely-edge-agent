@@ -141,7 +141,7 @@ export async function onClientRequest(request) {
 	const datafileOperation = pathName === '/v1/datafile';
 
 	// Check if the request is for the config operation
-	const configOperation = pathName === '/v1/config";
+	const configOperation = pathName === '/v1/config';
 
 	// Check if the sdkKey is provided in the request headers
 	let sdkKey = _abstractRequest.getHeader(defaultSettings.sdkKeyHeader);

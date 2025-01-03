@@ -101,7 +101,7 @@ export async function handler(event, context) {
 	const isGetMethod = httpMethod === 'GET';
 
 	// Check if the request is for the datafile operation
-	const datafileOperation = pathName === '/v1/datafile";
+	const datafileOperation = pathName === `/v1/datafile`;
 
 	// Check if the request is for the config operation
 	const configOperation = pathName === '/v1/config';
