@@ -1,4 +1,4 @@
-import { Decision } from './decision';
+import type { Decision } from './decision';
 
 export type EventType = 
   | 'beforeDecide'
@@ -6,7 +6,22 @@ export type EventType =
   | 'beforeCacheResponse'
   | 'afterCacheResponse'
   | 'beforeDatafileGet'
-  | 'afterDatafileGet';
+  | 'afterDatafileGet'
+  | 'beforeResponse'
+  | 'afterResponse'
+  | 'beforeCreateCacheKey'
+  | 'afterCreateCacheKey'
+  | 'beforeRequest'
+  | 'afterRequest'
+  | 'beforeDetermineFlagsToDecide'
+  | 'afterDetermineFlagsToDecide'
+  | 'afterReadingCookie'
+  | 'beforeReadingCache'
+  | 'afterReadingCache'
+  | 'beforeProcessingRequest'
+  | 'afterProcessingRequest'
+  | 'beforeDispatchingEvents'
+  | 'afterDispatchingEvents';
 
 type EventListener = (data: unknown) => Promise<Record<string, unknown>>;
 
