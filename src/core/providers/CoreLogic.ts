@@ -12,6 +12,7 @@ import {
 	CDNVariationSettings,
 	RequestConfig as RequestConfigType
 } from '../../types/core';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * The CoreLogic class is the core logic class for processing requests and managing Optimizely decisions.
@@ -156,5 +157,337 @@ export class CoreLogic {
 		return url.replace(/([^:]\/)\/+/g, '$1');
 	}
 
-	// ... More methods to be converted
+	/**
+	 * Processes the incoming request, initializes configurations, and determines response based on operation type.
+	 */
+	async processRequest(request: Request, env: Record<string, unknown>, ctx: CoreLogicDependencies['ctx']): Promise<Response> {
+		this.state.request = request;
+		this.env = env;
+		this.ctx = ctx;
+
+		const url = new URL(request.url);
+		const requestConfig = new RequestConfig();
+		const isPostMethod = request.method === 'POST';
+
+		this.state.isPostMethod = isPostMethod;
+		this.state.isGetMethod = request.method === 'GET';
+		this.state.isDecideOperation = this.getIsDecideOperation(url.pathname);
+
+		// Get or generate visitor ID
+		const visitorId = await this.getVisitorId(request, requestConfig);
+
+		// Handle datafile operations
+		if (url.pathname.includes('/datafile')) {
+			this.state.datafileOperation = true;
+			const datafile = await this.retrieveDatafile(requestConfig, env);
+			return new Response(datafile, { status: 200 });
+		}
+
+		// Handle config operations
+		if (url.pathname.includes('/config')) {
+			this.state.configOperation = true;
+			return new Response(JSON.stringify(defaultSettings), { status: 200 });
+		}
+
+		// Initialize Optimizely
+		const datafile = await this.retrieveDatafile(requestConfig, env);
+		const userAgent = request.headers.get('user-agent') || '';
+		await this.initializeOptimizely(datafile, visitorId, requestConfig, userAgent);
+
+		// Determine flags and handle decisions
+		const { flagsToDecide, flagsToForce, validStoredDecisions } = await this.determineFlagsToDecide(requestConfig);
+
+		// Execute decisions
+		const decisions = await this.optimizelyExecute(flagsToDecide, flagsToForce, requestConfig);
+
+		// Prepare and serialize decisions
+		const serializedDecisions = await this.prepareDecisions(decisions, flagsToForce, validStoredDecisions, requestConfig);
+
+		// Prepare final response
+		return this.prepareFinalResponse(decisions, visitorId, requestConfig, serializedDecisions);
+	}
+
+	/**
+	 * Determines if the request should be forwarded to the origin.
+	 */
+	private shouldForwardToOrigin(): boolean {
+		return Boolean(
+			this.state.forwardRequestToOrigin && 
+			this.state.cdnResponseURL && 
+			this.state.isGetMethod
+		);
+	}
+
+	/**
+	 * Executes decisions for the flags.
+	 */
+	private async optimizelyExecute(
+		flagsToDecide: string[],
+		flagsToForce: Record<string, Decision>,
+		requestConfig: RequestConfigType
+	): Promise<Decision[]> {
+		const decisions: Decision[] = [];
+
+		// Add forced decisions first
+		if (flagsToForce) {
+			Object.values(flagsToForce).forEach(decision => {
+				decisions.push(decision);
+			});
+		}
+
+		// Execute decisions for remaining flags
+		for (const flagKey of flagsToDecide) {
+			try {
+				const decision = await this.optimizelyProvider.decide(flagKey, requestConfig);
+				if (decision) {
+					decisions.push(decision);
+				}
+			} catch (error) {
+				this.logger.error(`Error deciding flag ${flagKey}: ${error}`);
+			}
+		}
+
+		return decisions;
+	}
+
+	/**
+	 * Prepares the decisions for the response.
+	 */
+	private async prepareDecisions(
+		decisions: Decision[],
+		flagsToForce: Record<string, Decision>,
+		validStoredDecisions: Decision[],
+		requestConfig: RequestConfigType
+	): Promise<string | null> {
+		if (!decisions?.length) {
+			return null;
+		}
+
+		// Process decisions
+		const processedDecisions = this.processDecisions(decisions);
+
+		// Find matching CDN config
+		if (this.state.request && processedDecisions.length > 0) {
+			const url = new URL(this.state.request.url);
+			const matchingConfig = this.findMatchingConfig(url.toString(), processedDecisions);
+
+			if (matchingConfig) {
+				const { flagKey, variationKey, cdnVariationSettings } = matchingConfig;
+				if (cdnVariationSettings) {
+					this.setCdnConfigProperties(cdnVariationSettings, flagKey, variationKey);
+				}
+			}
+		}
+
+		// Update metadata
+		this.updateMetadata(requestConfig, Object.keys(flagsToForce || {}), validStoredDecisions);
+
+		// Serialize decisions
+		return JSON.stringify(decisions);
+	}
+
+	/**
+	 * Updates the request configuration metadata.
+	 */
+	private updateMetadata(
+		requestConfig: RequestConfigType,
+		flagsToForce: string[],
+		validStoredDecisions: Decision[]
+	): void {
+		if (!requestConfig.metadata) {
+			requestConfig.metadata = {};
+		}
+
+		requestConfig.metadata.decisions = {
+			valid: validStoredDecisions?.length || 0,
+			forced: flagsToForce?.length || 0,
+			invalid: this.state.invalidCookieDecisions?.length || 0
+		};
+	}
+
+	/**
+	 * Searches for a CDN configuration that matches a given URL within an array of decision objects.
+	 */
+	private findMatchingConfig(
+		requestURL: string,
+		decisions: Array<{
+			flagKey: string;
+			variationKey: string;
+			cdnVariationSettings?: CDNVariationSettings;
+		}>,
+		ignoreQueryParameters = true
+	): { flagKey: string; variationKey: string; cdnVariationSettings: CDNVariationSettings } | null {
+		for (const decision of decisions) {
+			const { cdnVariationSettings, flagKey, variationKey } = decision;
+			if (!cdnVariationSettings?.cdnExperimentURL) continue;
+
+			const experimentURL = this.removeExtraSlashes(cdnVariationSettings.cdnExperimentURL);
+			const cleanRequestURL = this.removeExtraSlashes(requestURL);
+
+			const experimentURLObj = new URL(experimentURL);
+			const requestURLObj = new URL(cleanRequestURL);
+
+			if (ignoreQueryParameters) {
+				if (experimentURLObj.origin + experimentURLObj.pathname === 
+					requestURLObj.origin + requestURLObj.pathname) {
+					return { flagKey, variationKey, cdnVariationSettings };
+				}
+			} else {
+				if (experimentURL === cleanRequestURL) {
+					return { flagKey, variationKey, cdnVariationSettings };
+				}
+			}
+		}
+
+		return null;
+	}
+
+	/**
+	 * Checks if the pathname indicates a decide operation.
+	 */
+	private getIsDecideOperation(pathName: string): boolean {
+		return pathName.includes('/decide') || pathName.includes('/v1/decide');
+	}
+
+	/**
+	 * Retrieves the visitor ID from the request, cookie, or generates a new one.
+	 */
+	private async getVisitorId(request: Request, requestConfig: RequestConfigType): Promise<string> {
+		if (requestConfig.settings.forceVisitorId) {
+			return this.overrideVisitorId(requestConfig);
+		}
+
+		const [visitorId, source] = await this.retrieveOrGenerateVisitorId(request, requestConfig);
+		this.storeVisitorIdMetadata(requestConfig, visitorId, source);
+
+		return visitorId;
+	}
+
+	/**
+	 * Overrides the visitor ID by generating a new UUID.
+	 */
+	private async overrideVisitorId(requestConfig: RequestConfigType): Promise<string> {
+		const visitorId = uuidv4();
+		this.storeVisitorIdMetadata(requestConfig, visitorId, 'generated-forced');
+		return visitorId;
+	}
+
+	/**
+	 * Retrieves a visitor ID from a cookie or generates a new one if not found.
+	 */
+	private async retrieveOrGenerateVisitorId(
+		request: Request,
+		requestConfig: RequestConfigType
+	): Promise<[string, string]> {
+		// Check headers for visitor ID
+		const headerVisitorId = request.headers.get('x-visitor-id');
+		if (headerVisitorId) {
+			return [headerVisitorId, 'header'];
+		}
+
+		// Check cookies for visitor ID
+		if (this.state.cdnAdapter) {
+			const cookieVisitorId = this.state.cdnAdapter.getRequestCookie(request, 'visitor_id');
+			if (cookieVisitorId) {
+				return [cookieVisitorId, 'cookie'];
+			}
+		}
+
+		// Generate new visitor ID
+		return [uuidv4(), 'generated'];
+	}
+
+	/**
+	 * Stores visitor ID and its source in the configuration metadata.
+	 */
+	private storeVisitorIdMetadata(
+		requestConfig: RequestConfigType,
+		visitorId: string,
+		visitorIdSource: string
+	): void {
+		if (requestConfig.settings.sendMetadata) {
+			if (!requestConfig.metadata) {
+				requestConfig.metadata = {};
+			}
+			requestConfig.metadata.visitorId = {
+				value: visitorId,
+				source: visitorIdSource
+			};
+		}
+	}
+
+	/**
+	 * Retrieves the Optimizely datafile from KV storage or CDN.
+	 */
+	private async retrieveDatafile(
+		requestConfig: RequestConfigType,
+		env: Record<string, unknown>
+	): Promise<string> {
+		if (requestConfig.settings.enableKvStorage && this.kvStore) {
+			try {
+				const cachedDatafile = await this.kvStore.get('datafile');
+				if (cachedDatafile) {
+					if (requestConfig.settings.sendMetadata) {
+						requestConfig.metadata.datafile = {
+							origin: 'kv-store'
+						};
+					}
+					return cachedDatafile;
+				}
+			} catch (error) {
+				this.logger.error(`Error retrieving datafile from KV: ${error}`);
+			}
+		}
+
+		try {
+			const response = await fetch(`https://cdn.optimizely.com/datafiles/${this.sdkKey}.json`);
+			const datafile = await response.text();
+
+			if (requestConfig.settings.enableKvStorage && this.kvStore) {
+				try {
+					await this.kvStore.put('datafile', datafile);
+				} catch (error) {
+					this.logger.error(`Error caching datafile to KV: ${error}`);
+				}
+			}
+
+			if (requestConfig.settings.sendMetadata) {
+				requestConfig.metadata.datafile = {
+					origin: 'cdn'
+				};
+			}
+
+			return datafile;
+		} catch (error) {
+			this.logger.error(`Error retrieving datafile from CDN: ${error}`);
+			throw error;
+		}
+	}
+
+	/**
+	 * Initializes the Optimizely instance.
+	 */
+	private async initializeOptimizely(
+		datafile: string,
+		visitorId: string,
+		requestConfig: RequestConfigType,
+		userAgent: string
+	): Promise<boolean> {
+		try {
+			await this.optimizelyProvider.initialize(datafile);
+
+			const attributes = {
+				$opt_user_agent: userAgent,
+				...requestConfig.metadata
+			};
+
+			await this.optimizelyProvider.createUserContext(visitorId, attributes);
+			return true;
+		} catch (error) {
+			this.logger.error(`Error initializing Optimizely: ${error}`);
+			return false;
+		}
+	}
+
+	// ... (keep existing methods)
 }
