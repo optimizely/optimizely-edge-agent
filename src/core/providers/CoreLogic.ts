@@ -489,5 +489,176 @@ export class CoreLogic {
 		}
 	}
 
-	// ... (keep existing methods)
+	/**
+	 * Prepares the final response with decisions and headers/cookies.
+	 */
+	private async prepareFinalResponse(
+		decisions: Decision[],
+		visitorId: string,
+		requestConfig: RequestConfigType,
+		serializedDecisions: string | null
+	): Promise<Response> {
+		// Handle forwarding to origin if needed
+		if (this.shouldForwardToOrigin()) {
+			return this.handleOriginForwarding(visitorId, serializedDecisions, requestConfig);
+		}
+
+		// Handle local response
+		return this.prepareLocalResponse(decisions, visitorId, serializedDecisions, requestConfig);
+	}
+
+	/**
+	 * Handles forwarding the request to the origin with necessary headers and cookies.
+	 */
+	private async handleOriginForwarding(
+		visitorId: string,
+		serializedDecisions: string | null,
+		requestConfig: RequestConfigType
+	): Promise<Response> {
+		if (!this.state.request || !this.state.cdnAdapter || !this.state.cdnResponseURL) {
+			throw new Error('Missing required state for origin forwarding');
+		}
+
+		// Prepare request for forwarding
+		const originRequest = new Request(this.state.cdnResponseURL, {
+			method: this.state.request.method,
+			headers: new Headers(this.state.request.headers),
+			body: this.state.request.body,
+		});
+
+		// Add visitor ID and decisions to request
+		if (requestConfig.settings.sendFlagDecisions && serializedDecisions) {
+			originRequest.headers.set('x-optimizely-decisions', serializedDecisions);
+		}
+		originRequest.headers.set('x-visitor-id', visitorId);
+
+		// Forward to origin
+		let response: Response;
+		try {
+			response = await fetch(originRequest);
+		} catch (error) {
+			this.logger.error(`Error forwarding to origin: ${error}`);
+			throw error;
+		}
+
+		// Set response headers and cookies
+		response = await this.setResponseHeaders(response, visitorId, serializedDecisions, requestConfig);
+		response = await this.setResponseCookies(response, visitorId, serializedDecisions, requestConfig);
+
+		return response;
+	}
+
+	/**
+	 * Prepares a response when not forwarding to origin.
+	 */
+	private async prepareLocalResponse(
+		decisions: Decision[] | string,
+		visitorId: string,
+		serializedDecisions: string | null,
+		requestConfig: RequestConfigType
+	): Promise<Response> {
+		let responseBody: string;
+		let contentType = 'application/json';
+
+		if (typeof decisions === 'string') {
+			responseBody = decisions;
+		} else {
+			const responseData = {
+				decisions,
+				visitorId,
+				...(requestConfig.settings.sendMetadata ? { metadata: requestConfig.metadata } : {})
+			};
+			responseBody = JSON.stringify(responseData);
+		}
+
+		let response = new Response(responseBody, {
+			status: 200,
+			headers: {
+				'Content-Type': contentType
+			}
+		});
+
+		// Set response headers and cookies
+		response = await this.setResponseHeaders(response, visitorId, serializedDecisions, requestConfig);
+		response = await this.setResponseCookies(response, visitorId, serializedDecisions, requestConfig);
+
+		return response;
+	}
+
+	/**
+	 * Sets response headers based on the provided visitor ID and serialized decisions.
+	 */
+	private async setResponseHeaders(
+		response: Response,
+		visitorId: string,
+		serializedDecisions: string | null,
+		requestConfig: RequestConfigType
+	): Promise<Response> {
+		const newHeaders = new Headers(response.headers);
+
+		// Set visitor ID header
+		newHeaders.set('x-visitor-id', visitorId);
+
+		// Set decisions header if enabled
+		if (requestConfig.settings.sendFlagDecisions && serializedDecisions) {
+			newHeaders.set('x-optimizely-decisions', serializedDecisions);
+		}
+
+		// Set metadata header if enabled
+		if (requestConfig.settings.sendMetadata) {
+			newHeaders.set('x-optimizely-metadata', JSON.stringify(requestConfig.metadata));
+		}
+
+		return new Response(response.body, {
+			status: response.status,
+			statusText: response.statusText,
+			headers: newHeaders
+		});
+	}
+
+	/**
+	 * Sets response cookies based on the provided visitor ID and serialized decisions.
+	 */
+	private async setResponseCookies(
+		response: Response,
+		visitorId: string,
+		serializedDecisions: string | null,
+		requestConfig: RequestConfigType
+	): Promise<Response> {
+		if (!requestConfig.settings.enableCookies || !this.state.cdnAdapter) {
+			return response;
+		}
+
+		let modifiedResponse = response;
+
+		// Set visitor ID cookie
+		modifiedResponse = this.state.cdnAdapter.setResponseCookie(
+			modifiedResponse,
+			'visitor_id',
+			visitorId,
+			{
+				path: '/',
+				maxAge: 365 * 24 * 60 * 60, // 1 year
+				secure: true,
+				sameSite: 'Lax'
+			}
+		);
+
+		// Set decisions cookie if enabled
+		if (requestConfig.settings.sendFlagDecisions && serializedDecisions) {
+			modifiedResponse = this.state.cdnAdapter.setResponseCookie(
+				modifiedResponse,
+				'optimizely_decisions',
+				serializedDecisions,
+				{
+					path: '/',
+					maxAge: 30 * 60, // 30 minutes
+					secure: true,
+					sameSite: 'Lax'
+				}
+			);
+		}
+
+		return modifiedResponse;
+	}
 }
