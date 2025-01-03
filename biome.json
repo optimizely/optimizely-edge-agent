@@ -14,7 +14,7 @@
 			"dist/**",
 			"node_modules/**",
 			"coverage/**",
-			"src/legacy/**"
+			"legacy/**"
 		]
 	},
 	"formatter": {
