@@ -18,6 +18,7 @@
   "devDependencies": {
     "@biomejs/biome": "1.9.4",
     "@cloudflare/vitest-pool-workers": "^0.5.40",
+    "@cloudflare/workers-types": "^4.20241230.0",
     "@optimizely/optimizely-sdk": "^5.3.4",
     "@types/node": "^22.10.5",
     "@vercel/edge": "^1.2.0",

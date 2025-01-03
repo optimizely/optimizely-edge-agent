@@ -1,11 +1,12 @@
 import { BaseAdapter } from '../BaseAdapter';
 import { CookieOptions, CDNSettings, EventBatchSettings } from '../../../types';
-import { AbstractRequest } from '../../interfaces/abstractRequest';
-import { AbstractResponse } from '../../interfaces/abstractResponse';
+import { IRequest } from '../../../types/request';
+import { IResponse } from '../../../types/response';
 import * as optlyHelper from '../../../utils/helpers/optimizelyHelper';
 import * as cookieDefaultOptions from '../../../legacy/config/cookieOptions';
 import defaultSettings from '../../../legacy/config/defaultSettings';
 import EventListeners from '../../providers/events/eventListeners';
+import type { CoreLogic } from '../../providers/CoreLogic';
 
 interface CloudflareEnv {
 	OPTIMIZELY_KV: KVNamespace;
@@ -13,54 +14,58 @@ interface CloudflareEnv {
 }
 
 interface CloudflareFetchContext {
-	waitUntil(promise: Promise<any>): void;
+	waitUntil(promise: Promise<unknown>): void;
 	passThroughOnException(): void;
 }
 
 interface CachedResponse {
 	body: string;
+	headers: Record<string, string>;
 	status: number;
 	statusText: string;
-	headers: Record<string, string>;
 	timestamp: number;
 }
 
-export class CloudflareAdapter extends BaseAdapter {
-	private coreLogic: any; // TODO: Add proper type when CoreLogic is converted
-	private env?: CloudflareEnv;
-	private ctx?: CloudflareFetchContext;
-	private eventQueue: any[] = [];
-	private lastEventFlush: number = Date.now();
+interface CloudflareKVStore {
+	get(key: string, type: 'json'): Promise<CachedResponse | null>;
+	put(key: string, value: string, options: { expirationTtl: number }): Promise<void>;
+}
 
-	constructor(coreLogic: any) {
+export class CloudflareAdapter extends BaseAdapter {
+	private coreLogic: CoreLogic;
+	private kvStore?: CloudflareKVStore;
+	private eventListeners: EventListeners;
+
+	constructor(coreLogic: CoreLogic) {
 		super();
 		this.coreLogic = coreLogic;
+		this.eventListeners = new EventListeners();
 	}
 
-	setContext(env: CloudflareEnv, ctx: CloudflareFetchContext): void {
-		this.env = env;
-		this.ctx = ctx;
+	setKVStore(kvStore: CloudflareKVStore): void {
+		this.kvStore = kvStore;
 	}
 
 	async handleRequest(request: Request): Promise<Response> {
-		if (!this.env || !this.ctx) {
-			throw new Error('Cloudflare context not set. Call setContext before handling requests.');
+		const req: IRequest = {
+			url: request.url,
+			method: request.method,
+			headers: Object.fromEntries(request.headers.entries()),
+			cookies: this.parseCookies(request),
+			ip: request.headers.get('cf-connecting-ip') || undefined,
+			userAgent: request.headers.get('user-agent') || undefined,
+		};
+
+		if (request.body) {
+			req.body = await request.json();
 		}
 
-		const url = new URL(request.url);
-		const abstractRequest = new AbstractRequest(request, 'cloudflare');
-
-		// Handle API requests
-		if (url.pathname.startsWith('/v1/')) {
-			return this.handleApiRequest(abstractRequest);
-		}
-
-		// Handle event dispatching
-		if (url.pathname === '/v1/events') {
-			return this.handleEventRequest(request);
-		}
-
-		return this.handleCachingRequest(request);
+		const res: IResponse = await this.coreLogic.handleRequest(req);
+		return new Response(JSON.stringify(res.body), {
+			status: res.status,
+			statusText: res.statusText,
+			headers: res.headers,
+		});
 	}
 
 	private async handleCachingRequest(request: Request): Promise<Response> {
@@ -82,7 +87,9 @@ export class CloudflareAdapter extends BaseAdapter {
 
 		// Cache the response
 		if (response.ok) {
-			this.ctx?.waitUntil(this.cacheResponse(cacheKey, response, settings));
+			this.kvStore?.put(cacheKey, JSON.stringify(response), {
+				expirationTtl: settings.ttl,
+			});
 		}
 
 		return response;
@@ -90,25 +97,25 @@ export class CloudflareAdapter extends BaseAdapter {
 
 	private async handleEventRequest(request: Request): Promise<Response> {
 		const event = await request.json();
-		this.eventQueue.push(event);
+		this.eventListeners.push(event);
 
 		// Check if we should flush events
 		const settings = defaultSettings.events as EventBatchSettings;
 		if (
-			this.eventQueue.length >= settings.maxSize ||
+			this.eventListeners.length >= settings.maxSize ||
 			Date.now() - this.lastEventFlush >= settings.flushInterval
 		) {
-			this.ctx?.waitUntil(this.flushEvents());
+			this.flushEvents();
 		}
 
 		return new Response('Event received', { status: 202 });
 	}
 
 	private async flushEvents(): Promise<void> {
-		if (this.eventQueue.length === 0) return;
+		if (this.eventListeners.length === 0) return;
 
-		const events = [...this.eventQueue];
-		this.eventQueue = [];
+		const events = [...this.eventListeners];
+		this.eventListeners = [];
 		this.lastEventFlush = Date.now();
 
 		const settings = defaultSettings.events as EventBatchSettings;
@@ -135,9 +142,9 @@ export class CloudflareAdapter extends BaseAdapter {
 	}
 
 	private async getCachedResponse(key: string): Promise<CachedResponse | null> {
-		if (!this.env?.OPTIMIZELY_KV) return null;
+		if (!this.kvStore) return null;
 
-		const cached = await this.env.OPTIMIZELY_KV.get(key, 'json');
+		const cached = await this.kvStore.get(key, 'json');
 		return cached as CachedResponse | null;
 	}
 
@@ -150,7 +157,7 @@ export class CloudflareAdapter extends BaseAdapter {
 		response: Response,
 		settings: CDNSettings,
 	): Promise<void> {
-		if (!this.env?.OPTIMIZELY_KV) return;
+		if (!this.kvStore) return;
 
 		const headers: Record<string, string> = {};
 		response.headers.forEach((value, key) => {
@@ -165,7 +172,7 @@ export class CloudflareAdapter extends BaseAdapter {
 			timestamp: Date.now(),
 		};
 
-		await this.env.OPTIMIZELY_KV.put(key, JSON.stringify(cached), {
+		await this.kvStore.put(key, JSON.stringify(cached), {
 			expirationTtl: settings.ttl,
 		});
 	}

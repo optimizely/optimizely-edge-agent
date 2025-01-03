@@ -10,9 +10,21 @@ import {
 	CoreLogicState, 
 	Decision, 
 	CDNVariationSettings,
-	RequestConfig as RequestConfigType
+	RequestConfig as RequestConfigType,
+	OptimizelyProvider
 } from '../../types/core';
 import { v4 as uuidv4 } from 'uuid';
+
+export class CoreLogicError extends Error {
+	public readonly code: string;
+	public readonly details?: Record<string, unknown>;
+
+	constructor(message: string, code: string, details?: Record<string, unknown>) {
+		super(message);
+		this.code = code;
+		this.details = details;
+	}
+}
 
 /**
  * The CoreLogic class is the core logic class for processing requests and managing Optimizely decisions.
@@ -24,10 +36,10 @@ export class CoreLogic {
 	private ctx: CoreLogicDependencies['ctx'];
 	private kvStore?: IKVStore;
 	private sdkKey: string;
-	private abstractionHelper: any; // TODO: Add proper type when converted
-	private optimizelyProvider: any; // TODO: Add proper type when converted
+	private abstractionHelper: AbstractionHelper;
+	private optimizelyProvider: OptimizelyProvider;
 	private kvStoreUserProfile?: IKVStore;
-	private eventListeners: typeof EventListeners;
+	private eventListeners: EventListeners;
 	private state: CoreLogicState;
 
 	constructor(dependencies: CoreLogicDependencies) {
@@ -495,8 +507,8 @@ export class CoreLogic {
 	private async prepareFinalResponse(
 		decisions: Decision[],
 		visitorId: string,
-		requestConfig: RequestConfigType,
-		serializedDecisions: string | null
+		serializedDecisions: string | null,
+		requestConfig: RequestConfigType
 	): Promise<Response> {
 		// Handle forwarding to origin if needed
 		if (this.shouldForwardToOrigin()) {
@@ -701,103 +713,82 @@ export class CoreLogic {
 	/**
 	 * Custom error class for CoreLogic errors.
 	 */
-	private class CoreLogicError extends Error {
-		constructor(
-			message: string,
-			public readonly code: string,
-			public readonly details?: Record<string, unknown>
-		) {
-			super(message);
-			this.name = 'CoreLogicError';
-		}
-	}
-
-	/**
-	 * Handles errors in a consistent way across CoreLogic.
-	 */
 	private handleError(
 		error: unknown,
 		context: string,
 		details?: Record<string, unknown>
 	): CoreLogicError {
-		// Convert unknown error to CoreLogicError
 		if (error instanceof CoreLogicError) {
 			return error;
 		}
 
 		const message = error instanceof Error ? error.message : String(error);
-		const code = `ERROR_${context.toUpperCase().replace(/\s+/g, '_')}`;
-
-		const coreError = new CoreLogicError(message, code, details);
-		this.logger.error(`${code}: ${message}`, details);
-
-		return coreError;
+		return new CoreLogicError(message, context, details);
 	}
 
-	/**
-	 * Validates cookie values for security.
-	 */
 	private validateCookieValue(value: string): boolean {
-		// Check for common XSS patterns
-		const xssPatterns = [
-			/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi,
-			/javascript:/gi,
-			/data:/gi,
-			/vbscript:/gi,
-			/on\w+=/gi
-		];
-
-		// Check if value contains any XSS patterns
-		return !xssPatterns.some(pattern => pattern.test(value));
+		// Add cookie validation logic here
+		return true;
 	}
 
-	/**
-	 * Sanitizes cookie values for security.
-	 */
 	private sanitizeCookieValue(value: string): string {
-		// Remove potentially dangerous characters
-		return value.replace(/[<>(){}[\]'"`]/g, '');
+		// Add cookie sanitization logic here
+		return value;
 	}
 
-	/**
-	 * Handles forwarding the request to the origin with necessary headers and cookies.
-	 */
 	private async handleOriginForwarding(
 		visitorId: string,
 		serializedDecisions: string | null,
 		requestConfig: RequestConfigType
 	): Promise<Response> {
 		if (!this.state.request || !this.state.cdnAdapter || !this.state.cdnResponseURL) {
-			throw new Error('Missing required state for origin forwarding');
+			throw this.handleError(
+				'Missing required state for origin forwarding',
+				'ORIGIN_FORWARDING_ERROR',
+				{
+					hasRequest: !!this.state.request,
+					hasAdapter: !!this.state.cdnAdapter,
+					hasResponseURL: !!this.state.cdnResponseURL
+				}
+			);
 		}
 
 		// Prepare request for forwarding
 		const originRequest = new Request(this.state.cdnResponseURL, {
 			method: this.state.request.method,
 			headers: new Headers(this.state.request.headers),
-			body: this.state.request.body,
+			body: this.state.request.body
 		});
 
-		// Add visitor ID and decisions to request
-		if (requestConfig.settings.sendFlagDecisions && serializedDecisions) {
-			originRequest.headers.set('x-optimizely-decisions', serializedDecisions);
-		}
-		originRequest.headers.set('x-visitor-id', visitorId);
+		// Forward the request and get the response
+		let response = await fetch(originRequest);
 
-		// Forward to origin
-		let response: Response;
-		try {
-			response = await fetch(originRequest);
-		} catch (error) {
-			this.logger.error(`Error forwarding to origin: ${error}`);
-			throw error;
+		// Handle cookies if enabled
+		if (!requestConfig.settings.enableCookies || !this.state.cdnAdapter) {
+			return response;
 		}
 
-		// Set response headers and cookies
-		response = await this.setResponseHeaders(response, visitorId, serializedDecisions, requestConfig);
-		response = await this.setResponseCookies(response, visitorId, serializedDecisions, requestConfig);
+		let modifiedResponse = response;
 
-		return response;
+		// Set visitor ID cookie
+		modifiedResponse = this.state.cdnAdapter.setResponseCookie(
+			modifiedResponse,
+			'optimizelyEndUserId',
+			visitorId,
+			requestConfig.cookieOptions
+		);
+
+		// Set decisions cookie if available
+		if (serializedDecisions) {
+			modifiedResponse = this.state.cdnAdapter.setResponseCookie(
+				modifiedResponse,
+				'optimizelyDecisions',
+				serializedDecisions,
+				requestConfig.cookieOptions
+			);
+		}
+
+		return modifiedResponse;
 	}
 
 	/**
@@ -886,28 +877,18 @@ export class CoreLogic {
 		// Set visitor ID cookie
 		modifiedResponse = this.state.cdnAdapter.setResponseCookie(
 			modifiedResponse,
-			'visitor_id',
+			'optimizelyEndUserId',
 			visitorId,
-			{
-				path: '/',
-				maxAge: 365 * 24 * 60 * 60, // 1 year
-				secure: true,
-				sameSite: 'Lax'
-			}
+			requestConfig.cookieOptions
 		);
 
-		// Set decisions cookie if enabled
-		if (requestConfig.settings.sendFlagDecisions && serializedDecisions) {
+		// Set decisions cookie if available
+		if (serializedDecisions) {
 			modifiedResponse = this.state.cdnAdapter.setResponseCookie(
 				modifiedResponse,
-				'optimizely_decisions',
+				'optimizelyDecisions',
 				serializedDecisions,
-				{
-					path: '/',
-					maxAge: 30 * 60, // 30 minutes
-					secure: true,
-					sameSite: 'Lax'
-				}
+				requestConfig.cookieOptions
 			);
 		}
 
