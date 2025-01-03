@@ -1,4 +1,5 @@
-import { logger } from '../../../utils/helpers/optimizelyHelper';
+
+import { Logger } from '../../../utils/logging/Logger';
 import { EventType, EventListener, EventListenerParameters } from '../../../types/events';
 
 type TypedEventListener<K extends EventType> = EventListener<EventListenerParameters[K]>;
@@ -6,6 +7,9 @@ type TypedEventListener<K extends EventType> = EventListener<EventListenerParame
 type EventListenersMap = {
   [K in EventType]: TypedEventListener<K>[];
 };
+
+// Get singleton instances
+const logger = Logger.getInstance({});
 
 /**
  * Class representing the EventListeners.
@@ -21,7 +25,7 @@ export class EventListeners {
    * Uses the Singleton pattern to ensure only one instance exists.
    */
   private constructor() {
-    logger().debug('Inside EventListeners constructor');
+    logger.debug('Inside EventListeners constructor');
 
     this.listeners = {
       beforeResponse: [],
@@ -68,7 +72,7 @@ export class EventListeners {
    * @param listener - The listener function to call when the event occurs
    */
   public on<K extends EventType>(event: K, listener: TypedEventListener<K>): void {
-    logger().debug(`Registering listener for event: ${event}`);
+    logger.debug(`Registering listener for event: ${event}`);
     this.listeners[event].push(listener);
     this.registeredEvents.add(event);
   }
@@ -79,7 +83,7 @@ export class EventListeners {
    * @param listener - The listener function to remove
    */
   public off<K extends EventType>(event: K, listener: TypedEventListener<K>): void {
-    logger().debug(`Removing listener for event: ${event}`);
+    logger.debug(`Removing listener for event: ${event}`);
     const index = this.listeners[event].indexOf(listener);
     if (index !== -1) {
       this.listeners[event].splice(index, 1);
@@ -99,7 +103,7 @@ export class EventListeners {
     event: K,
     ...args: EventListenerParameters[K]
   ): Promise<void> {
-    logger().debug(`Emitting event: ${event}`);
+    logger.debug(`Emitting event: ${event}`);
     if (!this.registeredEvents.has(event)) {
       return;
     }
@@ -109,7 +113,7 @@ export class EventListeners {
       try {
         await listener(...args);
       } catch (error) {
-        logger().error(`Error in event listener for ${event}: ${error}`);
+        logger.error(`Error in event listener for ${event}: ${error}`);
       }
     }
   }

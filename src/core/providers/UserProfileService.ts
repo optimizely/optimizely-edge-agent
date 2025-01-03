@@ -1,6 +1,9 @@
 import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
-import { logger } from '../../utils/helpers/optimizelyHelper';
+import { Logger } from '../../utils/logging/Logger';
 import { IKVStore } from '../../types/cdn';
+
+// Get singleton instances
+const logger = Logger.getInstance({});
 
 interface UserProfile {
   user_id: string;
@@ -33,7 +36,7 @@ export class UserProfileService {
   ) {
     this.cache = new Map();
     this.logger = logger;
-    this.logger().debug(
+    this.logger.debug(
       'UserProfileService is enabled and initialized [constructor] - sdkKey:',
       sdkKey
     );
@@ -59,7 +62,7 @@ export class UserProfileService {
 
     if (this.cache.has(key)) {
       const cachedData = this.cache.get(key);
-      this.logger().debug('UserProfileService - read() - returning cached data:', cachedData);
+      this.logger.debug('UserProfileService - read() - returning cached data:', cachedData);
       return cachedData as UserProfile;
     }
 
@@ -70,7 +73,7 @@ export class UserProfileService {
    * Write user profile data to the key-value store and update the cache.
    */
   private async write(key: string, data: UserProfile): Promise<void> {
-    this.logger().debug('UserProfileService - write() - writing data:', data);
+    this.logger.debug('UserProfileService - write() - writing data:', data);
     const existingData = this.cache.get(key);
 
     if (existingData && optlyHelper.isValidObject(existingData, true)) {
@@ -99,10 +102,10 @@ export class UserProfileService {
     const key = this.getUserKey(visitorId);
     try {
       const data = await this.read(key);
-      this.logger().debug('UserProfileService - lookup() - returning data:', data);
+      this.logger.debug('UserProfileService - lookup() - returning data:', data);
       return data;
     } catch (error) {
-      this.logger().error('UserProfileService - lookup() - error:', error);
+      this.logger.error('UserProfileService - lookup() - error:', error);
       return {};
     }
   }
@@ -122,13 +125,13 @@ export class UserProfileService {
     const key = this.getUserKey(visitorId);
     try {
       const userProfileMap = this.cache.has(key) ? this.cache.get(key) : {};
-      this.logger().debug(
+      this.logger.debug(
         'UserProfileService - getUserProfileFromCache() - returning data for visitorId:',
         key
       );
       return { key, userProfileMap: userProfileMap as UserProfile };
     } catch (error) {
-      this.logger().error('UserProfileService - getUserProfileFromCache() - error:', error);
+      this.logger.error('UserProfileService - getUserProfileFromCache() - error:', error);
       return { key, userProfileMap: {} };
     }
   }
@@ -140,7 +143,7 @@ export class UserProfileService {
     for (const visitorId of visitorIds) {
       const key = this.getUserKey(visitorId);
       await this.read(key);
-      this.logger().debug(
+      this.logger.debug(
         'UserProfileService - prefetchUserProfiles() - returning data for visitorId:',
         key
       );

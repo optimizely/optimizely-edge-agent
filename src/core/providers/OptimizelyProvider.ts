@@ -1,7 +1,10 @@
-import { logger } from '../../utils/helpers/optimizelyHelper';
+import { Logger } from '../../utils/logging/Logger';
 import { ICDNAdapter, IKVStore } from '../../types/cdn';
 import { OptimizelyConfig, OptimizelyUserContext } from '../../types/optimizely';
 import * as optimizely from '@optimizely/optimizely-sdk';
+
+// Get singleton instances
+const logger = Logger.getInstance({});
 
 interface OptimizelyEventDispatcher {
   dispatchEvent: (event: unknown) => Promise<void>;
@@ -51,7 +54,7 @@ export class OptimizelyProvider {
     },
     private readonly kvStoreUserProfile?: IKVStore
   ) {
-    logger().debug('Initializing OptimizelyProvider');
+    logger.debug('Initializing OptimizelyProvider');
     this.httpMethod = abstractionHelper.abstractRequest.method;
     this.kvStoreUserProfileEnabled = Boolean(kvStoreUserProfile);
     this.abstractContext = abstractionHelper.abstractContext;
@@ -77,7 +80,7 @@ export class OptimizelyProvider {
 
     const config = await this.optimizelyClient.getOptimizelyConfig();
     const result = Object.keys(config.featuresMap);
-    logger().debug('Active feature flags retrieved [getActiveFlags]: ', result);
+    logger.debug('Active feature flags retrieved [getActiveFlags]: ', result);
     return result;
   }
 
@@ -164,7 +167,7 @@ export class OptimizelyProvider {
     };
 
     const result = decideOptions.map((option) => optlyDecideOptions[option]);
-    logger().debug('Decide options built [buildDecideOptions]: ', result);
+    logger.debug('Decide options built [buildDecideOptions]: ', result);
     return result;
   }
 
@@ -206,7 +209,7 @@ export class OptimizelyProvider {
           reasons: decision.reasons
         });
       } catch (error) {
-        logger().error(`Error deciding flag ${flagKey}: ${error}`);
+        logger.error(`Error deciding flag ${flagKey}: ${error}`);
       }
     }
 
@@ -241,7 +244,7 @@ export class OptimizelyProvider {
     );
 
     this.optimizelyClient = optimizely.createInstance(initParams);
-    logger().debug('Optimizely client initialized');
+    logger.debug('Optimizely client initialized');
   }
 
   /**
@@ -254,7 +257,7 @@ export class OptimizelyProvider {
 
     this.visitorId = visitorId;
     this.optimizelyUserContext = this.optimizelyClient.createUserContext(visitorId, attributes);
-    logger().debug('User context created for visitor ID: ' + visitorId);
+    logger.debug('User context created for visitor ID: ' + visitorId);
   }
 
   /**
