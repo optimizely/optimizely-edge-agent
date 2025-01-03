@@ -40,7 +40,7 @@ export interface OperationResult {
 }
 
 export type EventListener<T extends unknown[] = unknown[]> = 
-  (...args: T) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
+  (...args: T) => Promise<Record<string, unknown> | undefined> | Record<string, unknown> | undefined;
 
 export type EventType =
   | 'beforeResponse'
