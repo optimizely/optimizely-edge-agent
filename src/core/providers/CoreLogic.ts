@@ -3,7 +3,7 @@ import RequestConfig from '../../legacy/config/requestConfig';
 import defaultSettings from '../../legacy/config/defaultSettings';
 import { logger } from '../../utils/helpers/optimizelyHelper';
 import { AbstractionHelper } from '../../utils/helpers/abstractionHelper';
-import EventListeners from './events/eventListeners';
+import { EventListeners } from './events/EventListeners';
 import { ICDNAdapter, IKVStore } from '../../types/cdn';
 import { 
 	CoreLogicDependencies, 

@@ -26,10 +26,10 @@ import CloudflareKVStore from './cdn-adapters/cloudflare/cloudflareKVStore';
 // import VercelKVInterface from './cdn-adapters/vercel/vercelKVInterface';
 
 // Import the registered listeners
-import './_event_listeners_/registered-listeners/registeredListeners';
+import './core/providers/events/registered-listeners/RegisteredListeners';
 // Application specific imports
-import CoreLogic from './coreLogic';
-import OptimizelyProvider from './core/providers/optimizelyProvider';
+import { CoreLogic } from './core/providers/CoreLogic';
+import { OptimizelyProvider } from './core/providers/OptimizelyProvider';
 import defaultSettings from './legacy/config/defaultSettings';
 import * as optlyHelper from './utils/helpers/optimizelyHelper';
 import { getAbstractionHelper } from './utils/helpers/abstractionHelper';

@@ -5,7 +5,7 @@ import { IResponse } from '../../../types/response';
 import * as optlyHelper from '../../../utils/helpers/optimizelyHelper';
 import * as cookieDefaultOptions from '../../../legacy/config/cookieOptions';
 import defaultSettings from '../../../legacy/config/defaultSettings';
-import EventListeners from '../../providers/events/eventListeners';
+import { EventListeners } from '../../providers/events/EventListeners';
 import type { CoreLogic } from '../../providers/CoreLogic';
 
 interface CloudflareEnv {
