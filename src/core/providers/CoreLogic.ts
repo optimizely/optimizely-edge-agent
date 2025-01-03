@@ -1,11 +1,9 @@
-import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
 import RequestConfig from '../../legacy/config/requestConfig';
-import defaultSettings from '../../legacy/config/defaultSettings';
-import { logger } from '../../utils/helpers/optimizelyHelper';
-import { AbstractionHelper } from '../../utils/helpers/abstractionHelper';
+import { DefaultSettings } from '../config/DefaultSettings';
+import type { AbstractionHelper } from '../../utils/helpers/AbstractionHelper';
 import { EventListeners } from './events/EventListeners';
-import { CDNAdapter, KVStore } from '../../types/cdn';
-import { 
+import type { CDNAdapter, KVStore } from '../../types/cdn';
+import type { 
 	CoreLogicDependencies, 
 	CoreLogicState, 
 	Decision, 
@@ -100,7 +98,7 @@ export class CoreLogic {
 	 * Maps an array of decisions to a new array of objects containing specific CDN settings.
 	 * Each object includes the flagKey, variationKey, and nested CDN variables.
 	 */
-	private extractCdnSettings(decisions: Decision[]): Array<{
+	private extractDecisionSettings(decisions: Decision[]): Array<{
 		flagKey: string;
 		variationKey: string;
 		cdnVariationSettings?: CDNVariationSettings;
@@ -142,7 +140,7 @@ export class CoreLogic {
 		cdnVariationSettings?: CDNVariationSettings;
 	}> {
 		this.deleteAllUserContexts(decisions);
-		return this.extractCdnSettings(decisions);
+		return this.extractDecisionSettings(decisions);
 	}
 
 	/**
@@ -198,7 +196,7 @@ export class CoreLogic {
 		// Handle config operations
 		if (url.pathname.includes('/config')) {
 			this.state.configOperation = true;
-			return new Response(JSON.stringify(defaultSettings), { status: 200 });
+			return new Response(JSON.stringify(DefaultSettings), { status: 200 });
 		}
 
 		// Initialize Optimizely
@@ -276,7 +274,7 @@ export class CoreLogic {
 		}
 
 		// Process decisions
-		const processedDecisions = this.processDecisions(decisions);
+		const processedDecisions = this.extractDecisionSettings(decisions);
 
 		// Find matching CDN config
 		if (this.state.request && processedDecisions.length > 0) {

@@ -1,5 +1,5 @@
-import { KVStore } from '../../../types/cdn';
-import { Logger } from '../../../utils/logging/Logger';
+import type { KVStore } from '../../../types/cdn';
+import type { Logger } from '../../../utils/logging/Logger';
 
 /**
  * Interface for Vercel's KV namespace

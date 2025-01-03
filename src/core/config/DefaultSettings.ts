@@ -23,4 +23,4 @@ const DefaultSettings: BaseSettings = {
   logLevel: 'debug',
 };
 
-export default DefaultSettings;
+export { DefaultSettings };

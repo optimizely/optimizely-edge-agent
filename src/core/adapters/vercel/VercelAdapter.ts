@@ -1,7 +1,7 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions } from '../../../types';
-import { VercelKVStore } from './VercelKVStore';
-import { CoreLogic } from '../../providers/CoreLogic';
+import type { CookieOptions } from '../../../types';
+import type { VercelKVStore } from './VercelKVStore';
+import type { CoreLogic } from '../../providers/CoreLogic';
 
 /**
  * Vercel Edge Functions adapter implementation

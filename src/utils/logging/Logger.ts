@@ -23,10 +23,6 @@ export interface LoggerEnvironment {
 	LOG_LEVEL?: LogLevel;
 }
 
-const defaultSettings = {
-	logLevel: LogLevel.INFO,
-};
-
 /**
  * Class representing a singleton logger.
  * Ensures a single logger instance across the application.
@@ -40,7 +36,7 @@ export class Logger {
 
 	private constructor(env: LoggerEnvironment, defaultLevel: LogLevel = LogLevel.INFO) {
 		this.env = env;
-		this.level = env?.LOG_LEVEL ?? defaultSettings.logLevel ?? defaultLevel;
+		this.level = env?.LOG_LEVEL ?? defaultLevel;
 		this.updateLogLevelCache();
 	}
 
