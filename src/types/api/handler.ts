@@ -1,7 +1,7 @@
-import { HttpRequest, HttpResponse } from '../http';
-import { KVStore } from '../cdn';
-import { Logger } from '../../utils/logging/Logger';
-import { AbstractionHelper } from '../../utils/helpers/AbstractionHelper';
+import type { HttpRequest, HttpResponse } from '../http';
+import type { KVStore } from '../cdn/store';
+import type { Logger } from '../../utils/logging/Logger';
+import type { AbstractionHelper } from '../../utils/helpers/AbstractionHelper';
 
 type ApiHandlerDependencies = {
   abstractionHelper: AbstractionHelper;

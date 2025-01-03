@@ -1,7 +1,7 @@
-import { OptimizelyProvider } from '../../core/providers/OptimizelyProvider';
-import { AbstractionHelper } from '../../utils/helpers/AbstractionHelper';
-import { KVStore } from '../cdn';
-import { Logger } from '../../utils/logging/Logger';
+import type { OptimizelyProvider } from '../../core/providers/OptimizelyProvider';
+import type { AbstractionHelper } from '../../utils/helpers/AbstractionHelper';
+import type { KVStore } from '../cdn/store';
+import type { Logger } from '../../utils/logging/Logger';
 
 type CoreLogicDependencies = {
   optimizelyProvider: OptimizelyProvider;

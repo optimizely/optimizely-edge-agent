@@ -1,6 +1,6 @@
 import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
 import { Logger } from '../../utils/logging/Logger';
-import { KVStore } from '../../types/cdn';
+import type { KVStore } from '../../types/cdn/store';
 
 // Get singleton instances
 const logger = Logger.getInstance({});
@@ -57,7 +57,7 @@ export class UserProfileService {
 
     if (userProfileData) {
       userProfileData = optlyHelper.safelyParseJSON(userProfileData);
-      this.cache.set(key, userProfileData as UserProfile);
+      this.cache.set(key, userProfileData as unknown as UserProfile);
     }
 
     if (this.cache.has(key)) {

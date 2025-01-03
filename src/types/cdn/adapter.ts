@@ -1,5 +1,5 @@
-import { HttpRequest, HttpResponse } from '../http';
-import { KVStore } from './store';
+import type { HttpRequest, HttpResponse } from '../http';
+import type { KVStore } from './store';
 
 /**
  * Type for CDN adapters that handle request/response operations
