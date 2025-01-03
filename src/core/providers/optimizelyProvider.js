@@ -5,7 +5,7 @@
 import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
 import { logger } from '../../utils/helpers/optimizelyHelper';
 import { AbstractionHelper } from '../../utils/helpers/abstractionHelper';
-import defaultSettings from '../../config/defaultSettings';
+import defaultSettings from '../../legacy/config/defaultSettings';
 import UserProfileService from './userProfileService';
 import EventListeners from './events/eventListeners';
 
@@ -147,7 +147,13 @@ export default class OptimizelyProvider {
 		this.visitorId = visitorId;
 
 		try {
-			this.validateParameters(attributes, eventTags, defaultDecideOptions, userAgent, datafileAccessToken);
+			this.validateParameters(
+				attributes,
+				eventTags,
+				defaultDecideOptions,
+				userAgent,
+				datafileAccessToken,
+			);
 
 			if (!datafile) {
 				throw new Error('Datafile must be provided.');
@@ -178,7 +184,10 @@ export default class OptimizelyProvider {
 				globalOptimizelyClient = createInstance(params);
 				globalSdkKey = sdkKey;
 			} else {
-				logger().debug('Reusing existing Optimizely client [initializeOptimizely] - sdkKey: ', sdkKey);
+				logger().debug(
+					'Reusing existing Optimizely client [initializeOptimizely] - sdkKey: ',
+					sdkKey,
+				);
 			}
 
 			if (this.kvStoreUserProfileEnabled) {
@@ -233,7 +242,13 @@ export default class OptimizelyProvider {
 	 * @param {string[]} [defaultDecideOptions=[]] - The default decision options.
 	 * @returns {Object} - The initialization parameters with a custom event dispatcher if applicable.
 	 */
-	buildInitParameters(datafile, datafileAccessToken, defaultDecideOptions = [], visitorId, globalUserProfile) {
+	buildInitParameters(
+		datafile,
+		datafileAccessToken,
+		defaultDecideOptions = [],
+		visitorId,
+		globalUserProfile,
+	) {
 		let userProfileService;
 		if (this.kvStoreUserProfileEnabled) {
 			userProfileService = {
@@ -371,7 +386,9 @@ export default class OptimizelyProvider {
 		logger().debugExt('Decisions made [decide]: ', decisions);
 
 		if (this.kvStoreUserProfileEnabled && this.kvStoreUserProfile) {
-			const { key, userProfileMap } = await globalKVStoreUserProfile.getUserProfileFromCache(this.visitorId);
+			const { key, userProfileMap } = await globalKVStoreUserProfile.getUserProfileFromCache(
+				this.visitorId,
+			);
 			const resultJSON = optlyHelper.safelyStringifyJSON(userProfileMap);
 			logger().debugExt(
 				'Retrieved user profile data for visitor [decide -> saveToKVStorage] - key:',
@@ -437,7 +454,9 @@ export default class OptimizelyProvider {
 	 * @returns {Promise<Object>} - A promise that resolves to the datafile.
 	 */
 	async datafile() {
-		logger().debug('Retrieving datafile from the Optimizely Client [OptimizelyProvider -> datafile]');
+		logger().debug(
+			'Retrieving datafile from the Optimizely Client [OptimizelyProvider -> datafile]',
+		);
 		return optlyHelper.safelyParseJSON(this.optimizelyClient.getOptimizelyConfig().getDatafile());
 	}
 
@@ -458,7 +477,13 @@ export default class OptimizelyProvider {
 	 * @throws {Error} - Throws an error if the Optimizely client or user context is not initialized.
 	 */
 	async sendOdpEvent(odpEvent = {}) {
-		logger().debug('Sending ODP event [sendOdpEvent]:', 'Event Type:', eventType, 'Event Data:', eventData);
+		logger().debug(
+			'Sending ODP event [sendOdpEvent]:',
+			'Event Type:',
+			eventType,
+			'Event Data:',
+			eventData,
+		);
 
 		if (!this.optimizelyClient || !this.optimizelyUserContext) {
 			throw new Error('Optimizely Client or User Context is not initialized.');

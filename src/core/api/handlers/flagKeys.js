@@ -11,7 +11,7 @@
 
 import { AbstractRequest } from '../../../core/interfaces/abstractRequest';
 import { logger } from '../../../utils/helpers/optimizelyHelper';
-import defaultSettings from '../../../config/defaultSettings';
+import defaultSettings from '../../../legacy/config/defaultSettings';
 
 /**
  * Checks if the given object is a valid array.
@@ -52,7 +52,9 @@ function handleFlagKeysResponse(combinedString, abstractionHelper, logger) {
 	};
 
 	// Step 3: Return a response with JSON type and stringified JSON object
-	return abstractionHelper.createResponse(responseObject, 200, { 'Content-Type': 'application/json' });
+	return abstractionHelper.createResponse(responseObject, 200, {
+		'Content-Type': 'application/json',
+	});
 }
 
 /**
@@ -145,7 +147,9 @@ const handleGetFlagKeys = async (request, abstractionHelper, kvStore, logger, de
 		logger.debugExt('API Router - Flag keys array:', trimmedFlagKeys);
 
 		// Return the flag keys as a JSON response
-		return abstractionHelper.createResponse(trimmedFlagKeys, 200, { 'Content-Type': 'application/json' });
+		return abstractionHelper.createResponse(trimmedFlagKeys, 200, {
+			'Content-Type': 'application/json',
+		});
 	} catch (error) {
 		logger.error('Error retrieving flag keys:', error.message);
 		return abstractionHelper.createResponse(`Error: ${error.message}`, 500);

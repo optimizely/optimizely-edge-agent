@@ -16,7 +16,10 @@ class UserProfileService {
 		this.UPS_LS_PREFIX = 'optly-ups';
 		this.cache = new Map();
 		this.logger = logger;
-		this.logger().debug('UserProfileService is enabled and initialized [constructor] - sdkKey:', sdkKey);
+		this.logger().debug(
+			'UserProfileService is enabled and initialized [constructor] - sdkKey:',
+			sdkKey,
+		);
 	}
 
 	/**
@@ -130,7 +133,10 @@ class UserProfileService {
 			if (this.cache.has(key)) {
 				userProfileMap = this.cache.get(key);
 			}
-			this.logger().debug('UserProfileService - getUserProfileAsync() - returning data for visitorId:', key);
+			this.logger().debug(
+				'UserProfileService - getUserProfileAsync() - returning data for visitorId:',
+				key,
+			);
 			return { key, userProfileMap };
 		} catch (error) {
 			this.logger().error('UserProfileService - getUserProfileAsync() - error:', error);
@@ -147,7 +153,10 @@ class UserProfileService {
 		for (const visitorId of visitorIds) {
 			const key = this.getUserKey(visitorId);
 			const result = await this.read(key);
-			this.logger().debug('UserProfileService - prefetchUserProfiles() - returning data for visitorId:', key);
+			this.logger().debug(
+				'UserProfileService - prefetchUserProfiles() - returning data for visitorId:',
+				key,
+			);
 		}
 	}
 

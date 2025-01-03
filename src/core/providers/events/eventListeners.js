@@ -11,7 +11,7 @@
  */
 
 import { logger } from '../../../utils/helpers/optimizelyHelper';
-import defaultSettings from '../../../config/defaultSettings';
+import defaultSettings from '../../../legacy/config/defaultSettings';
 
 /**
  * Class representing the EventListeners.

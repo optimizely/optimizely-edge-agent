@@ -3,7 +3,7 @@
  */
 
 import { logger } from '../../../utils/helpers/optimizelyHelper.js';
-import defaultSettings from '../../../config/defaultSettings.js';
+import defaultSettings from '../../../legacy/config/defaultSettings.js';
 
 /**
  * Fetches and updates the Optimizely JavaScript SDK based on the provided URL.
