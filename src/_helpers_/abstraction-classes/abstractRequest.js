@@ -671,54 +671,54 @@ export class AbstractRequest {
 	 */
 	static async fetchRequest(input, options = {}) {
 		try {
-			logger().debugExt('AbstractRequest - Making HTTP request [fetchRequest]');
-			let url;
-			let requestOptions = options;
+		logger().debugExt('AbstractRequest - Making HTTP request [fetchRequest]');
+		let url;
+		let requestOptions = options;
 
-			if (typeof input === 'string') {
-				url = input;
-			} else if (input instanceof Request) {
-				url = input.url;
-				requestOptions = {
-					method: input.method,
-					headers: AbstractionHelper.getNewHeaders(input),
-					mode: input.mode,
-					credentials: input.credentials,
-					cache: input.cache,
-					redirect: input.redirect,
-					referrer: input.referrer,
-					integrity: input.integrity,
-					...options,
-				};
+		if (typeof input === 'string') {
+			url = input;
+		} else if (input instanceof Request) {
+			url = input.url;
+			requestOptions = {
+				method: input.method,
+				headers: AbstractionHelper.getNewHeaders(input),
+				mode: input.mode,
+				credentials: input.credentials,
+				cache: input.cache,
+				redirect: input.redirect,
+				referrer: input.referrer,
+				integrity: input.integrity,
+				...options,
+			};
 
-				// Ensure body is not assigned for GET or HEAD methods
-				if (
-					input.method !== 'GET' &&
-					input.method !== 'HEAD' &&
-					(!input.bodyUsed || (input.bodyUsed && input.bodyUsed === false))
-				) {
-					requestOptions.body = input.body;
-				}
-			} else {
-				throw new TypeError('Invalid input: must be a string URL or a Request object.');
+			// Ensure body is not assigned for GET or HEAD methods
+			if (
+				input.method !== 'GET' &&
+				input.method !== 'HEAD' &&
+				(!input.bodyUsed || (input.bodyUsed && input.bodyUsed === false))
+			) {
+				requestOptions.body = input.body;
 			}
+		} else {
+			throw new TypeError('Invalid input: must be a string URL or a Request object.');
+		}
 
-			const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
+		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
 
-			switch (cdnProvider) {
-				case 'cloudflare':
-					const result = await fetch(new Request(url, requestOptions));
-					//logger().debugExt('AbstractRequest - Fetch request [fetchRequest] - result:', result);
-					return result;
-				case 'akamai':
-					return await AbstractRequest.akamaiFetch(url, requestOptions);
-				case 'fastly':
-					return await fetch(new Request(url, requestOptions));
-				case 'cloudfront':
-					return await AbstractRequest.cloudfrontFetch(url, requestOptions);
-				case 'vercel':
-					return await fetch(new Request(url, requestOptions));
-				default:
+		switch (cdnProvider) {
+			case 'cloudflare':
+				const result = await fetch(new Request(url, requestOptions));
+				//logger().debugExt('AbstractRequest - Fetch request [fetchRequest] - result:', result);
+				return result;
+			case 'akamai':
+				return await AbstractRequest.akamaiFetch(url, requestOptions);
+			case 'fastly':
+				return await fetch(new Request(url, requestOptions));
+			case 'cloudfront':
+				return await AbstractRequest.cloudfrontFetch(url, requestOptions);
+			case 'vercel':
+				return await fetch(new Request(url, requestOptions));
+			default:
 					throw new Error('Unsupported CDN provider.');
 			}
 		} catch (error) {

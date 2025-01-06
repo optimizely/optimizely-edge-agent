@@ -68,7 +68,7 @@ function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvSto
 		abstractionHelper,
 		kvStore,
 		kvStoreUserProfile,
-		logger,
+		logger
 	);
 	cdnAdapter = new CloudflareAdapter(
 		coreLogic,
@@ -78,7 +78,7 @@ function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvSto
 		kvStore,
 		kvStoreUserProfile,
 		logger,
-		PAGES_URL,
+		PAGES_URL
 	);
 	optimizelyProvider.setCdnAdapter(cdnAdapter);
 	coreLogic.setCdnAdapter(cdnAdapter);
@@ -249,7 +249,7 @@ async function handleDefaultRequest(
 	pathName,
 	workerOperation,
 	sdkKey,
-	optimizelyEnabled,
+	optimizelyEnabled
 ) {
 	logger.debug('Edgeworker index.js - Handling default request [handleDefaultRequest]');
 
@@ -356,7 +356,7 @@ export default {
 		const matchedRouteForAPI = optlyHelper.routeMatches(normalizedPathname);
 		logger.debug(
 			'Edgeworker index.js - Checking if route matches any API route [matchedRouteForAPI]',
-			matchedRouteForAPI,
+			matchedRouteForAPI
 		);
 
 		// Check if the request is for a worker operation
@@ -412,7 +412,7 @@ export default {
 				context,
 				abstractionHelper,
 				kvStore,
-				kvStoreUserProfile,
+				kvStoreUserProfile
 			);
 			// Log the response headers
 			const headers = {};
@@ -436,7 +436,7 @@ export default {
 			pathName,
 			workerOperation,
 			sdkKey,
-			optimizelyEnabled,
+			optimizelyEnabled
 		);
 	},
 };

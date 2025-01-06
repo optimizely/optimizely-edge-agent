@@ -326,13 +326,13 @@ export default class RequestConfig {
 		this.overrideVisitorId = updateValue(
 			this.overrideVisitorId,
 			qp.get(this.queryParameters.overrideVisitorId) === 'true',
-			this.settings.defaultOverrideVisitorId,
+			this.settings.defaultOverrideVisitorId
 		);
 
 		this.overrideCache = updateValue(
 			this.overrideCache,
 			qp.get(this.queryParameters.overrideCache) === 'true',
-			this.settings.defaultOverrideCache,
+			this.settings.defaultOverrideCache
 		);
 
 		this.serverMode = updateValue(this.serverMode, qp.get(this.queryParameters.serverMode), null);
@@ -344,7 +344,7 @@ export default class RequestConfig {
 		this.enableResponseMetadata = updateValue(
 			this.enableResponseMetadata,
 			this.parseBoolean(qp.get(this.queryParameters.enableResponseMetadata)),
-			null,
+			null
 		);
 
 		if (this.sdkKey && this.settings.enableResponseMetadata) {
@@ -363,57 +363,57 @@ export default class RequestConfig {
 		this.disableDecisionEvent = updateValue(
 			this.disableDecisionEvent,
 			this.parseBoolean(qp.get(this.queryParameters.disableDecisionEvent)),
-			false,
+			false
 		);
 
 		this.enabledFlagsOnly = updateValue(
 			this.enabledFlagsOnly,
 			this.parseBoolean(qp.get(this.queryParameters.enabledFlagsOnly)),
-			false,
+			false
 		);
 
 		this.includeReasons = updateValue(
 			this.includeReasons,
 			this.parseBoolean(qp.get(this.queryParameters.includeReasons)),
-			false,
+			false
 		);
 
 		this.ignoreUserProfileService = updateValue(
 			this.ignoreUserProfileService,
 			this.parseBoolean(qp.get(this.queryParameters.ignoreUserProfileService)),
-			false,
+			false
 		);
 
 		this.excludeVariables = updateValue(
 			this.excludeVariables,
 			this.parseBoolean(qp.get(this.queryParameters.excludeVariables)),
-			false,
+			false
 		);
 
 		if (!this.isPostMethod || this.isPostMethod === undefined) {
 			this.setRequestHeaders = updateValue(
 				this.setRequestHeaders,
 				this.parseBoolean(qp.get(this.queryParameters.setRequestHeader)),
-				this.settings.defaultSetRequestHeaders,
+				this.settings.defaultSetRequestHeaders
 			);
 
 			this.setRequestCookies = updateValue(
 				this.setRequestCookies,
 				this.parseBoolean(qp.get(this.queryParameters.setRequestCookies)),
-				this.settings.defaultSetRequestCookies,
+				this.settings.defaultSetRequestCookies
 			);
 		}
 
 		this.setResponseHeaders = updateValue(
 			this.setResponseHeaders,
 			this.parseBoolean(qp.get(this.queryParameters.setResponseHeaders)),
-			this.settings.defaultSetResponseHeaders,
+			this.settings.defaultSetResponseHeaders
 		);
 
 		this.setResponseCookies = updateValue(
 			this.setResponseCookies,
 			this.parseBoolean(qp.get(this.queryParameters.setResponseCookies)),
-			this.settings.defaultSetResponseCookies,
+			this.settings.defaultSetResponseCookies
 		);
 	}
 
