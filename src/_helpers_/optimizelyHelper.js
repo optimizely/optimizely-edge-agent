@@ -202,6 +202,9 @@ export function routeMatches(requestPath) {
  * @returns {boolean} True if the URL path is a valid experimentation endpoint, false otherwise.
  */
 export function isValidExperimentationEndpoint(url, validEndpoints) {
+	if (!url || !validEndpoints || !Array.isArray(validEndpoints)) {
+		return false;
+	}
 	// Remove query parameters from the URL
 	const urlWithoutQuery = url.split('?')[0];
 
@@ -541,7 +544,11 @@ export function deserializeDecisions(input) {
  */
 export function safelyStringifyJSON(data) {
 	try {
-		return JSON.stringify(data);
+		if (data === undefined) {
+			return '{}';
+		}
+		const result = JSON.stringify(data);
+		return result === undefined ? '{}' : result;
 	} catch (error) {
 		logger().error('Failed to stringify JSON:', error);
 		return '{}';
@@ -598,24 +605,25 @@ export function isValidJsonObject(obj) {
 		throw error;
 	}
 }
+
 /**
  * Checks if the given parameter is a valid non-empty JavaScript object {}. It must have at least one property.
  * @param {*} obj - The parameter to be checked.
- * @returns {boolean} - Returns true if the parameter is a valid non-empty object, false otherwise.
+ * @returns {boolean|Object} - Returns true if the parameter is a valid non-empty object, false otherwise. Returns empty object if returnEmptyObject is true.
  * @throws {Error} - If an error occurs during the validation process.
  */
 export function isValidObject(obj, returnEmptyObject = false) {
-	try {
-		// Check if the parameter is an object and not null
-		if (typeof obj === 'object' && obj !== null) {
-			// Check if the object has any properties
+	// Check if the parameter is an object and not null
+	if (typeof obj === 'object' && obj !== null) {
+		// Check if the object has any properties
+		try {
 			if (Object.keys(obj).length > 0) {
 				return true;
 			}
+		} catch (error) {
+			logger().error('Error validating object:', error);
+			throw new Error('An error occurred while validating the object.');
 		}
-		return returnEmptyObject ? {} : false;
-	} catch (error) {
-		logger().error('Error validating object:', error);
-		throw new Error('An error occurred while validating the object.');
 	}
+	return returnEmptyObject ? {} : false;
 }
