@@ -30,5 +30,20 @@
 			"trailingCommas": "all",
 			"semicolons": "always"
 		}
-	}
+	},
+	"overrides": [
+		{
+			"include": ["**/*.test.*"],
+			"linter": {
+				"rules": {
+					"complexity": {
+						"noForEach": "off"
+					},
+					"performance": {
+						"noDelete": "off"
+					}
+				}
+			}
+		}
+	]
 }
