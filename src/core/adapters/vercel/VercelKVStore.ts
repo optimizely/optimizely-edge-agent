@@ -1,5 +1,5 @@
-import { IKVStore } from '../../../types/cdn';
-import { Logger } from '../../../utils/logging/Logger';
+import type { KVStore } from '../../../types/cdn';
+import type { Logger } from '../../../utils/logging/Logger';
 
 /**
  * Interface for Vercel's KV namespace
@@ -19,9 +19,9 @@ interface VercelEnv {
 
 /**
  * VercelKVStore provides a concrete implementation for interacting with Vercel's KV store.
- * It implements the IKVStore interface to ensure consistent KV store operations across different platforms.
+ * It implements the KVStore interface to ensure consistent KV store operations across different platforms.
  */
-export class VercelKVStore implements IKVStore {
+export class VercelKVStore implements KVStore {
 	private readonly NOT_IMPLEMENTED = 'VercelKVStore is not implemented yet';
 	private logger?: Logger;
 

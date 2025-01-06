@@ -14,7 +14,7 @@
 			"dist/**",
 			"node_modules/**",
 			"coverage/**",
-			"src/legacy/**"
+			"legacy/**"
 		]
 	},
 	"formatter": {
@@ -34,7 +34,7 @@
 	"javascript": {
 		"formatter": {
 			"quoteStyle": "single",
-			"trailingComma": "all"
+			"trailingCommas": "all"
 		}
 	}
 }

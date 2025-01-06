@@ -1,5 +1,5 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions, CDNSettings } from '../../../types';
+import { CookieOptions } from '../../../types';
 import { AkamaiKVStore } from './AkamaiKVStore';
 import { CoreLogic } from '../../providers/CoreLogic';
 

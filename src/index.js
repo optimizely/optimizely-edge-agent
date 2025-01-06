@@ -26,15 +26,17 @@ import CloudflareKVStore from './cdn-adapters/cloudflare/cloudflareKVStore';
 // import VercelKVInterface from './cdn-adapters/vercel/vercelKVInterface';
 
 // Import the registered listeners
-import './_event_listeners_/registered-listeners/registeredListeners';
+import './core/providers/events/registered-listeners/RegisteredListeners';
+
 // Application specific imports
-import CoreLogic from './coreLogic';
-import OptimizelyProvider from './core/providers/optimizelyProvider';
+import { CoreLogic } from './core/providers/CoreLogic';
+import { OptimizelyProvider } from './core/providers/OptimizelyProvider';
+import { route } from './core/api/ApiRouter';
+import { logger } from './utils/helpers/optimizelyHelper';
 import defaultSettings from './legacy/config/defaultSettings';
 import * as optlyHelper from './utils/helpers/optimizelyHelper';
 import { getAbstractionHelper } from './utils/helpers/abstractionHelper';
 import Logger from './legacy/utils/logger';
-import handleRequest from './core/api/apiRouter';
 
 let abstractionHelper, logger, abstractRequest, incomingRequest, environmentVariables, context;
 let optimizelyProvider, coreLogic, cdnAdapter;
@@ -239,29 +241,20 @@ async function handleApiRequest(
 	logger,
 	defaultSettings,
 ) {
-	logger.debug('Edgeworker index.js - Handling API request [handleApiRequest]');
 	try {
-		if (handleRequest) {
-			return await handleRequest(
-				incomingRequest,
-				abstractionHelper,
-				kvStore,
-				logger,
-				defaultSettings,
-			);
-		} else {
-			const errorMessage = {
-				error: 'Failed to initialize API router. Please check configuration and dependencies.',
-			};
-			return abstractionHelper.createResponse(errorMessage, 500);
-		}
+		return await route(incomingRequest, {
+			abstractionHelper,
+			kvStore,
+			logger,
+			defaultSettings,
+		});
 	} catch (error) {
-		const errorMessage = {
-			errorMessage: 'Failed to handler API request. Please check configuration and dependencies.',
-			error,
-		};
-		logger.error(errorMessage);
-		return await abstractionHelper.createResponse(errorMessage, 500);
+		logger.error(`Error handling API request: ${error}`);
+		return abstractionHelper.createResponse({
+			status: 500,
+			statusText: 'Internal Server Error',
+			body: { error: 'Internal server error' },
+		});
 	}
 }
 

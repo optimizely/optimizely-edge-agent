@@ -1,6 +1,8 @@
-import * as optlyHelper from '../../utils/helpers/optimizelyHelper';
-import { logger } from '../../utils/helpers/optimizelyHelper';
-import { IKVStore } from '../../types/cdn';
+import { Logger } from '../../utils/logging/Logger';
+import type { KVStore } from '../../types/cdn/store';
+
+// Get singleton instances
+const logger = Logger.getInstance({});
 
 interface UserProfile {
   user_id: string;
@@ -28,12 +30,12 @@ export class UserProfileService {
    * Create a User Profile Service instance.
    */
   constructor(
-    private readonly kvStore: IKVStore,
+    private readonly kvStore: KVStore,
     private readonly sdkKey: string
   ) {
     this.cache = new Map();
     this.logger = logger;
-    this.logger().debug(
+    this.logger.debug(
       'UserProfileService is enabled and initialized [constructor] - sdkKey:',
       sdkKey
     );
@@ -53,13 +55,20 @@ export class UserProfileService {
     let userProfileData = await this.kvStore.get(key);
 
     if (userProfileData) {
-      userProfileData = optlyHelper.safelyParseJSON(userProfileData);
-      this.cache.set(key, userProfileData as UserProfile);
+      try {
+        userProfileData = JSON.parse(userProfileData);
+      } catch (error) {
+        this.logger.error('UserProfileService - read() - error parsing JSON:', error);
+        userProfileData = null;
+      }
+      if (userProfileData) {
+        this.cache.set(key, userProfileData as unknown as UserProfile);
+      }
     }
 
     if (this.cache.has(key)) {
       const cachedData = this.cache.get(key);
-      this.logger().debug('UserProfileService - read() - returning cached data:', cachedData);
+      this.logger.debug('UserProfileService - read() - returning cached data:', cachedData);
       return cachedData as UserProfile;
     }
 
@@ -70,11 +79,11 @@ export class UserProfileService {
    * Write user profile data to the key-value store and update the cache.
    */
   private async write(key: string, data: UserProfile): Promise<void> {
-    this.logger().debug('UserProfileService - write() - writing data:', data);
+    this.logger.debug('UserProfileService - write() - writing data:', data);
     const existingData = this.cache.get(key);
 
-    if (existingData && optlyHelper.isValidObject(existingData, true)) {
-      // Merge experiment_bucket_map properties
+    let mergedData = data;
+    if (existingData && typeof existingData === 'object' && existingData !== null) {
       const newExperimentBucketMap = data.experiment_bucket_map;
       const existingExperimentBucketMap = existingData.experiment_bucket_map || {};
 
@@ -84,12 +93,12 @@ export class UserProfileService {
 
       // Update the existing data with the merged experiment_bucket_map
       existingData.experiment_bucket_map = existingExperimentBucketMap;
-      data = existingData;
+      mergedData = existingData;
     }
 
-    const parsedData = optlyHelper.safelyStringifyJSON(data);
+    const parsedData = JSON.stringify(mergedData);
     await this.kvStore.put(key, parsedData);
-    this.cache.set(key, data);
+    this.cache.set(key, mergedData);
   }
 
   /**
@@ -99,10 +108,10 @@ export class UserProfileService {
     const key = this.getUserKey(visitorId);
     try {
       const data = await this.read(key);
-      this.logger().debug('UserProfileService - lookup() - returning data:', data);
+      this.logger.debug('UserProfileService - lookup() - returning data:', data);
       return data;
     } catch (error) {
-      this.logger().error('UserProfileService - lookup() - error:', error);
+      this.logger.error('UserProfileService - lookup() - error:', error);
       return {};
     }
   }
@@ -122,13 +131,13 @@ export class UserProfileService {
     const key = this.getUserKey(visitorId);
     try {
       const userProfileMap = this.cache.has(key) ? this.cache.get(key) : {};
-      this.logger().debug(
+      this.logger.debug(
         'UserProfileService - getUserProfileFromCache() - returning data for visitorId:',
         key
       );
       return { key, userProfileMap: userProfileMap as UserProfile };
     } catch (error) {
-      this.logger().error('UserProfileService - getUserProfileFromCache() - error:', error);
+      this.logger.error('UserProfileService - getUserProfileFromCache() - error:', error);
       return { key, userProfileMap: {} };
     }
   }
@@ -140,7 +149,7 @@ export class UserProfileService {
     for (const visitorId of visitorIds) {
       const key = this.getUserKey(visitorId);
       await this.read(key);
-      this.logger().debug(
+      this.logger.debug(
         'UserProfileService - prefetchUserProfiles() - returning data for visitorId:',
         key
       );

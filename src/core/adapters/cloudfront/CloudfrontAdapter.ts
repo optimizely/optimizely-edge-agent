@@ -1,5 +1,5 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions, CDNSettings } from '../../../types';
+import { CookieOptions } from '../../../types';
 import { CloudfrontKVStore } from './CloudfrontKVStore';
 import { CoreLogic } from '../../providers/CoreLogic';
 

@@ -1,5 +1,5 @@
 import { BaseAdapter } from '../BaseAdapter';
-import { CookieOptions, CDNSettings } from '../../../types';
+import { CookieOptions } from '../../../types';
 import { FastlyKVStore } from './FastlyKVStore';
 import { CoreLogic } from '../../providers/CoreLogic';
 

@@ -1,6 +1,6 @@
-import { ICDNAdapter } from '../../types';
+import { CDNAdapter } from '../../types';
 
-export type AdapterConstructor = new (...args: any[]) => ICDNAdapter;
+export type AdapterConstructor = new (...args: any[]) => CDNAdapter;
 
 export class CDNAdapterFactory {
 	private static instance: CDNAdapterFactory;
@@ -24,7 +24,7 @@ export class CDNAdapterFactory {
 		this.adapters.set(name, adapterClass);
 	}
 
-	createAdapter(name: string, ...args: any[]): ICDNAdapter {
+	createAdapter(name: string, ...args: any[]): CDNAdapter {
 		const AdapterClass = this.adapters.get(name);
 		if (!AdapterClass) {
 			throw new Error(`No adapter registered for ${name}`);
