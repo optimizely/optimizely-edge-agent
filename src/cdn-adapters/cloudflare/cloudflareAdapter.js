@@ -98,7 +98,7 @@ class CloudflareAdapter {
 			this.eventListenersResult = await this.eventListeners.trigger(
 				'beforeProcessingRequest',
 				request,
-				this.coreLogic.requestConfig
+				this.coreLogic.requestConfig,
 			);
 			if (this.eventListenersResult && this.eventListenersResult.modifiedRequest) {
 				preRequest = this.eventListenersResult.modifiedRequest;
@@ -116,7 +116,7 @@ class CloudflareAdapter {
 				request,
 				result.reqResponse,
 				this.coreLogic.requestConfig,
-				result
+				result,
 			);
 			let postResponse = result.reqResponse;
 			if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
@@ -130,7 +130,7 @@ class CloudflareAdapter {
 					'beforeResponse',
 					request,
 					result.reqResponse,
-					result
+					result,
 				);
 			}
 
@@ -141,11 +141,11 @@ class CloudflareAdapter {
 				validCDNSettings = this.shouldFetchFromOrigin(cdnSettings);
 				this.logger.debug(
 					`Valid CDN settings found [fetchHandler] - validCDNSettings: ${optlyHelper.safelyStringifyJSON(
-						validCDNSettings
-					)}`
+						validCDNSettings,
+					)}`,
 				);
 				this.logger.debug(
-					`CDN settings found [fetchHandler] - cdnSettings: ${optlyHelper.safelyStringifyJSON(cdnSettings)}`
+					`CDN settings found [fetchHandler] - cdnSettings: ${optlyHelper.safelyStringifyJSON(cdnSettings)}`,
 				);
 			} else {
 				this.logger.debug('CDN settings are undefined or invalid');
@@ -165,7 +165,7 @@ class CloudflareAdapter {
 					'afterResponse',
 					request,
 					result.reqResponse,
-					result
+					result,
 				);
 				fetchResponse = this.eventListenersResult.modifiedResponse || result.reqResponse;
 				return fetchResponse;
@@ -175,7 +175,7 @@ class CloudflareAdapter {
 			if (httpMethod === 'GET' && (this.coreLogic.datafileOperation || this.coreLogic.configOperation)) {
 				const fileType = this.coreLogic.datafileOperation ? 'datafile' : 'config file';
 				this.logger.debug(
-					`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey} [fetchHandler]`
+					`GET request detected. Returning current ${fileType} for SDK Key: ${this.coreLogic.sdkKey} [fetchHandler]`,
 				);
 				return result.reqResponse;
 			}
@@ -186,7 +186,7 @@ class CloudflareAdapter {
 				fetchResponse = await this.fetchAndProcessRequest(request, originUrl, cdnSettings, ctx);
 			} else {
 				this.logger.debug(
-					'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.'
+					'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching.',
 				);
 				fetchResponse = await this.fetchFromOriginOrCDN(request);
 			}
@@ -204,7 +204,7 @@ class CloudflareAdapter {
 	setFetchAndProcessLogs(validCDNSettings, cdnSettings) {
 		if (!validCDNSettings) {
 			this.logger.debug(
-				'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]'
+				'No valid CDN settings found or CDN Response URL is undefined. Fetching directly from origin without caching [fetchHandler]',
 			);
 		} else {
 			this.logger.debug('Valid CDN settings found [fetchHandler]');
@@ -214,7 +214,7 @@ class CloudflareAdapter {
 			this.logger.debug(
 				`Fetching content from origin in CDN Adapter [fetchHandler -> fetchAndProcessRequest] - `,
 				`shouldCacheResponse is ${this.shouldCacheResponse} and validCDNSettings is ${validCDNSettings} and `,
-				`cdnSettings.forwardRequestToOrigin is ${cdnSettings.forwardRequestToOrigin}`
+				`cdnSettings.forwardRequestToOrigin is ${cdnSettings.forwardRequestToOrigin}`,
 			);
 		}
 	}
@@ -257,7 +257,7 @@ class CloudflareAdapter {
 			'beforeRequest',
 			newRequest,
 			this.reqResponse,
-			this.result
+			this.result,
 		);
 		if (this.eventListenersResult && this.eventListenersResult.modifiedRequest) {
 			newRequest = this.eventListenersResult.modifiedRequest;
@@ -340,7 +340,7 @@ class CloudflareAdapter {
 			'beforeReadingCache',
 			request,
 			this.requestConfig,
-			this.result
+			this.result,
 		);
 
 		if (shouldUseCache) {
@@ -369,7 +369,7 @@ class CloudflareAdapter {
 			request,
 			response,
 			this.requestConfig,
-			this.result
+			this.result,
 		);
 		if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
 			response = this.eventListenersResult.modifiedResponse;
@@ -498,7 +498,7 @@ class CloudflareAdapter {
 			'beforeCacheResponse',
 			this.request,
 			responseToCache,
-			this.result
+			this.result,
 		);
 		if (this.eventListenersResult && this.eventListenersResult.modifiedResponse) {
 			response = this.eventListenersResult.modifiedResponse;
@@ -534,7 +534,7 @@ class CloudflareAdapter {
 				ctx.waitUntil(
 					this.dispatchAllEventsToOptimizely(defaultSettings.optimizelyEventsEndpoint, allEvents).catch((err) => {
 						this.logger.error('Failed to dispatch event:', err);
-					})
+					}),
 				);
 			} catch (error) {
 				this.logger.error('Error during event consolidation or dispatch:', error);
@@ -599,7 +599,7 @@ class CloudflareAdapter {
 				{
 					status: 500,
 					statusText: 'Internal Server Error',
-				}
+				},
 			);
 		}
 	}
@@ -742,7 +742,7 @@ class CloudflareAdapter {
 			const response = await this.fetchFromOriginOrCDN(eventRequest);
 			const operationResult = !!response.ok;
 			this.logger.debug(
-				`Events were dispatched to Optimizely [dispatchAllEventsToOptimizely] - Operation Result: ${operationResult}`
+				`Events were dispatched to Optimizely [dispatchAllEventsToOptimizely] - Operation Result: ${operationResult}`,
 			);
 
 			this.eventListenersResult = this.eventListeners.trigger(
@@ -750,7 +750,7 @@ class CloudflareAdapter {
 				eventRequest,
 				response,
 				modifiedEvents,
-				operationResult
+				operationResult,
 			);
 
 			if (!operationResult) {
