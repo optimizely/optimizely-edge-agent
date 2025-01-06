@@ -8,14 +8,7 @@
 	},
 	"files": {
 		"ignoreUnknown": false,
-		"ignore": [
-			".next/**",
-			".vscode/**",
-			"dist/**",
-			"node_modules/**",
-			"coverage/**",
-			"legacy/**"
-		]
+		"ignore": [".next/**", ".vscode/**", "dist/**", "node_modules/**", "coverage/**", "legacy/**"]
 	},
 	"formatter": {
 		"enabled": true,
@@ -35,7 +28,7 @@
 		"formatter": {
 			"quoteStyle": "single",
 			"trailingCommas": "all",
-            "semicolons": "always"
+			"semicolons": "always"
 		}
 	}
 }
