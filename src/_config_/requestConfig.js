@@ -41,6 +41,7 @@ export default class RequestConfig {
 		this.trimmedDecisions = undefined;
 		this.isPostMethod = this.method === 'POST';
 		this.headerCookiesString = this.abstractionHelper.abstractRequest.getHeader('Cookie') || '';
+		this.flagKeys = [];
 
 		// Configuration settings derived from environment and request
 		this.settings = {
@@ -484,7 +485,7 @@ export default class RequestConfig {
 	 * @returns {boolean} The boolean value of the string, or the default value.
 	 */
 	parseBoolean(value, defaultValue = false) {
-		if (value === null) return defaultValue;
+		if (value === null || value === undefined || typeof value !== 'string') return defaultValue;
 		return value.toLowerCase() === 'true';
 	}
 
