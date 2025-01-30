@@ -301,7 +301,10 @@ export default class OptimizelyProvider {
 	 * @param {string[]} decideOptions - The decision options.
 	 * @returns {OptimizelyDecideOption[]} - The built decision options.
 	 */
-	buildDecideOptions(decideOptions) {
+	buildDecideOptions(decideOptions = []) {
+		if (!Array.isArray(decideOptions)) {
+			return [];
+		}
 		const result = decideOptions.map((option) => optlyDecideOptions[option]);
 		logger().debugExt('Decide options built [buildDecideOptions]: ', result);
 		return result;
