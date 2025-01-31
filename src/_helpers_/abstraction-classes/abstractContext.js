@@ -43,7 +43,7 @@ export class AbstractContext {
 			case 'cloudflare':
 			case 'fastly':
 			case 'vercel':
-				if (this.ctx && this.ctx.waitUntil) {
+				if (this.ctx?.waitUntil) {
 					return this.ctx.waitUntil(promise);
 				}
 				break;
@@ -56,7 +56,7 @@ export class AbstractContext {
 				break;
 			case 'akamai':
 				// Custom handling for Akamai EdgeWorkers
-				if (this.ctx && this.ctx.wait) {
+				if (this.ctx?.wait) {
 					return this.ctx.wait(promise);
 				}
 				break;
