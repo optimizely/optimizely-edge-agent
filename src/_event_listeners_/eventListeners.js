@@ -47,14 +47,9 @@ class EventListeners {
 	/**
 	 * The registered event listeners.
 	 * @type {Map<string, Array<Function>>}
+	 * @private
 	 */
-	listeners = new Map(Object.entries(EventListeners.LISTENER_EVENTS).map(([_, value]) => [value, []]));
-
-	/**
-	 * The set of registered events.
-	 * @type {Set}
-	 */
-	registeredEvents = new Set();
+	#listeners = new Map(Object.entries(EventListeners.LISTENER_EVENTS).map(([_, value]) => [value, []]));
 
 	/**
 	 * Creates an instance of EventListeners.
@@ -88,9 +83,8 @@ class EventListeners {
 	 * @param {Function} listener - The listener function to be called when the event is triggered.
 	 */
 	on(event, listener) {
-		if (this.listeners.has(event)) {
-			this.listeners.get(event).push(listener);
-			this.registeredEvents.add(event);
+		if (this.#listeners.has(event)) {
+			this.#listeners.get(event).push(listener);
 		} else {
 			logger().error(`Event ${event} not supported`);
 		}
@@ -104,19 +98,27 @@ class EventListeners {
 	 */
 	async trigger(event, ...args) {
 		const combinedResults = {};
-		if (this.registeredEvents.has(event)) {
-			for (const listener of this.listeners.get(event)) {
-				try {
-					const result = await listener(...args);
-					if (result !== undefined) {
-						Object.assign(combinedResults, result);
-					}
-				} catch (error) {
-					logger().error(`Error in listener for event ${event}: ${error.message}`);
+		const eventListeners = this.#listeners.get(event);
+		
+		if (!eventListeners) {
+			logger().error(`Event ${event} not supported`);
+			return combinedResults;
+		}
+
+		if (eventListeners.length === 0) {
+			logger().debug(`No listeners registered for event ${event}`);
+			return combinedResults;
+		}
+
+		for (const listener of eventListeners) {
+			try {
+				const result = await listener(...args);
+				if (result !== undefined) {
+					Object.assign(combinedResults, result);
 				}
+			} catch (error) {
+				logger().error(`Error in listener for event ${event}: ${error.message}`);
 			}
-		} else {
-			logger().error(`Event ${event} not registered`);
 		}
 		return combinedResults;
 	}
@@ -128,21 +130,18 @@ class EventListeners {
 	 * @returns {boolean} - True if the listener was found and removed, false otherwise
 	 */
 	off(event, listener) {
-		if (!this.listeners.has(event)) {
+		if (!this.#listeners.has(event)) {
 			logger().error(`Event ${event} not supported`);
 			return false;
 		}
 
-		const listeners = this.listeners.get(event);
+		const listeners = this.#listeners.get(event);
 		const index = listeners.indexOf(listener);
 		if (index === -1) {
 			return false;
 		}
 
 		listeners.splice(index, 1);
-		if (listeners.length === 0) {
-			this.registeredEvents.delete(event);
-		}
 		return true;
 	}
 
@@ -150,8 +149,29 @@ class EventListeners {
 	 * Clears all registered event listeners
 	 */
 	clearListeners() {
-		this.listeners = new Map(Object.entries(EventListeners.LISTENER_EVENTS).map(([_, value]) => [value, []]));
-		this.registeredEvents.clear();
+		// Reset all listener arrays to empty while maintaining the same event keys
+		for (const [event] of this.#listeners) {
+			this.#listeners.set(event, []);
+		}
+	}
+
+	/**
+	 * Gets the number of listeners for a given event.
+	 * @param {string} event - The event to get the listener count for
+	 * @returns {number} The number of listeners for the event, or 0 if the event is not supported
+	 */
+	getListenerCount(event) {
+		const listeners = this.#listeners.get(event);
+		return listeners ? listeners.length : 0;
+	}
+
+	/**
+	 * Checks if an event has any registered listeners.
+	 * @param {string} event - The event to check
+	 * @returns {boolean} True if the event has listeners, false otherwise
+	 */
+	hasListeners(event) {
+		return this.getListenerCount(event) > 0;
 	}
 }
 

@@ -38,17 +38,20 @@ describe('EventListeners', () => {
 		instance.off(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE, mockHandler);
 
 		await instance.trigger(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE);
+
 		expect(mockHandler).not.toHaveBeenCalled();
 	});
 
 	it('should remove all listeners for event with off()', async () => {
-		instance.on(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE, vi.fn());
-		instance.on(EventListeners.LISTENER_EVENTS.AFTER_RESPONSE, vi.fn());
-		instance.off(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE);
-
+		instance.on(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE, mockHandler);
+		instance.on(EventListeners.LISTENER_EVENTS.AFTER_RESPONSE, mockHandler);
+    
+		instance.off(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE, mockHandler);
 		await instance.trigger(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE);
-		expect(instance.listeners[EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE]).toBeUndefined();
-	});
+
+		expect(instance.getListenerCount(EventListeners.LISTENER_EVENTS.BEFORE_RESPONSE)).toBe(0);
+    expect(instance.getListenerCount(EventListeners.LISTENER_EVENTS.AFTER_RESPONSE)).toBe(1);
+  });
 
 	it('should handle async listeners', async () => {
 		const asyncHandler = vi.fn().mockImplementation(async () => {
@@ -66,9 +69,10 @@ describe('EventListeners', () => {
 		instance.on(EventListeners.LISTENER_EVENTS.AFTER_RESPONSE, vi.fn());
 		instance.clearListeners();    
     
-		for (const [key, value] of instance.listeners.entries()) {
-			expect(value).toEqual([]);
-		}
+		// Check that all events have no listeners
+		Object.values(EventListeners.LISTENER_EVENTS).forEach(event => {
+			expect(instance.getListenerCount(event)).toBe(0);
+		});
 	});
 
 	it('should handle removing listener before trigger', () => {
