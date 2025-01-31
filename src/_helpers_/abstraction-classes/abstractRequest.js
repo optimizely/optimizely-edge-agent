@@ -446,7 +446,7 @@ export class AbstractRequest {
 			switch (cdnProvider.toLowerCase()) {
 				case 'cloudflare':
 				case 'fastly':
-				case 'vercel':
+				case 'vercel': {
 					// For these CDNs, the Fetch API's clone method should work.
 					const newRequestInit = {
 						method: request.method,
@@ -460,6 +460,7 @@ export class AbstractRequest {
 						integrity: request.integrity,
 					};
 					return new Request(request.url, newRequestInit);
+				}
 
 				case 'cloudfront':
 					// CloudFront Lambda@Edge specific cloning logic
@@ -476,7 +477,7 @@ export class AbstractRequest {
 						integrity: request.integrity,
 					});
 
-				case 'akamai':
+				case 'akamai': {
 					// Akamai EdgeWorkers specific cloning logic
 					const clonedRequest = new Request(request.url, {
 						method: request.method,
@@ -484,6 +485,7 @@ export class AbstractRequest {
 						body: request.body,
 					});
 					return clonedRequest;
+				}
 
 				default:
 					throw new Error('Unsupported CDN provider.');
