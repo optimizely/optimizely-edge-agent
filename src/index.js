@@ -36,8 +36,28 @@ import { getAbstractionHelper } from './_helpers_/abstractionHelper';
 import Logger from './_helpers_/logger';
 import handleRequest from './_api_/apiRouter';
 
-let abstractionHelper, logger, abstractRequest, incomingRequest, environmentVariables, context;
+let abstractionHelper, abstractRequest, incomingRequest, environmentVariables, context;
 let optimizelyProvider, coreLogic, cdnAdapter;
+
+// Logger factory that can be overridden in tests
+let getLogger = (env) => Logger.getInstance(env);
+
+/**
+ * Set a custom logger factory for testing
+ * @param {Function} factory - Function that returns a logger instance
+ */
+export function setLoggerFactory(factory) {
+	getLogger = factory;
+}
+
+/**
+ * Get the current logger instance
+ * @param {object} env - Environment variables
+ * @returns {object} Logger instance
+ */
+function getCurrentLogger(env) {
+	return getLogger(env);
+}
 
 // URL of your Pages deployment
 // const PAGES_URL = 'https://edge-agent-demo.pages.dev/';
@@ -54,6 +74,7 @@ const PAGES_URL = 'https://edge-agent-demo-simone-tutorial.pages.dev';
  * @throws Will throw an error if the SDK key is not provided.
  */
 function initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore, kvStoreUserProfile) {
+	const logger = getCurrentLogger(env);
 	logger.debug('Edgeworker index.js - Initializing core logic [initializeCoreLogic]');
 	if (!sdkKey) {
 		throw new Error('SDK Key is required for initialization.');
@@ -96,11 +117,13 @@ function normalizePathname(pathName) {
 /**
  * Checks if the request is for an asset based on the pathname.
  * @param {string} pathName - The pathname of the request.
+ * @param {object} [env] - Optional environment variables for logger
  * @returns {boolean} True if the request is for an asset, false otherwise.
  */
-function isAssetRequest(pathName) {
+function isAssetRequest(pathName, env) {
 	const assetsRegex = /\.(jpg|jpeg|png|gif|svg|css|js|ico|woff|woff2|ttf|eot)$/i;
 	const result = assetsRegex.test(pathName);
+	const logger = getCurrentLogger(env);
 	logger.debug('Edgeworker index.js - Checking if request is for an asset [isAssetRequest]', result);
 	return result;
 }
@@ -112,10 +135,12 @@ function isAssetRequest(pathName) {
  */
 function initializeKVStoreUserProfile(env) {
 	if (defaultSettings.kv_user_profile_enabled) {
+		const logger = getCurrentLogger(env);
 		logger.debug('Edgeworker index.js - Initializing KV store for user profile [initializeKVStoreUserProfile]');
 		const kvInterfaceAdapterUserProfile = new CloudflareKVInterface(env, defaultSettings.kv_namespace_user_profile);
 		return abstractionHelper.initializeKVStore(defaultSettings.cdnProvider, kvInterfaceAdapterUserProfile);
 	} else {
+		const logger = getCurrentLogger(env);
 		logger.debug('Edgeworker index.js - KV store for user profile is disabled [initializeKVStoreUserProfile]');
 		return null;
 	}
@@ -127,6 +152,7 @@ function initializeKVStoreUserProfile(env) {
  * @returns {object} The initialized key-value store.
  */
 function initializeKVStore(env) {
+	const logger = getCurrentLogger(env);
 	logger.debug('Edgeworker index.js - Initializing KV store [initializeKVStore]');
 	const kvInterfaceAdapter = new CloudflareKVInterface(env, defaultSettings.kv_namespace);
 	return abstractionHelper.initializeKVStore(defaultSettings.cdnProvider, kvInterfaceAdapter);
@@ -138,6 +164,7 @@ function initializeKVStore(env) {
  * @returns {string|null} The SDK key if found, otherwise null.
  */
 function getSdkKey(abstractRequest) {
+	const logger = getCurrentLogger();
 	logger.debug('Edgeworker index.js - Getting SDK key [getSdkKey]');
 	let sdkKey = abstractRequest.getHeader(defaultSettings.sdkKeyHeader);
 	if (!sdkKey) {
@@ -220,6 +247,7 @@ async function handleApiRequest(incomingRequest, abstractionHelper, kvStore, log
  * @returns {Promise<Response>} The response to the Optimizely request.
  */
 async function handleOptimizelyRequest(sdkKey, request, env, ctx, abstractionHelper, kvStore, kvStoreUserProfile) {
+	const logger = getCurrentLogger(env);
 	logger.debug('Edgeworker index.js - Handling Optimizely request [handleOptimizelyRequest]');
 	try {
 		initializeCoreLogic(sdkKey, request, env, ctx, abstractionHelper, kvStore, kvStoreUserProfile);
@@ -251,6 +279,7 @@ async function handleDefaultRequest(
 	sdkKey,
 	optimizelyEnabled,
 ) {
+	const logger = getCurrentLogger(environmentVariables);
 	logger.debug('Edgeworker index.js - Handling default request [handleDefaultRequest]');
 
 	const url = new URL(incomingRequest.url);
@@ -331,7 +360,7 @@ async function handleDefaultRequest(
 export default {
 	async fetch(request, env, ctx) {
 		// Get the logger instance
-		logger = Logger.getInstance(env);
+		const logger = getCurrentLogger(env);
 		logger.debug('Edgeworker index.js - Edgeworker default handler [fetch]');
 
 		// Ensure HTTPS protocol
@@ -364,7 +393,7 @@ export default {
 		logger.debug('Edgeworker index.js - Checking if request is a worker operation [workerOperation]', workerOperation);
 
 		// Check if the request is for an asset
-		const requestIsForAsset = isAssetRequest(pathName);
+		const requestIsForAsset = isAssetRequest(pathName, env);
 		if (workerOperation) {
 			logger.debug(`Request is for an asset or an edge worker operation: ${pathName}`);
 
@@ -440,3 +469,6 @@ export default {
 		);
 	},
 };
+
+// Export functions for testing
+export { normalizePathname, isAssetRequest };
