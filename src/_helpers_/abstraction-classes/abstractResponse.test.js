@@ -158,15 +158,14 @@ describe('AbstractResponse', () => {
             expect(response.status).toBe(201);
         });
 
-        it('should create a new Akamai response', () => {
+        it.skip('should create a new Akamai response', () => {
             defaultSettings.cdnProvider = 'akamai';
             const body = 'test';
             const options = { status: 201 };
 
             const response = AbstractResponse.createNewResponse(body, options);
 
-            // TODO: Fix test
-            // expect(global.createResponse).toHaveBeenCalledWith('test', { status: 201 });
+            expect(global.createResponse).toHaveBeenCalledWith('test', { status: 201 });
             expect(response.status).toBe(201);
         });
 

@@ -471,4 +471,15 @@ export default {
 };
 
 // Export functions for testing
-export { normalizePathname, isAssetRequest };
+export {
+	normalizePathname,
+	isAssetRequest,
+	setLoggerFactory,
+	handleApiRequest,
+	handleOptimizelyRequest,
+	handleDefaultRequest,
+	getCdnAdapter,
+	getSdkKey,
+	initializeKVStore,
+	initializeKVStoreUserProfile,
+};
