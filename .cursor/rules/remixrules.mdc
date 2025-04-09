@@ -1,0 +1,196 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Frontend Guidelines (Remix + React + TypeScript)
+
+## Basic Principles
+
+- Use TypeScript for all components and utilities.
+- Follow a component-based architecture.
+- Apply immutability and functional programming principles where applicable.
+- Use nested layouts and route-based organization.
+- Always provide clear typing for components, functions, and data structures.
+
+## Code Organization
+
+- Organize code in the following directory structure:
+  - `app/`: Main application code
+    - `components/`: Reusable UI components, organized by domain
+    - `routes/`: Router components, using dot and bracket notation for dynamic segments
+    - `modules/`: Feature-specific code organized by domain
+    - `hooks/`: Custom React hooks
+    - `utils/`: Utility functions
+    - `lib/`: Library code and API wrappers
+    - `assets/`: Static assets
+    - `locale/`: Internationalization resources
+
+## File Naming and Types
+
+- `.tsx` for React components
+- `.ts` for TypeScript files without JSX
+- Use dot notation for route files, including dynamic segments (e.g., `app.$tenant.tsx`)
+- Match the file name to the component name where possible
+
+## Component Structure
+
+- Use named exports for components, loaders, and actions
+- Organize imports in the following order:
+  1. React Router and React imports
+  2. Third-party libraries
+  3. Project modules and components
+  4. Utilities and hooks
+  5. Types and interfaces
+  6. Assets
+- Structure route components with:
+  1. Meta function
+  2. Loader function
+  3. Action function
+  4. Component definition
+
+## Data Fetching and State Management
+
+- Use loaders for fetching data on the server
+- Use actions for handling form submissions and mutations
+- Leverage React Router's data APIs (`useLoaderData`, `useActionData`)
+- Utilize `useFetcher` for non-navigation mutations
+
+## Styling and UI
+
+- Use TailwindCSS for styling components
+- Group related UI components in the components directory
+- Create specialized components for common UI patterns
+
+## Error Handling
+
+- Implement error boundaries for catching unexpected errors
+- Use custom error handling within loaders and actions
+- Return appropriate status codes and error messages
+
+## Internationalization
+
+- Use i18next for translations
+- Organize translations in the locale directory
+- Use the useTranslation hook consistently
+
+## Performance Optimization
+
+- Optimize loaders for efficient data fetching
+- Use dynamic imports for code splitting
+- Implement caching strategies where appropriate
+
+## Testing
+
+- Use Vitest or Jest for unit tests
+- Test loaders and actions for data fetching logic
+- Test component rendering and behavior
+
+## Coding Style
+
+- Use single quotes for string literals
+- Use template strings for multi-line text or interpolation
+- Indent with 2 spaces
+- Use const for immutable variables
+- Leverage TypeScript's type system fully
+
+## Code Examples
+
+### Route Component
+
+```tsx
+// login.tsx
+import { ActionFunctionArgs, LoaderFunctionArgs, MetaFunction, useActionData } from "react-router";
+import { useTranslation } from "react-i18next";
+import { useState } from "react";
+
+import LoginForm from "~/modules/users/components/LoginForm";
+import AuthService from "~/modules/users/services/AuthService";
+import { getTranslations } from "~/locale/i18next.server";
+import { v2MetaFunction } from "~/utils/compat/v2MetaFunction";
+
+export const meta: v2MetaFunction = () => [
+  { title: "Login - Application Name" }
+];
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  // Check if user is already authenticated
+  // Redirect if necessary
+  return null;
+};
+
+export const action = async ({ request }: ActionFunctionArgs) => {
+  const { t } = await getTranslations(request);
+  const form = await request.formData();
+  return await AuthService.loginFromRequest(request, form);
+};
+
+export default function Login() {
+  const { t } = useTranslation();
+  const actionData = useActionData<typeof action>();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <LoginForm 
+        error={actionData?.error} 
+        isSubmitting={isSubmitting}
+        onSubmit={() => setIsSubmitting(true)}
+      />
+    </div>
+  );
+}
+```
+
+### Component Example
+
+```tsx
+// ~/components/ui/Button.tsx
+import { ButtonHTMLAttributes, forwardRef } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "~/lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline: "border border-input hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "underline-offset-4 hover:underline text-primary",
+      },
+      size: {
+        default: "h-10 py-2 px-4",
+        sm: "h-9 px-3 rounded-md",
+        lg: "h-11 px-8 rounded-md",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);
+
+export interface ButtonProps extends 
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  VariantProps<typeof buttonVariants> {}
+
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, ...props }, ref) => {
+    return (
+      <button
+        className={cn(buttonVariants({ variant, size }), className)}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+Button.displayName = "Button";
+
+export { Button, buttonVariants };
+``` 

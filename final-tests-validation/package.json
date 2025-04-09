@@ -1,0 +1,25 @@
+{
+  "name": "optimizely-edge-agent-testing",
+  "version": "1.0.0",
+  "description": "Testing framework for Optimizely Edge Agent",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test-scripts/run-all-tests.js",
+    "test:infrastructure": "node test-scripts/infrastructure-verification.js",
+    "test:cdn": "node test-scripts/cdn-variation-test.js",
+    "test:decision": "node test-scripts/decision-api-test.js",
+    "test:parameters": "node test-scripts/parameter-validation-test.js",
+    "test:parity": "node test-scripts/feature-parity-test.js",
+    "test:specific": "node test-scripts/run-all-tests.js --run-only",
+    "update-plan": "node test-scripts/update-execution-plan.js"
+  },
+  "author": "Optimizely",
+  "license": "MIT",
+  "dependencies": {
+    "markdown-table": "^3.0.3",
+    "node-fetch": "^2.6.7"
+  },
+  "engines": {
+    "node": ">=14"
+  }
+} 

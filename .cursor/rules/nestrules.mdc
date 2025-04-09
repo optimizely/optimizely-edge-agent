@@ -1,0 +1,212 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Frontend Guidelines (React + React Router + TypeScript)
+
+## Basic Principles
+
+- Use TypeScript for all components and utilities.
+- Follow a component-based architecture.
+- Apply immutability and functional programming principles where applicable.
+- Use React Router for routing with nested routes and route-based organization.
+- Always provide clear typing for components, functions, and data structures.
+
+## Code Organization
+
+- Organize code in the following directory structure:
+  - `src/`: Main application code
+    - `components/`: Reusable UI components, organized by domain
+    - `routes/`: Route components for React Router, using dot and bracket notation for dynamic segments
+    - `modules/`: Feature-specific code organized by domain
+    - `hooks/`: Custom React hooks
+    - `utils/`: Utility functions
+    - `lib/`: Library code and API wrappers
+    - `assets/`: Static assets
+    - `locale/`: Internationalization resources
+
+## File Naming and Types
+
+- `.tsx` for React components
+- `.ts` for TypeScript files without JSX
+- Use descriptive names for route files, aligning with React Router conventions (e.g., `tenant.tsx` for dynamic routes)
+- Match the file name to the component name where possible
+
+## Component Structure
+
+- Use named exports for components and route-related functions
+- Organize imports in the following order:
+  1. React Router and React imports
+  2. Third-party libraries
+  3. Project modules and components
+  4. Utilities and hooks
+  5. Types and interfaces
+  6. Assets
+- Structure route components with:
+  1. Meta function (if applicable)
+  2. Data fetching logic (e.g., in `useEffect` or custom hooks)
+  3. Component definition
+
+## Data Fetching and State Management
+
+- Use React Router's `useLoaderData` or custom hooks for fetching data
+- Handle form submissions and mutations with React Router's `useSubmit` or custom logic
+- Leverage React Router's data APIs (`useLoaderData`, `useActionData`) where applicable
+- Use `useFetcher` for non-navigation mutations if integrating with React Router's advanced features
+
+## Styling and UI
+
+- Use TailwindCSS for styling components
+- Group related UI components in the components directory
+- Create specialized components for common UI patterns
+
+## Error Handling
+
+- Implement error boundaries for catching unexpected errors
+- Use custom error handling within data fetching logic
+- Return appropriate status codes and error messages where applicable
+
+## Internationalization
+
+- Use i18next for translations
+- Organize translations in the locale directory
+- Use the `useTranslation` hook consistently
+
+## Performance Optimization
+
+- Optimize data fetching logic for efficiency
+- Use dynamic imports for code splitting
+- Implement caching strategies where appropriate
+
+## Testing
+
+- Use Vitest or Jest for unit tests
+- Test data fetching logic and component behavior
+- Test React Router navigation and rendering
+
+## Coding Style
+
+- Use single quotes for string literals
+- Use template strings for multi-line text or interpolation
+- Indent with 2 spaces
+- Use `const` for immutable variables
+- Leverage TypeScript's type system fully
+
+## Code Examples
+
+### Route Component
+
+```tsx
+// src/routes/login.tsx
+import { useActionData, useSubmit } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { useState, useEffect } from "react";
+
+import LoginForm from "~/modules/users/components/LoginForm";
+import AuthService from "~/modules/users/services/AuthService";
+import { getTranslations } from "~/locale/i18next.server";
+
+export const meta = () => [
+  { title: "Login - Application Name" }
+];
+
+const fetchLoginData = async (request: Request) => {
+  // Simulate server-side data fetching or redirect logic
+  return null;
+};
+
+const loginAction = async (request: Request, form: FormData) => {
+  const { t } = await getTranslations(request);
+  return await AuthService.loginFromRequest(request, form);
+};
+
+export default function Login() {
+  const { t } = useTranslation();
+  const actionData = useActionData<typeof loginAction>();
+  const submit = useSubmit();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [data, setData] = useState(null);
+
+  useEffect(() => {
+    // Fetch initial data if needed
+    fetchLoginData(new Request(window.location.href)).then(setData);
+  }, []);
+
+  const handleSubmit = (formData: FormData) => {
+    setIsSubmitting(true);
+    submit(formData, { method: "post" });
+  };
+
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <LoginForm 
+        error={actionData?.error} 
+        isSubmitting={isSubmitting}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  );
+}
+```
+
+### Component Example
+
+```tsx
+// src/components/ui/Button.tsx
+import { ButtonHTMLAttributes, forwardRef } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "~/lib/utils";
+
+const buttonVariants = cva(
+  "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90",
+        outline: "border border-input hover:bg-accent hover:text-accent-foreground",
+        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+        link: "underline-offset-4 hover:underline text-primary",
+      },
+      size: {
+        default: "h-10 py-2 px-4",
+        sm: "h-9 px-3 rounded-md",
+        lg: "h-11 px-8 rounded-md",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+);
+
+export interface ButtonProps extends 
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  VariantProps<typeof buttonVariants> {}
+
+const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, ...props }, ref) => {
+    return (
+      <button
+        className={cn(buttonVariants({ variant, size }), className)}
+        ref={ref}
+        {...props}
+      />
+    );
+  }
+);
+Button.displayName = "Button";
+
+export { Button, buttonVariants };
+```
+
+---
+
+### Key Changes
+1. **React Router Emphasis**: Replaced Remix-specific terms like `loader` and `action` with React Router equivalents or general React patterns (e.g., `useEffect` for data fetching, `useSubmit` for form submissions).
+2. **Directory Structure**: Changed `app/` to `src/` to align with a standard React project structure, avoiding Remix conventions.
+3. **Data Fetching**: Shifted from Remix's server-side `loader`/`action` pattern to client-side fetching with React Router's APIs or custom logic.
+4. **Terminology**: Removed Remix-specific references (e.g., `v2MetaFunction`) and emphasized React Router's ecosystem.

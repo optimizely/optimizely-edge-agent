@@ -1,0 +1,288 @@
+{
+  "timestamp": "2025-04-09T18-28-08",
+  "testId": "decision-api-test-2025-04-09T18-28-08",
+  "environment": {
+    "edgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+    "sdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+    "nodeVersion": "v22.0.0",
+    "featureKeys": [
+      "test-flag",
+      "homepage-test",
+      "product-test"
+    ],
+    "experimentKeys": [
+      "ab-test-1",
+      "feature-test-1"
+    ],
+    "testUsers": [
+      {
+        "userId": "test-user-981249",
+        "attributes": {
+          "browser": "Chrome",
+          "location": "US"
+        }
+      },
+      {
+        "userId": "test-user-225740",
+        "attributes": {
+          "browser": "Firefox",
+          "location": "UK"
+        }
+      }
+    ]
+  },
+  "results": [
+    {
+      "test": "Environment Variables",
+      "description": "Verify that environment variables are properly resolved",
+      "result": "PASS",
+      "endpoint": null,
+      "details": {
+        "resolvedEdgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+        "resolvedSdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+        "resolvedFeatureKeys": [
+          "test-flag",
+          "homepage-test",
+          "product-test"
+        ],
+        "resolvedExperimentKeys": [
+          "ab-test-1",
+          "feature-test-1"
+        ],
+        "envEdgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+        "envSdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+        "envFeatureKeys": "(not set)",
+        "envExperimentKeys": "(not set)",
+        "usingDefaults": false
+      },
+      "error": null
+    },
+    {
+      "test": "Feature Flag Decisions",
+      "description": "Verify that the Edge Agent can provide feature flag decisions",
+      "result": "FAIL",
+      "endpoint": "/api/decide",
+      "details": {
+        "testUser": {
+          "userId": "test-user-981249",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "responses": [
+          {
+            "featureKey": "test-flag",
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "featureKey": "homepage-test",
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "featureKey": "product-test",
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          }
+        ]
+      },
+      "error": "One or more flag decisions failed"
+    },
+    {
+      "test": "Experiment Decisions",
+      "description": "Verify that the Edge Agent can provide experiment variation decisions",
+      "result": "FAIL",
+      "endpoint": "/api/decide",
+      "details": {
+        "testUser": {
+          "userId": "test-user-981249",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "responses": [
+          {
+            "experimentKey": "ab-test-1",
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "experimentKey": "feature-test-1",
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          }
+        ]
+      },
+      "error": "One or more experiment decisions failed"
+    },
+    {
+      "test": "User Targeting",
+      "description": "Verify that the Edge Agent handles user targeting with different attributes",
+      "result": "FAIL",
+      "endpoint": "/api/decide",
+      "details": {
+        "testFeatureKey": "test-flag",
+        "testExperimentKey": "ab-test-1",
+        "responses": [
+          {
+            "userId": "test-user-981249",
+            "attributes": {
+              "browser": "Chrome",
+              "location": "US"
+            },
+            "featureDecision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            },
+            "experimentDecision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "userId": "test-user-225740",
+            "attributes": {
+              "browser": "Firefox",
+              "location": "UK"
+            },
+            "featureDecision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            },
+            "experimentDecision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          }
+        ]
+      },
+      "error": "One or more user targeting tests failed"
+    },
+    {
+      "test": "Decide All Endpoint",
+      "description": "Verify that the decide-all endpoint returns decisions for all features",
+      "result": "FAIL",
+      "endpoint": "/api/decide-all",
+      "details": {
+        "testUser": {
+          "userId": "test-user-981249",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "response": {
+          "status": 501,
+          "isCloudflare": true
+        },
+        "hasAllFeatures": false
+      },
+      "error": "Decide-all endpoint failed"
+    },
+    {
+      "test": "Decide For Keys Endpoint",
+      "description": "Verify that the decide-for-keys endpoint returns decisions for specified keys",
+      "result": "FAIL",
+      "endpoint": "/api/decide-for-keys",
+      "details": {
+        "testUser": {
+          "userId": "test-user-981249",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "requestedKeys": [
+          "test-flag",
+          "homepage-test",
+          "product-test"
+        ],
+        "response": {
+          "status": 501,
+          "isCloudflare": true
+        },
+        "hasAllRequestedKeys": false
+      },
+      "error": "Decide-for-keys endpoint failed"
+    },
+    {
+      "test": "Decision Options",
+      "description": "Verify that the Edge Agent supports decision options parameters",
+      "result": "FAIL",
+      "endpoint": "/api/decide",
+      "details": {
+        "testUser": {
+          "userId": "test-user-981249",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "testFeatureKey": "test-flag",
+        "responses": [
+          {
+            "testCase": "Include Reasons",
+            "options": {
+              "includeReasons": true
+            },
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "testCase": "Enable Debug",
+            "options": {
+              "enableDebug": true
+            },
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "testCase": "Multiple Options",
+            "options": {
+              "includeReasons": true,
+              "enableDebug": true
+            },
+            "status": 501,
+            "isCloudflare": true,
+            "decision": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          }
+        ]
+      },
+      "error": "One or more decision options tests failed"
+    }
+  ]
+}

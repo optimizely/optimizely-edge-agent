@@ -1,0 +1,20 @@
+{
+  "name": "ai-workflow-framework-tools",
+  "version": "1.0.0",
+  "description": "Tools for AI Workflow Framework",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./update-timestamps": "./update-timestamps.js",
+    "./readme-timestamp-generator": "./readme-timestamp-generator.js",
+    "./copy-rules-to-cursor": "./copy-rules-to-cursor.js",
+    "./temp-cleanup": "./temp-cleanup.js",
+    "./convert-rules": "./convert-rules.js",
+    "./get-ai-workflow": "./get-ai-workflow.js",
+    "./ai-tools": "./ai-tools/index.js"
+  },
+  "engines": {
+    "node": ">=14.16"
+  }
+}

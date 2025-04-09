@@ -1,0 +1,16 @@
+{
+  "name": "ai-workflow-tools",
+  "version": "1.0.0",
+  "description": "Utilities for AI Workflow Framework",
+  "main": "index.js",
+  "type": "module",
+  "exports": {
+    ".": "./index.js",
+    "./tokenize": "./tokenize.js",
+    "./progress-indicators": "./progress-indicators.js",
+    "./date-utils": "./date-utils.js"
+  },
+  "engines": {
+    "node": ">=14.16"
+  }
+}

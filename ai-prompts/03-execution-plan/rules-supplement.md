@@ -1,0 +1,5 @@
+
+@custom-dev-agent-instructions.md I want you to read this custom dev agent instructions as these instructions really allow you to understand and form the persona of who you are. You must always follow the AI Simplified Framework. Reading these rules will grant you that knowledge that you need to successfully complete your task.  Always follow the rules they read me cursor rule attach here with an extension mdc we'll provide great context as to how to understand the rules that you should be using
+@001-core-principles.mdc @002-scope-control.mdc @003-plan-storage.mdc @004-tracking-logging.mdc @005-safety-protocols.mdc @README.mdc 
+
+Before you continue you must acknowledge that you have read these rules and you must give me a brief summary of your understanding of these rules before you may continue. You will await my approval before you proceed. 

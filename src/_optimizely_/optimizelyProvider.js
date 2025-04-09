@@ -12,7 +12,7 @@ import {
 	createInstance,
 	enums as OptimizelyEnums,
 	OptimizelyDecideOption as optlyDecideOptions,
-} from '@optimizely/optimizely-sdk/dist/optimizely.lite.min.js';
+} from '@optimizely/optimizely-sdk';
 
 // Global variables to store the SDK key and the Optimizely client. These are used to make sure that the
 // same Optimizely client is used across multiple instances of the OptimizelyProvider class, and only one instance
@@ -310,7 +310,7 @@ export default class OptimizelyProvider {
 	/**
 	 * Retrieves the active feature flags.
 	 * @returns {Promise<string[]>} - A promise that resolves to an array of active feature flag keys.
-	 */ d;
+	 */
 	async getActiveFlags() {
 		if (!this.optimizelyClient) {
 			throw new Error('Optimizely Client is not initialized.');
@@ -393,7 +393,7 @@ export default class OptimizelyProvider {
 		return forcedDecisions.some((decision) => decision.flagKey === flagKey);
 	}
 
-	/**+
+	/**
 	 * Retrieves the decision for a flag.
 	 * @param {Object} flagObj - The flag object.
 	 * @param {boolean} [doForceDecision=false] - Whether to force the decision.

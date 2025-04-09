@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "lib": ["es2020", "dom"],
+    "skipLibCheck": true
+  },
+  "include": [
+    "src-v2/index.ts",
+    "src-v2/composition/cloudflareComposition.ts",
+    "src-v2/adapters/implementations/cloudflare/**/*.ts",
+    "src-v2/adapters/factories/CloudflareAdapterFactory.ts",
+    "src-v2/adapters/interfaces/**/*.ts",
+    "src-v2/services/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src-v2/tests",
+    "src-v2/adapters/implementations/vercel",
+    "src-v2/adapters/implementations/fastly",
+    "src-v2/adapters/factories/VercelAdapterFactory.ts",
+    "src-v2/adapters/factories/FastlyAdapterFactory.ts",
+    "src-v2/vercel.ts",
+    "src-v2/fastly.js",
+    "src-v2/composition/vercelComposition.ts",
+    "src-v2/composition/fastlyComposition.ts"
+  ]
+} 

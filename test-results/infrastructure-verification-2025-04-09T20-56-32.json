@@ -1,0 +1,103 @@
+{
+  "timestamp": "2025-04-09T20-56-32",
+  "testId": "infrastructure-verification-2025-04-09T20-56-32",
+  "environment": {
+    "edgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+    "sdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+    "nodeVersion": "v22.0.0"
+  },
+  "results": [
+    {
+      "test": "Environment Variables",
+      "description": "Verify that environment variables are properly resolved",
+      "result": "PASS",
+      "details": {
+        "resolvedEdgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+        "resolvedSdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+        "envEdgeAgentUrl": "(not set)",
+        "envSdkKey": "(not set)",
+        "usingDefaults": true
+      },
+      "error": null
+    },
+    {
+      "test": "Basic Connectivity",
+      "description": "Verify that the Edge Agent endpoint is accessible and running on Cloudflare",
+      "result": "PASS",
+      "details": {
+        "url": "https://edge-agent-test.expedge.workers.dev/api/sdk",
+        "status": 200,
+        "statusText": "OK",
+        "headers": {
+          "alt-svc": "h3=\":443\"; ma=86400",
+          "cf-ray": "92dce9656dc860cd-MIA",
+          "connection": "keep-alive",
+          "content-encoding": "gzip",
+          "content-type": "application/json",
+          "date": "Wed, 09 Apr 2025 20:56:32 GMT",
+          "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+          "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=Nam9TnjWXgYPG6qbRJIWWp1Eug4GY7q6ZwyWN%2FtiZ4audDRao3rSMDi3EBN8DomnHKyC2Ebc4us7ipQU%2Bb1uFtqMykCev1bNV2JiwRwWCVY75qvFpISvG0NYuP5o%2Bh7cibXWzH3Z2v9eOMjvNT3iTgBgvdDvBA%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+          "server": "cloudflare",
+          "server-timing": "cfL4;desc=\"?proto=TCP&rtt=26995&min_rtt=26414&rtt_var=11067&sent=4&recv=5&lost=0&retrans=0&sent_bytes=2848&recv_bytes=744&delivery_rate=136368&cwnd=48&unsent_bytes=0&cid=3cefad456c72a459&ts=73&x=0\"",
+          "transfer-encoding": "chunked",
+          "vary": "Accept-Encoding",
+          "x-implementation-version": "v2",
+          "x-request-id": "e8d4d4c9-f26b-4cad-af93-f49601ef0ce4"
+        },
+        "isCloudflare": true,
+        "body": "{\"name\":\"optimizely-edge-agent\",\"version\":\"v2\",\"environment\":\"test\",\"cdnProvider\":\"cloudflare\"}"
+      },
+      "error": null
+    },
+    {
+      "test": "SDK Key Validation",
+      "description": "Verify that the Edge Agent accepts valid SDK keys and rejects invalid ones",
+      "result": "FAIL",
+      "details": {
+        "validRequest": {
+          "url": "https://edge-agent-test.expedge.workers.dev/api/datafile",
+          "status": 501,
+          "statusText": "Not Implemented",
+          "headers": {
+            "alt-svc": "h3=\":443\"; ma=86400",
+            "cf-ray": "92dce965df4060cd-MIA",
+            "connection": "keep-alive",
+            "content-length": "89",
+            "content-type": "application/json",
+            "date": "Wed, 09 Apr 2025 20:56:32 GMT",
+            "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+            "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=LY2MlSiZ7qwDIwHrbjQCxuwiOslZb9EvhXZoYRWjnetBtFDz2yILUbibwKL99XxZQQ9g80ikH242fL5IyZOS4jFi4X5rebT8IU3oVkeULiFMjS7oFJ8saLi1PYZSV99yLM5Ss%2FGtNbMp5Rnei7rQPDPmaXsa9g%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+            "server": "cloudflare",
+            "server-timing": "cfL4;desc=\"?proto=TCP&rtt=26987&min_rtt=24235&rtt_var=7417&sent=7&recv=7&lost=0&retrans=0&sent_bytes=4377&recv_bytes=1020&delivery_rate=144145&cwnd=51&unsent_bytes=0&cid=3cefad456c72a459&ts=109&x=0\"",
+            "vary": "Accept-Encoding",
+            "x-implementation-version": "v2",
+            "x-request-id": "4c2528b6-927c-4c9a-87f4-86dd39412494"
+          },
+          "bodyLength": 89
+        },
+        "invalidRequest": {
+          "url": "https://edge-agent-test.expedge.workers.dev/api/datafile",
+          "status": 501,
+          "statusText": "Not Implemented",
+          "headers": {
+            "alt-svc": "h3=\":443\"; ma=86400",
+            "cf-ray": "92dce966082660cd-MIA",
+            "connection": "keep-alive",
+            "content-length": "89",
+            "content-type": "application/json",
+            "date": "Wed, 09 Apr 2025 20:56:32 GMT",
+            "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+            "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=iXl30iEtDJBsP%2Bh5DBAm2e8JA9ugNmNPMfKe5iuy%2F9nlITrks0%2Bs41LYO3CgJmao6BDainFbxTOxNW%2BMkwxm%2BuO6SGNhJvf7ZIGJB6K5Eopbh4ewmMpdhpAExHkmc6raxbZuQChni%2BQZFoxkWuQAx5wLuClbGQ%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+            "server": "cloudflare",
+            "server-timing": "cfL4;desc=\"?proto=TCP&rtt=26843&min_rtt=24235&rtt_var=5850&sent=8&recv=8&lost=0&retrans=0&sent_bytes=5384&recv_bytes=1290&delivery_rate=144145&cwnd=52&unsent_bytes=0&cid=3cefad456c72a459&ts=143&x=0\"",
+            "vary": "Accept-Encoding",
+            "x-implementation-version": "v2",
+            "x-request-id": "ee8aa51a-bf83-4446-a9fa-c0c2b6f3339d"
+          },
+          "bodyLength": 89
+        }
+      },
+      "error": null
+    }
+  ]
+}

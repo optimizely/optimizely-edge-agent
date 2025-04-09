@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.cloudflare.json",
+  "compilerOptions": {
+    "noEmitOnError": false,
+    "skipLibCheck": true,
+    "allowJs": true,
+    "checkJs": false
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src-v2/tests/**/*"
+  ]
+} 

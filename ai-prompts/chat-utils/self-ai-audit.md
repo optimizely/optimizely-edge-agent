@@ -1,0 +1,7 @@
+I need you to audit your code and your work carefully by reviewing your work and validate that you're not using any vanilla javascript, or any components that are not Chakra UI version 3 and that you have not deviated from the instructions in the plan. You will acknowledge this as accurate after doing a comprehensive audit and review of the actual code and implementation in the file system.
+
+
+I need you to audit your code and your work carefully by reviewing your work and validate that you have not deviated from the instructions in the plan. You will acknowledge this as accurate after doing a comprehensive audit and review of the actual code and implementation in the file system.
+
+
+Did you validate with the current code base, before you created the plan that your implementation, plan was using and leveraging existing components, indentified existing files that should or could be updated. Did you study the project and directory structure? Did you check if any of the files that you think that must be created or already exist or exists and simply must be updated. You must make sure that you are not recreating code and modules that already exists and you should be using instead. It is critical that you actually perform an audit of the codebase in the file system by examining the folders and their contents recursively. **You must audit yourself!**

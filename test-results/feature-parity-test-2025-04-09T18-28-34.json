@@ -1,0 +1,394 @@
+{
+  "timestamp": "2025-04-09T18-28-34",
+  "testId": "feature-parity-test-2025-04-09T18-28-34",
+  "environment": {
+    "edgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+    "sdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+    "nodeVersion": "v22.0.0",
+    "testUsers": [
+      {
+        "userId": "test-user-882986",
+        "attributes": {
+          "browser": "Chrome",
+          "location": "US"
+        }
+      }
+    ]
+  },
+  "results": [
+    {
+      "test": "Environment Variables",
+      "description": "Verify that environment variables are properly resolved",
+      "result": "PASS",
+      "featureArea": null,
+      "details": {
+        "resolvedEdgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+        "resolvedSdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+        "envEdgeAgentUrl": "https://edge-agent-test.expedge.workers.dev",
+        "envSdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+        "usingDefaults": false
+      },
+      "error": null
+    },
+    {
+      "test": "Cookie Persistence",
+      "description": "Verify that cookies are properly set and persisted across requests",
+      "result": "FAIL",
+      "featureArea": "Cookie Management",
+      "details": {
+        "testUser": {
+          "userId": "test-user-882986",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "firstResponse": {
+          "status": 501,
+          "isCloudflare": true,
+          "cookies": {},
+          "body": {
+            "error": "API request handling not implemented in RequestHandler",
+            "path": "/api/decide"
+          }
+        },
+        "secondResponse": {
+          "status": 501,
+          "isCloudflare": true,
+          "requestCookies": {},
+          "body": {
+            "error": "API request handling not implemented in RequestHandler",
+            "path": "/api/decide"
+          }
+        },
+        "setCookies": false,
+        "validDecisions": false
+      },
+      "error": "Cookie persistence test failed"
+    },
+    {
+      "test": "Response Headers",
+      "description": "Verify that all endpoints return the expected response headers",
+      "result": "FAIL",
+      "featureArea": "Response Headers",
+      "details": {
+        "responses": [
+          {
+            "endpoint": "SDK Endpoint",
+            "status": 200,
+            "isCloudflare": true,
+            "headers": {
+              "alt-svc": "h3=\":443\"; ma=86400",
+              "cf-ray": "92dc10a26b50f436-MIA",
+              "connection": "keep-alive",
+              "content-encoding": "gzip",
+              "content-type": "application/json",
+              "date": "Wed, 09 Apr 2025 18:28:34 GMT",
+              "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+              "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=BADyzWKb1%2FLcbVJs8dnJokj3zQdHIMbTx3imcPPQzsrysbiUMLQeOhK5GjLh1wtKNRIxN3F4PAzclSI4YOyA5NE20XBjeaFdlAA7v03RL7h1OkQRFKdx7ftsM4ZDnA7xgWnnGDS7GDKG2slFJ%2BUDfC3kppLPvg%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+              "server": "cloudflare",
+              "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25810&min_rtt=24563&rtt_var=4939&sent=7&recv=8&lost=0&retrans=0&sent_bytes=5315&recv_bytes=1492&delivery_rate=158325&cwnd=256&unsent_bytes=0&cid=d436df496f62b187&ts=134&x=0\"",
+              "transfer-encoding": "chunked",
+              "vary": "Accept-Encoding",
+              "x-implementation-version": "v2",
+              "x-request-id": "7190108c-57b1-4ae7-b5a6-3c718ebeb9f4"
+            },
+            "expectedHeaders": [
+              "content-type",
+              "cache-control"
+            ],
+            "hasExpectedHeaders": false
+          },
+          {
+            "endpoint": "Datafile Endpoint",
+            "status": 501,
+            "isCloudflare": true,
+            "headers": {
+              "alt-svc": "h3=\":443\"; ma=86400",
+              "cf-ray": "92dc10a2abe8f436-MIA",
+              "connection": "keep-alive",
+              "content-length": "89",
+              "content-type": "application/json",
+              "date": "Wed, 09 Apr 2025 18:28:34 GMT",
+              "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+              "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=Bmpok0AIVaXjxbNc5piRHxJagXToJlO%2FBeIm6h8jNNgsTseagMWES2XxDmXx9%2BAlL8AM9XxbMOhB%2FdFmYq9nuC%2FV2jcISoTu1%2BdwSNCPZ7lMvFxR%2FS824ZZGkE4potxb42t1x6ZD9sHX3aDJth%2BFSHwhcpPPIg%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+              "server": "cloudflare",
+              "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25656&min_rtt=24528&rtt_var=4013&sent=9&recv=10&lost=0&retrans=0&sent_bytes=6394&recv_bytes=1768&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=169&x=0\"",
+              "vary": "Accept-Encoding",
+              "x-implementation-version": "v2",
+              "x-request-id": "3e02fdbc-eabd-476a-8483-061f31c38f1a"
+            },
+            "expectedHeaders": [
+              "content-type",
+              "cache-control",
+              "last-modified"
+            ],
+            "hasExpectedHeaders": false
+          },
+          {
+            "endpoint": "Decide Endpoint",
+            "status": 501,
+            "isCloudflare": true,
+            "headers": {
+              "alt-svc": "h3=\":443\"; ma=86400",
+              "cf-ray": "92dc10a2dc97f436-MIA",
+              "connection": "keep-alive",
+              "content-length": "87",
+              "content-type": "application/json",
+              "date": "Wed, 09 Apr 2025 18:28:34 GMT",
+              "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+              "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=CiQiPbhnkvZplhm7WRZPVaeih2MXdNT7qkM1BzewdE%2FHFFkLsFpRyyTbjC8rfqaK6pHgzX5eY96r4AOVr9shEcBeWQPj02e0R%2BFhOhYGEVNwq3W2icA7yCwdRRCMGT%2F7wQtgDVlVh%2B%2ByMoVmA%2FKxOwAWYbu50Q%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+              "server": "cloudflare",
+              "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25690&min_rtt=24528&rtt_var=3077&sent=10&recv=11&lost=0&retrans=0&sent_bytes=7415&recv_bytes=2142&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=204&x=0\"",
+              "vary": "Accept-Encoding",
+              "x-implementation-version": "v2",
+              "x-request-id": "4fe539fd-1e7e-4175-ac0f-82bd95ad4e3c"
+            },
+            "expectedHeaders": [
+              "content-type",
+              "cache-control"
+            ],
+            "hasExpectedHeaders": false
+          },
+          {
+            "endpoint": "Flag Keys Endpoint",
+            "status": 501,
+            "isCloudflare": true,
+            "headers": {
+              "alt-svc": "h3=\":443\"; ma=86400",
+              "cf-ray": "92dc10a31d58f436-MIA",
+              "connection": "keep-alive",
+              "content-length": "89",
+              "content-type": "application/json",
+              "date": "Wed, 09 Apr 2025 18:28:34 GMT",
+              "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+              "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=bo%2FANJj4Cczg%2FjbaaYyWgfB6NyZvZHtKEQseFYntfRlqlxlgm3V27vGVHpu%2B7amIFq3pAIkpoT4Z0Ih7N2VZ84BDBgFQy94rZo4yoGzjVW%2B%2FPkjPkqhsKl3pm7dxJLNeM1yyuwVe9LddAO7HtZCbGm7zgmQODg%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+              "server": "cloudflare",
+              "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25849&min_rtt=24528&rtt_var=2626&sent=11&recv=12&lost=0&retrans=0&sent_bytes=8433&recv_bytes=2418&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=238&x=0\"",
+              "vary": "Accept-Encoding",
+              "x-implementation-version": "v2",
+              "x-request-id": "332c0282-7fb5-411c-b8d6-bcd6d6ebe937"
+            },
+            "expectedHeaders": [
+              "content-type",
+              "cache-control"
+            ],
+            "hasExpectedHeaders": false
+          }
+        ],
+        "allCloudflare": true
+      },
+      "error": "Response headers test failed"
+    },
+    {
+      "test": "KV Storage Integration",
+      "description": "Verify that the Edge Agent properly uses KV storage for caching datafiles",
+      "result": "FAIL",
+      "featureArea": "KV Storage Integration",
+      "details": {
+        "firstResponse": {
+          "status": 501,
+          "isCloudflare": true,
+          "headers": {
+            "alt-svc": "h3=\":443\"; ma=86400",
+            "cf-ray": "92dc10a34ddaf436-MIA",
+            "connection": "keep-alive",
+            "content-length": "89",
+            "content-type": "application/json",
+            "date": "Wed, 09 Apr 2025 18:28:34 GMT",
+            "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+            "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=SQys0%2BL3kwRGmuTCxrwm80%2BuW6xIE2yC1x6%2B0ICv03O7lmaoZ6LASU06Mx94REFp3GOc4BdbswkYcCdIcSOUGGlScSrEoLZtCqnI4tXN%2Bx28F5UEzRbK0SSAT5QyHwTeUL7w8YB9ppq%2F3oHkPZ6gUCK33sNaVQ%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+            "server": "cloudflare",
+            "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25832&min_rtt=24528&rtt_var=2005&sent=12&recv=13&lost=0&retrans=0&sent_bytes=9451&recv_bytes=2694&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=270&x=0\"",
+            "vary": "Accept-Encoding",
+            "x-implementation-version": "v2",
+            "x-request-id": "aee9924f-b2c8-437d-bdf1-24805d1ae37e"
+          },
+          "bodyLength": null
+        },
+        "secondResponse": {
+          "status": 501,
+          "isCloudflare": true,
+          "headers": {
+            "alt-svc": "h3=\":443\"; ma=86400",
+            "cf-ray": "92dc10a37e76f436-MIA",
+            "connection": "keep-alive",
+            "content-length": "89",
+            "content-type": "application/json",
+            "date": "Wed, 09 Apr 2025 18:28:34 GMT",
+            "nel": "{\"success_fraction\":0,\"report_to\":\"cf-nel\",\"max_age\":604800}",
+            "report-to": "{\"endpoints\":[{\"url\":\"https:\\/\\/a.nel.cloudflare.com\\/report\\/v4?s=8MBmgxn8vdJXfc3C1zcFrQRNDYtl6RmgF3OqUA7mEcaTtml9mdIxLxMwIItmkp8dA7qKDw%2FakeOoHg4e4UMuz67EwFzG9ttlw5b578TKYhkDhpHGg12Mo2%2BpVbFFsoPBJSnMVnXfCsiJrEkT3nlrFzp2A2uUGA%3D%3D\"}],\"group\":\"cf-nel\",\"max_age\":604800}",
+            "server": "cloudflare",
+            "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25770&min_rtt=24528&rtt_var=1626&sent=13&recv=14&lost=0&retrans=0&sent_bytes=10469&recv_bytes=2970&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=302&x=0\"",
+            "vary": "Accept-Encoding",
+            "x-implementation-version": "v2",
+            "x-request-id": "62715096-8acd-4e30-97ff-d55f7981a416"
+          },
+          "bodyLength": null
+        },
+        "hasCacheHeaders": false,
+        "sameContent": false
+      },
+      "error": "KV storage integration test failed"
+    },
+    {
+      "test": "Configuration Options",
+      "description": "Verify that the Edge Agent properly supports various configuration options",
+      "result": "FAIL",
+      "featureArea": "Configuration Options",
+      "details": {
+        "responses": [
+          {
+            "name": "No Options",
+            "status": 501,
+            "isCloudflare": true,
+            "hasExpectedOption": true,
+            "body": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "name": "Include Reasons",
+            "status": 501,
+            "isCloudflare": true,
+            "options": {
+              "includeReasons": true
+            },
+            "hasExpectedOption": false,
+            "body": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "name": "Disable Activation",
+            "status": 501,
+            "isCloudflare": true,
+            "options": {
+              "skipActivation": true
+            },
+            "hasExpectedOption": true,
+            "body": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "name": "Multiple Options",
+            "status": 501,
+            "isCloudflare": true,
+            "options": {
+              "includeReasons": true,
+              "skipActivation": true
+            },
+            "hasExpectedOption": false,
+            "body": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          }
+        ],
+        "allCloudflare": true
+      },
+      "error": "Configuration options test failed"
+    },
+    {
+      "test": "Visitor ID Management",
+      "description": "Verify that the Edge Agent properly handles different visitor IDs",
+      "result": "FAIL",
+      "featureArea": "Visitor ID Management",
+      "details": {
+        "responses": [
+          {
+            "userId": "test-user-889850",
+            "status": 501,
+            "isCloudflare": true,
+            "body": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          },
+          {
+            "userId": "test-user-15719",
+            "status": 501,
+            "isCloudflare": true,
+            "body": {
+              "error": "API request handling not implemented in RequestHandler",
+              "path": "/api/decide"
+            }
+          }
+        ],
+        "allCloudflare": true,
+        "validDecisions": false
+      },
+      "error": "Visitor ID management test failed"
+    },
+    {
+      "test": "API Endpoint Parity",
+      "description": "Verify that all API endpoints are implemented and working correctly",
+      "result": "FAIL",
+      "featureArea": "API Endpoints",
+      "details": {
+        "responses": [
+          {
+            "endpoint": "SDK Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/sdk",
+            "method": "GET",
+            "status": 200,
+            "isCloudflare": true
+          },
+          {
+            "endpoint": "Datafile Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/datafile",
+            "method": "GET",
+            "status": 501,
+            "isCloudflare": true
+          },
+          {
+            "endpoint": "Decide Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/decide",
+            "method": "POST",
+            "status": 501,
+            "isCloudflare": true
+          },
+          {
+            "endpoint": "Decide All Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/decide-all",
+            "method": "POST",
+            "status": 501,
+            "isCloudflare": true
+          },
+          {
+            "endpoint": "Decide For Keys Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/decide-for-keys",
+            "method": "POST",
+            "status": 501,
+            "isCloudflare": true
+          },
+          {
+            "endpoint": "Flag Keys Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/flagkeys",
+            "method": "GET",
+            "status": 501,
+            "isCloudflare": true
+          },
+          {
+            "endpoint": "Track Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/track",
+            "method": "POST",
+            "status": 501,
+            "isCloudflare": true
+          },
+          {
+            "endpoint": "Track GIF Endpoint",
+            "url": "https://edge-agent-test.expedge.workers.dev/api/track.gif?userId=test-user-882986&eventKey=test-event",
+            "method": "GET"
+          }
+        ],
+        "allCloudflare": false
+      },
+      "error": "API endpoint parity test failed"
+    }
+  ]
+}

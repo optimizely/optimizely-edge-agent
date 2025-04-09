@@ -1,0 +1,56 @@
+{
+  "name": "@sjhernandez/ai-workflow-framework",
+  "version": "3.0.0",
+  "description": "Tool to install and update AI Workflow Framework",
+  "main": "index.js",
+  "type": "module",
+  "exports": "./index.js",
+  "bin": {
+    "get-ai-workflow": "index.js"
+  },
+  "files": [
+    "index.js",
+    "get-ai-workflow.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublishOnly": "chmod +x index.js get-ai-workflow.js",
+    "release": "standard-version",
+    "release:minor": "standard-version --release-as minor",
+    "release:major": "standard-version --release-as major",
+    "release:patch": "standard-version --release-as patch",
+    "postrelease": "git push --follow-tags origin v3 && npm publish"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "keywords": [
+    "ai",
+    "workflow",
+    "framework",
+    "installer"
+  ],
+  "author": "",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sjhernandez/ai-workflow.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sjhernandez/ai-workflow/issues"
+  },
+  "homepage": "https://github.com/sjhernandez/ai-workflow#readme",
+  "preferGlobal": false,
+  "installConfig": {
+    "hoistingLimits": "workspaces"
+  },
+  "devDependencies": {
+    "standard-version": "^9.5.0"
+  }
+}

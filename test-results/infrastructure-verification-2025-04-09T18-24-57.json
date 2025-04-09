@@ -1,0 +1,31 @@
+{
+  "timestamp": "2025-04-09T18-24-57",
+  "testId": "infrastructure-verification-2025-04-09T18-24-57",
+  "environment": {
+    "edgeAgentUrl": "https://edge-agent-test.expedge.workers.dev ",
+    "sdkKey": "8mR1pGh8u2ztUP8GqjmQq ",
+    "nodeVersion": "v22.0.0"
+  },
+  "results": [
+    {
+      "test": "Environment Variables",
+      "description": "Verify that environment variables are properly resolved",
+      "result": "PASS",
+      "details": {
+        "resolvedEdgeAgentUrl": "https://edge-agent-test.expedge.workers.dev ",
+        "resolvedSdkKey": "8mR1pGh8u2ztUP8GqjmQq ",
+        "envEdgeAgentUrl": "https://edge-agent-test.expedge.workers.dev ",
+        "envSdkKey": "8mR1pGh8u2ztUP8GqjmQq ",
+        "usingDefaults": false
+      },
+      "error": null
+    },
+    {
+      "test": "Basic Connectivity",
+      "description": "Verify that the Edge Agent endpoint is accessible and running on Cloudflare",
+      "result": "FAIL",
+      "details": null,
+      "error": "TypeError: Invalid URL"
+    }
+  ]
+}

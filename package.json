@@ -3,20 +3,42 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
-    "start": "wrangler dev",
-    "format": "prettier --loglevel warn --write \"src/**/*.{jsx,js}\"",
-    "test": "vitest"
+    "build": "tsc",
+    "build:cloudflare": "tsc -p tsconfig.cloudflare.json",
+    "build:cloudflare:deploy": "tsc -p tsconfig.cloudflare.deploy.json --skipLibCheck",
+    "build:cloudflare:notest": "tsc -p tsconfig.cloudflare.json --skipLibCheck --excludeFiles \"src-v2/tests/**/*.ts\"",
+    "build:vercel": "tsc -p tsconfig.vercel.json",
+    "build:fastly": "tsc -p tsconfig.fastly.json",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:cloudflare": "npm run build:cloudflare && wrangler deploy",
+    "deploy:cloudflare:test": "npm run build:cloudflare:deploy && wrangler deploy --env test",
+    "dev": "npm run build && wrangler dev --local",
+    "dev:cloudflare": "npm run build:cloudflare && wrangler dev --local",
+    "start": "npm run build && wrangler dev --local",
+    "format": "prettier --loglevel warn --write \"{src,src-v2}/**/*.{jsx,js,ts}\"",
+    "test": "vitest",
+    "test:integration": "ts-node src-v2/tests/run-integration-tests.ts",
+    "test:edge-mode": "ts-node src-v2/tests/run-integration-tests.ts --edge-only",
+    "test:agent-mode": "ts-node src-v2/tests/run-integration-tests.ts --agent-only",
+    "test:url-matching": "ts-node src-v2/tests/run-url-matching-tests.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.1.0",
-    "@optimizely/optimizely-sdk": "^5.3.0",
+    "@cloudflare/workers-types": "^4.20250404.0",
+    "@types/jsdom": "^21.1.7",
+    "@types/node-fetch": "^2.6.12",
+    "@types/uuid": "^10.0.0",
     "cookie": "^0.6.0",
+    "node-fetch": "^2.7.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.2",
     "vitest": "1.3.0",
     "wrangler": "^3.0.0"
   },
   "dependencies": {
-    "itty-router": "^5.0.17"
+    "@optimizely/optimizely-sdk": "^5.3.0",
+    "itty-router": "^5.0.17",
+    "jsdom": "^26.0.0",
+    "uuid": "^11.1.0"
   }
 }

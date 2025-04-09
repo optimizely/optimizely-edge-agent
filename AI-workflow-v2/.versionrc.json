@@ -1,0 +1,22 @@
+{
+  "types": [
+    {"type": "feat", "section": "Features"},
+    {"type": "fix", "section": "Bug Fixes"},
+    {"type": "docs", "section": "Documentation"},
+    {"type": "style", "section": "Styling"},
+    {"type": "refactor", "section": "Code Refactoring"},
+    {"type": "perf", "section": "Performance Improvements"},
+    {"type": "test", "section": "Tests"},
+    {"type": "build", "section": "Build System"},
+    {"type": "ci", "section": "Continuous Integration"},
+    {"type": "chore", "section": "Chores"},
+    {"type": "revert", "section": "Reverts"}
+  ],
+  "commitUrlFormat": "{{host}}/{{owner}}/{{repository}}/commit/{{hash}}",
+  "compareUrlFormat": "{{host}}/{{owner}}/{{repository}}/compare/{{previousTag}}...{{currentTag}}",
+  "issueUrlFormat": "{{host}}/{{owner}}/{{repository}}/issues/{{id}}",
+  "userUrlFormat": "{{host}}/{{user}}",
+  "releaseCommitMessageFormat": "chore(release): {{currentTag}}",
+  "skipQuestions": ["body", "footer"],
+  "header": "# Changelog\n\nAll notable changes to the AI Workflow Framework will be documented in this file.\n\nThe format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\nand this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html)."
+} 

@@ -1,0 +1,46 @@
+{
+  "name": "@ai-workflow/installer",
+  "version": "2.1.2",
+  "description": "Installer for AI Workflow Framework V2",
+  "main": "index.js",
+  "type": "module",
+  "exports": "./index.js",
+  "bin": {
+    "ai-workflow-install": "index.js"
+  },
+  "files": [
+    "index.js",
+    "get-ai-workflow.js",
+    "README.md"
+  ],
+  "scripts": {
+    "start": "node index.js",
+    "update-framework": "node get-ai-workflow.js"
+  },
+  "engines": {
+    "node": ">=14.16.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "ai",
+    "workflow",
+    "framework",
+    "installer"
+  ],
+  "author": "Sam Hernandez",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sjhernandez/ai-workflow"
+  },
+  "bugs": {
+    "url": "https://github.com/sjhernandez/ai-workflow/issues"
+  },
+  "homepage": "https://github.com/sjhernandez/ai-workflow#readme",
+  "dependencies": {
+    "fs-extra": "^11.2.0"
+  }
+
+} 
