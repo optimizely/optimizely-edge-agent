@@ -1,110 +1,113 @@
-# Optimizely Edge Agent: Test Coverage Map
+# Optimizely Edge Agent: Test Coverage Map (Enhanced Examples)
 
-This document tracks the current test coverage and identifies gaps for the Optimizely Edge Agent implementation.
+This document tracks the required test coverage and identifies gaps for the Optimizely Edge Agent implementation, focusing on parameter handling and core features.
 
 ## Existing Test Coverage
 
 | Test Category | Test File | Implementation | Status | Environment | Description |
-|--------------|-----------|----------------|--------|-------------|-------------|
-| [To be populated] | | | | | |
+|---------------|-----------|----------------|--------|-------------|-------------|
+| Infrastructure| `infrastructure-verification.js` | `critical-testing-project` | ✅ Working | Wrangler Dev | Basic connectivity & CF env check |
+| *[Populate with findings from Task 1.3]* | | | | | |
 
 ## Required Tests by Feature
 
-### Infrastructure Validation
+### Agent Mode (POST) - Parameter Handling
 
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| Infrastructure Verification | Basic connectivity to edge agent and verification of Cloudflare environment | | High | None |
-| Environment Configuration | Validates environment variables and configuration | | High | Infrastructure Verification |
+| Test ID                      | Feature Area        | Scenario Description                                  | Input Method | Request Method | Key Parameters        | Expected Outcome                     | Implementation Status | Priority | Dependencies |
+| :--------------------------- | :------------------ | :---------------------------------------------------- | :----------- | :------------- | :-------------------- | :----------------------------------- | :-------------------- | :------- | :----------- |
+| Agent_Decide_SDKKey_Header   | Decide API          | Verify /decide processes SDK Key via Header         | Header       | POST           | `X-Optimizely-SDK-Key`| 200 OK, valid decision             | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_SDKKey_Query    | Decide API          | Verify /decide processes SDK Key via Query          | Query        | POST           | `sdkKey`              | 200 OK, valid decision             | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_SDKKey_Body     | Decide API          | Verify /decide processes SDK Key via Body           | Body         | POST           | `sdkKey`              | 200 OK, valid decision             | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_SDKKey_Prec     | Decide API          | Test Header > Query > Body precedence for SDK Key     | All          | POST           | `sdkKey` (all sources)| 200 OK, uses Header value          | 📝 To Be Implemented  | High     | Above 3      |
+| Agent_Decide_SDKKey_Missing  | Decide API          | Verify /decide fails (400) if SDK Key missing       | None         | POST           | `sdkKey`              | 400 Bad Request                      | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_UserID_Header   | Decide API          | Verify /decide processes User ID via Header         | Header       | POST           | `X-Optimizely-User-Id`| 200 OK, uses correct UserID        | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_UserID_Query    | Decide API          | Verify /decide processes User ID via Query          | Query        | POST           | `userId`              | 200 OK, uses correct UserID        | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_UserID_Body     | Decide API          | Verify /decide processes User ID via Body (`user.id`) | Body         | POST           | `user.id`             | 200 OK, uses correct UserID        | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_UserID_Prec     | Decide API          | Test Header > Query > Body precedence for User ID     | All          | POST           | `userId` (all sources)| 200 OK, uses Header value          | 📝 To Be Implemented  | High     | Above 3      |
+| Agent_Decide_Attrs_Header    | Decide API          | Verify /decide processes Attributes via Header      | Header       | POST           | `X-Optimizely-Attrs`  | 200 OK, decision reflects attrs    | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_Attrs_Query     | Decide API          | Verify /decide processes Attributes via Query       | Query        | POST           | `attributes`          | 200 OK, decision reflects attrs    | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_Attrs_Body      | Decide API          | Verify /decide processes Attributes via Body        | Body         | POST           | `user.attributes`     | 200 OK, decision reflects attrs    | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide_Attrs_Prec      | Decide API          | Test Attribute precedence/merge logic               | All          | POST           | `attributes`          | 200 OK, correct merge/override     | 📝 To Be Implemented  | Medium   | Above 3      |
+| Agent_Track_EventKey_Header  | Track API           | Verify /track processes Event Key via Header        | Header       | POST           | `X-Optimizely-Event-Key`| 200 OK                             | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Track_EventKey_Query   | Track API           | Verify /track processes Event Key via Query         | Query        | POST           | `eventKey`            | 200 OK                             | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Track_EventKey_Body    | Track API           | Verify /track processes Event Key via Body          | Body         | POST           | `eventKey`            | 200 OK                             | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Track_EventKey_Missing | Track API           | Verify /track fails (400) if Event Key missing      | None         | POST           | `eventKey`            | 400 Bad Request                      | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Track_Tags_Header      | Track API           | Verify /track processes Event Tags via Header       | Header       | POST           | `X-Optimizely-Event-Tags`| 200 OK, tags tracked             | 📝 To Be Implemented  | Medium   | Infra        |
+| Agent_Track_Tags_Query       | Track API           | Verify /track processes Event Tags via Query        | Query        | POST           | `eventTags`           | 200 OK, tags tracked             | 📝 To Be Implemented  | Medium   | Infra        |
+| Agent_Track_Tags_Body        | Track API           | Verify /track processes Event Tags via Body         | Body         | POST           | `eventTags`           | 200 OK, tags tracked             | 📝 To Be Implemented  | Medium   | Infra        |
+| Agent_Decide_Opt_Reasons     | Decide API Options  | Test `INCLUDE_REASONS` option via Header/Query/Body | All          | POST           | `decideOptions`       | 200 OK, reasons array in response  | 📝 To Be Implemented  | Medium   | Infra        |
+| Agent_Decide_Opt_ExcludeVars | Decide API Options  | Test `EXCLUDE_VARIABLES` option via Header/Query/Body| All          | POST           | `decideOptions`       | 200 OK, variables object missing | 📝 To Be Implemented  | Medium   | Infra        |
+| Agent_Decide4Keys_Body       | Decide For Keys API | Test /decide-for-keys with `flagKeys` in Body       | Body         | POST           | `flagKeys`            | 200 OK, multiple decisions       | 📝 To Be Implemented  | High     | Infra        |
+| Agent_Decide4Keys_Query      | Decide For Keys API | Test /decide-for-keys with `keys` in Query          | Query        | POST           | `keys` (multiple)     | 200 OK, multiple decisions       | 📝 To Be Implemented  | High     | Infra        |
 
-### Edge Mode Tests (GET Requests)
+### Edge Mode (GET) - `cdnVariationSettings` & Core Logic
 
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| URL Matching | Tests if URLs are correctly matched against cdnExperimentURL patterns | | High | Infrastructure Verification |
-| Variation Content Serving | Tests if correct variation content is served based on bucketing | | High | URL Matching |
-| Caching Behavior | Tests caching behavior based on cacheKey settings | | High | Variation Content Serving |
-| Response Headers | Tests if correct headers are included in responses | | Medium | URL Matching |
-| Origin Forwarding | Tests forwardRequestToOrigin functionality | | Medium | URL Matching |
-| Cache TTL | Tests cache time-to-live settings | | Medium | Caching Behavior |
-| Error Handling | Tests error handling for edge mode | | Medium | Infrastructure Verification |
+| Test ID                      | Feature Area         | Scenario Description                                      | Input Method | Request Method | Key Parameters         | Expected Outcome                          | Implementation Status | Priority | Dependencies |
+| :--------------------------- | :------------------- | :-------------------------------------------------------- | :----------- | :------------- | :--------------------- | :---------------------------------------- | :-------------------- | :------- | :----------- |
+| Edge_URLMatch_ExactPath      | URL Matching         | Test exact path match against `cdnExperimentURL`          | N/A          | GET            | `cdnExperimentURL`     | Edge Mode triggered, correct variation    | 📝 To Be Implemented  | High     | Infra        |
+| Edge_URLMatch_TrailingSlash  | URL Matching         | Test path match with/without trailing slash             | N/A          | GET            | `cdnExperimentURL`     | Edge Mode triggered                       | 📝 To Be Implemented  | Medium   | Infra        |
+| Edge_URLMatch_Regex          | URL Matching         | Test regex match against `pathRegex`                      | N/A          | GET            | `pathRegex`            | Edge Mode triggered                       | 📝 To Be Implemented  | High     | Infra        |
+| Edge_URLMatch_ReqQuery       | URL Matching         | Test match requires `requiredQueryParams`                 | N/A          | GET            | `requiredQueryParams`  | Match only if params present              | 📝 To Be Implemented  | Medium   | Infra        |
+| Edge_URLMatch_IgnoreQuery    | URL Matching         | Test match ignores `ignoreQueryParams`                    | N/A          | GET            | `ignoreQueryParams`    | Match even if ignored params differ       | 📝 To Be Implemented  | Medium   | Infra        |
+| Edge_ContentFetch_Basic      | Content Fetching     | Verify content fetched from `cdnResponseURL`              | N/A          | GET            | `cdnResponseURL`       | Response body matches target URL content  | 📝 To Be Implemented  | High     | Edge_URLMatch |
+| Edge_Forward_True            | Origin Forwarding    | Verify request forwarded when `forwardRequestToOrigin=true` | N/A          | GET            | `forwardRequestToOrigin`| Origin receives request                   | 📝 To Be Implemented  | High     | Edge_URLMatch |
+| Edge_Forward_Headers         | Origin Forwarding    | Verify Optly headers/cookies added to forwarded request   | N/A          | GET            | `forwardRequestToOrigin`| Origin receives Optly headers/cookies     | 📝 To Be Implemented  | High     | Edge_Forward_True |
+| Edge_Forward_False           | Origin Forwarding    | Verify request NOT forwarded when `forwardRequestToOrigin=false`| N/A          | GET            | `forwardRequestToOrigin`| Response served directly/from cdnRespURL| 📝 To Be Implemented  | High     | Edge_URLMatch |
+| Edge_VisitorID_Cookie        | Visitor ID           | Verify visitor ID read from cookie                        | Cookie       | GET            | `optly_edge_visitor_id`| Consistent bucketing                    | 📝 To Be Implemented  | High     | Infra        |
+| Edge_VisitorID_Query         | Visitor ID           | Verify visitor ID read from `visitor_id` query param      | Query        | GET            | `visitor_id`           | Consistent bucketing                    | 📝 To Be Implemented  | Medium   | Infra        |
+| Edge_VisitorID_Generate      | Visitor ID           | Verify new visitor ID generated & set via Set-Cookie      | None         | GET            |                        | `Set-Cookie` header present             | 📝 To Be Implemented  | High     | Infra        |
+| Edge_Audience_Attrs          | Audience Eval        | Verify audience eval uses attributes (cookie/header)      | Cookie/Hdr   | GET            | `attributes`           | Correct variation based on attributes   | 📝 To Be Implemented  | High     | Edge_VisitorID |
 
-### Agent Mode Tests (POST Requests)
+### Caching Logic
 
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| Feature Flag Decisions | Tests basic feature flag decisions | | High | Infrastructure Verification |
-| Experiment Decisions | Tests experiment variation assignments | | High | Infrastructure Verification |
-| Batch Decisions | Tests retrieving decisions for multiple flags | | High | Feature Flag Decisions |
-| Event Tracking | Tests conversion event tracking | | High | Infrastructure Verification |
-| Decision Options | Tests includeReasons, excludeVariables options | | Medium | Feature Flag Decisions |
-| Error Handling | Tests error responses for agent mode | | Medium | Infrastructure Verification |
+| Test ID                      | Feature Area         | Scenario Description                                      | Input Method | Request Method | Key Parameters         | Expected Outcome                          | Implementation Status | Priority | Dependencies |
+| :--------------------------- | :------------------- | :-------------------------------------------------------- | :----------- | :------------- | :--------------------- | :---------------------------------------- | :-------------------- | :------- | :----------- |
+| Cache_KeyGen_Variation       | Cache Key Generation | Verify `cacheKey='VARIATION_KEY'` generates correct key   | N/A          | GET            | `cacheKey`             | Key includes flag+variation               | 📝 To Be Implemented  | High     | Edge_URLMatch |
+| Cache_KeyGen_Custom          | Cache Key Generation | Verify `cacheKey='custom'` uses custom string             | N/A          | GET            | `cacheKey`             | Key includes 'custom'                     | 📝 To Be Implemented  | Medium   | Edge_URLMatch |
+| Cache_Behavior_Hit           | Cache Behavior       | Verify cache HIT for subsequent identical requests        | N/A          | GET            |                        | Cache status header indicates HIT         | 📝 To Be Implemented  | High     | Cache_KeyGen |
+| Cache_Behavior_Miss          | Cache Behavior       | Verify cache MISS for first request / expired cache       | N/A          | GET            |                        | Cache status header indicates MISS        | 📝 To Be Implemented  | High     | Cache_KeyGen |
+| Cache_Behavior_TTL           | Cache Behavior       | Verify `cacheTTL` setting is respected                    | N/A          | GET            | `cacheTTL`             | Cache MISS after TTL                      | 📝 To Be Implemented  | High     | Cache_Behavior_Hit |
+| Cache_Behavior_OriginCache   | Cache Behavior       | Verify `cacheRequestToOrigin=true` caches origin response | N/A          | GET            | `cacheRequestToOrigin` | Subsequent requests HIT cache             | 📝 To Be Implemented  | High     | Edge_Forward_True |
+| Cache_Behavior_NoOriginCache | Cache Behavior       | Verify `cacheRequestToOrigin=false` prevents origin cache | N/A          | GET            | `cacheRequestToOrigin` | Subsequent requests MISS cache            | 📝 To Be Implemented  | High     | Edge_Forward_True |
+| Cache_Behavior_Override      | Cache Behavior       | Verify `overrideCache=true` bypasses cache read           | Query        | GET/POST       | `overrideCache`        | Cache status MISS even if item cached     | 📝 To Be Implemented  | Medium   | Cache_Behavior_Hit |
 
-### Forced Variations Tests
+### Administrative API Endpoints
 
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| Header-based Forced Variations | Tests setting forced variations via headers | | High | Feature Flag Decisions |
-| JSON-based Forced Variations | Tests setting forced variations via JSON | | High | Feature Flag Decisions |
-| Query-based Forced Variations | Tests setting forced variations via query parameters | | High | Feature Flag Decisions |
-| Precedence Rules | Tests precedence when multiple forced variation methods are used | | Medium | All Forced Variation tests |
-| Get/Set/Remove API | Tests the API endpoints for forced variations | | Medium | Feature Flag Decisions |
-
-### Parameter Handling Tests
-
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| Query Parameter Handling | Tests extracting parameters from query strings | | High | Infrastructure Verification |
-| Header Parameter Handling | Tests extracting parameters from headers | | High | Infrastructure Verification |
-| JSON Body Parameter Handling | Tests extracting parameters from JSON body | | High | Infrastructure Verification |
-| Parameter Precedence | Tests precedence rules when parameters appear in multiple sources | | Medium | All Parameter Handling tests |
-
-### KV Storage Tests
-
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| Flag Key Storage | Tests storing and retrieving flag keys from KV | | Medium | Infrastructure Verification |
-| Datafile Storage | Tests storing and retrieving the datafile from KV | | Medium | Infrastructure Verification |
-| User Profile Storage | Tests user profile service with KV | | Medium | Infrastructure Verification |
-
-### Type and Validation Tests
-
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| Parameter Validation | Tests validation of API parameters | | Medium | Infrastructure Verification |
-| Lowercase Variation | Tests handling of "on" variations with case sensitivity | | Medium | Feature Flag Decisions |
-
-### CDN-Specific Tests
-
-| Test Name | Description | Implementation Status | Priority | Dependencies |
-|-----------|-------------|----------------------|----------|--------------|
-| Cloudflare Workers | Tests Cloudflare Workers specific functionality | | High | Infrastructure Verification |
-| Vercel Edge Functions | Tests Vercel-specific functionality | | Medium | Infrastructure Verification |
-| Fastly Compute@Edge | Tests Fastly-specific functionality | | Medium | Infrastructure Verification |
+| Test ID                      | Feature Area         | Scenario Description                                      | Input Method | Request Method | Key Parameters         | Expected Outcome                          | Implementation Status | Priority | Dependencies |
+| :--------------------------- | :------------------- | :-------------------------------------------------------- | :----------- | :------------- | :--------------------- | :---------------------------------------- | :-------------------- | :------- | :----------- |
+| Admin_GetDatafile_OK         | Datafile API         | Verify `GET /api/datafile` retrieves correct datafile     | Query        | GET            | `sdkKey`               | 200 OK, correct datafile body           | 📝 To Be Implemented  | High     | Infra, Admin_PostDatafile |
+| Admin_GetDatafile_404        | Datafile API         | Verify `GET /api/datafile` returns 404 if not found       | Query        | GET            | `sdkKey`               | 404 Not Found                             | 📝 To Be Implemented  | High     | Infra        |
+| Admin_PostDatafile_OK        | Datafile API         | Verify `POST /api/datafile` updates datafile (Admin)      | Body         | POST           | `sdkKey`, body         | 200 OK, success=true                    | 📝 To Be Implemented  | High     | Infra        |
+| Admin_PostDatafile_Auth      | Datafile API         | Verify `POST /api/datafile` requires Admin Token          | Body         | POST           | `sdkKey`, body         | 401/403 Unauthorized                    | 📝 To Be Implemented  | High     | Infra        |
+| Admin_GetFlagKeys_OK         | Flag Keys API        | Verify `GET /api/flagkeys` retrieves correct keys         | Query        | GET            | `sdkKey`               | 200 OK, correct keys array              | 📝 To Be Implemented  | High     | Infra, Admin_PostFlagKeys |
+| Admin_PostFlagKeys_OK        | Flag Keys API        | Verify `POST /api/flagkeys` updates keys (Admin)          | Body         | POST           | `sdkKey`, `flagKeys`   | 200 OK, success=true                    | 📝 To Be Implemented  | High     | Infra        |
+| Admin_PostFlagKeys_Auth      | Flag Keys API        | Verify `POST /api/flagkeys` requires Admin Token          | Body         | POST           | `sdkKey`, `flagKeys`   | 401/403 Unauthorized                    | 📝 To Be Implemented  | High     | Infra        |
+| Admin_GetSDKInfo_OK          | SDK Info API         | Verify `GET /api/sdk` returns agent info                  | N/A          | GET            |                        | 200 OK, correct agent info              | 📝 To Be Implemented  | Low      | Infra        |
+| Admin_GetStatus_OK           | Admin API            | Verify `GET /api/admin/status` returns status (Admin)     | Header       | GET            | `X-Admin-Token`        | 200 OK, status object                   | 📝 To Be Implemented  | Medium   | Infra        |
+| Admin_GetStatus_Auth         | Admin API            | Verify `GET /api/admin/status` requires Admin Token       | None         | GET            |                        | 401/403 Unauthorized                    | 📝 To Be Implemented  | Medium   | Infra        |
+| Admin_ClearCache_OK          | Admin API            | Verify `POST /api/admin/cache/clear` clears cache (Admin) | Header       | POST           | `X-Admin-Token`        | 200 OK, subsequent requests miss cache  | 📝 To Be Implemented  | Medium   | Infra, Caching Tests |
+| Admin_ClearCache_Auth        | Admin API            | Verify `POST /api/admin/cache/clear` requires Admin Token | None         | POST           |                        | 401/403 Unauthorized                    | 📝 To Be Implemented  | Medium   | Infra        |
 
 ## Test Gaps Analysis
 
-[To be populated as existing tests are analyzed]
+*[This section will be populated based on Task 1.4 findings]*
+
+*   **Initial Gap:** Lack of explicit tests for parameter precedence. (Addressed in Required Tests)
+*   **Initial Gap:** Insufficient testing of `cdnVariationSettings` sub-options. (Addressed in Required Tests)
+*   **Initial Gap:** Caching logic, especially key generation, needs dedicated tests. (Addressed in Required Tests)
+*   **Initial Gap:** Limited testing of error conditions for different input methods. (Addressed in Required Tests)
 
 ## Testing Environment Requirements
 
-### Local Testing
-- **Wrangler Dev**: Local development environment with logging capability
-- **Configuration**: SDK key, feature flags, experiments
-- **Tools**: Necessary tools for test execution and validation
+[Existing Requirements]
 
-### Staging Testing
-- **Deployed Edge Agent**: Testing against a staging deployment
-- **Configuration**: Staging SDK key and configurations
-- **Monitoring**: Access to logs and performance metrics
+## Implementation Priorities (Refined)
 
-### Production Validation
-- **Validation Approach**: Approach for production validation
-- **Risk Mitigation**: Strategies to minimize risk during validation
-
-## Implementation Priorities
-
-1. **Phase 1**: Infrastructure verification and basic connectivity tests
-2. **Phase 2**: Core functionality tests (Edge Mode and Agent Mode basics)
-3. **Phase 3**: Advanced feature tests
-4. **Phase 4**: Performance and reliability tests 
+1.  **Phase 1**: Infrastructure verification and basic connectivity tests.
+2.  **Phase 2**: Agent Mode core functionality (Decide/Track) with basic Header/Query/Body parameter handling.
+3.  **Phase 3**: Edge Mode core functionality (URL Matching, Content Fetching) and basic `cdnVariationSettings`.
+4.  **Phase 4**: Comprehensive parameter precedence tests for Agent Mode.
+5.  **Phase 5**: Comprehensive `cdnVariationSettings` tests (Forwarding, Caching, Advanced Matching).
+6.  **Phase 6**: Caching logic tests (KeyGen, TTL, Override).
+7.  **Phase 7**: Administrative API endpoint tests.
+8.  **Phase 8**: Advanced features (Forced Variations, User Profile Service - if applicable).
