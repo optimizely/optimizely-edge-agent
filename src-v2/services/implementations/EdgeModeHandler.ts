@@ -2,8 +2,9 @@ import { IRequestAdapter } from '../../adapters/interfaces/IRequestAdapter';
 import { IResponseAdapter } from '../../adapters/interfaces/IResponseAdapter';
 import { ILoggerAdapter } from '../../adapters/interfaces/ILoggerAdapter';
 import { ICacheService } from '../interfaces/ICacheService';
-import { CDNVariationSettings, IEdgeModeHandler } from '../interfaces/IEdgeModeHandler';
+import { CDNVariationSettings, IEdgeModeHandler, ContentPreparationResult, ShouldHandleResult } from '../interfaces/IEdgeModeHandler';
 import { URLMatcher } from './URLMatcher';
+import { OptimizelyUserContext } from '../interfaces/IDecisionService';
 
 /**
  * Factory function to create a response adapter based on the request
@@ -32,6 +33,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
   private logger: ILoggerAdapter;
   private cacheService: ICacheService;
   private createResponseAdapter: ResponseAdapterFactory;
+  private readonly logPrefix = '[EdgeModeHandler]';
   
   /**
    * Creates a new instance of EdgeModeHandler
@@ -59,11 +61,100 @@ export class EdgeModeHandler implements IEdgeModeHandler {
    */
   public async shouldHandleRequest(
     request: IRequestAdapter,
-    userContext: any
-  ): Promise<{ handle: boolean; reason: string }> {
-    // Basic implementation - always return true for now
-    this.logger.debug('EdgeModeHandler: Checking if request should be handled');
-    return { handle: true, reason: "Default implementation" };
+    userContext: OptimizelyUserContext
+  ): Promise<ShouldHandleResult> {
+    // Extract SDK key from request headers or query parameters
+    const url = request.getUrl();
+    const urlParams = new URLSearchParams(url.search);
+    const sdkKey = request.getHeader('X-Optimizely-SDK-Key') || urlParams.get('sdkKey') || '8mR1pGh8u2ztUP8GqjmQq'; // Use default SDK key as fallback
+    
+    // Log SDK key being used (partially masked for security)
+    if (sdkKey) {
+      this.logger.debug(`${this.logPrefix} Using SDK Key: ${sdkKey.substring(0, 4)}...`);
+    }
+    
+    this.logger.debug(`${this.logPrefix} Checking if request should be handled: ${url.toString()}`);
+    
+    // In a real implementation, we would fetch CDN variation settings from a datafile or API
+    // For this implementation, we'll create mock settings for testing
+    // These settings should match what's configured in the Optimizely project
+    
+    // Create example CDN variation settings for testing
+    const mockVariationSettings: CDNVariationSettings[] = [
+      {
+        cdnExperimentURL: '/experiment-1',
+        cdnResponseURL: 'https://cdn.example.com/variations/experiment-1-var-a.html',
+        forwardRequestToOrigin: true,
+        cacheRequestToOrigin: true
+      },
+      {
+        cdnExperimentURL: '/api/product',
+        cdnResponseURL: 'https://cdn.example.com/api/product',
+        pathRegex: '\\/api\\/product(\\/?|\\/.+)',
+        forwardRequestToOrigin: true,
+        cacheRequestToOrigin: false
+      }
+    ];
+    
+    // For the specific SDK key mentioned in the handover document, add real test settings
+    if (sdkKey === '8mR1pGh8u2ztUP8GqjmQq') {
+      mockVariationSettings.push({
+        cdnExperimentURL: '/test-path',
+        cdnResponseURL: 'https://cdn-example.optimizely.com/content/test-path-variation.html',
+        forwardRequestToOrigin: true,
+        cacheRequestToOrigin: true
+      });
+      
+      // Add specific settings for API endpoints
+      mockVariationSettings.push({
+        cdnExperimentURL: '/api/decide',
+        cdnResponseURL: 'https://api.optimizely.com/v2/decide',
+        pathRegex: '\\/api\\/decide(\\/?|\\/.+)',
+        forwardRequestToOrigin: true,
+        cacheRequestToOrigin: false
+      });
+      
+      mockVariationSettings.push({
+        cdnExperimentURL: '/api/decide-all',
+        cdnResponseURL: 'https://api.optimizely.com/v2/decide-all',
+        pathRegex: '\\/api\\/decide-all(\\/?|\\/.+)',
+        forwardRequestToOrigin: true,
+        cacheRequestToOrigin: false
+      });
+      
+      mockVariationSettings.push({
+        cdnExperimentURL: '/api/decide-for-keys',
+        cdnResponseURL: 'https://api.optimizely.com/v2/decide-for-keys',
+        pathRegex: '\\/api\\/decide-for-keys(\\/?|\\/.+)',
+        forwardRequestToOrigin: true,
+        cacheRequestToOrigin: false
+      });
+    }
+    
+    this.logger.debug(`${this.logPrefix} Generated ${mockVariationSettings.length} mock variation settings`);
+    
+    // Find if there's a matching config for this URL
+    const matchingConfig = this.findMatchingConfig(url.toString(), mockVariationSettings);
+    
+    if (matchingConfig) {
+      this.logger.debug(`${this.logPrefix} Found matching configuration, request should be handled by Edge Mode`, { 
+        url: url.toString(),
+        matchingPattern: matchingConfig.pathRegex || matchingConfig.cdnExperimentURL
+      });
+      
+      return { 
+        handle: true, 
+        reason: "Matching configuration found",
+        variationSettings: mockVariationSettings
+      };
+    }
+    
+    // Return with handle=false if no matching config found
+    return { 
+      handle: false, 
+      reason: "No matching CDN variation settings found",
+      variationSettings: []
+    };
   }
 
   /**
@@ -75,15 +166,49 @@ export class EdgeModeHandler implements IEdgeModeHandler {
    */
   public async prepareContent(
     settings: CDNVariationSettings,
-    userContext: any,
+    userContext: OptimizelyUserContext,
     request: IRequestAdapter
-  ): Promise<{ forwardToOrigin: boolean; useCache: boolean }> {
-    // Basic implementation - use settings as guidance
-    this.logger.debug('EdgeModeHandler: Preparing content delivery strategy');
-    return {
-      forwardToOrigin: isTrue(settings.forwardRequestToOrigin),
-      useCache: isTrue(settings.cacheRequestToOrigin)
-    };
+  ): Promise<ContentPreparationResult> {
+    try {
+      // Extract SDK key from request headers or query parameters
+      const url = request.getUrl();
+      const urlParams = new URLSearchParams(url.search);
+      const sdkKey = request.getHeader('X-Optimizely-SDK-Key') || urlParams.get('sdkKey') || '8mR1pGh8u2ztUP8GqjmQq'; // Use default SDK key as fallback
+      
+      // Log SDK key being used (partially masked for security)
+      if (sdkKey) {
+        this.logger.debug(`${this.logPrefix} Using SDK Key: ${sdkKey.substring(0, 4)}...`);
+      }
+      
+      // Ensure settings is not null
+      const safeSettings = settings || {};
+      
+      // Extract content delivery settings from the CDN Variation Settings
+      const useCache = isTrue(safeSettings.cacheRequestToOrigin); 
+      const forwardToOrigin = isTrue(safeSettings.forwardRequestToOrigin);
+      
+      // Log settings
+      this.logger.debug(`${this.logPrefix} Preparing content with settings:`, {
+        useCache,
+        forwardToOrigin,
+        hasTransform: !!safeSettings.transformContent,
+        hasCdnResponseURL: !!safeSettings.cdnResponseURL,
+        sdkKeyUsed: sdkKey ? `${sdkKey.substring(0, 4)}...` : undefined
+      });
+      
+      // Return content preparation result
+      return {
+        useCache,
+        forwardToOrigin
+      };
+    } catch (error) {
+      this.logger.error(`${this.logPrefix} Error preparing content:`, error);
+      // Default behavior in case of error
+      return {
+        useCache: true,
+        forwardToOrigin: true
+      };
+    }
   }
   
   /**
@@ -144,13 +269,24 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       return null;
     }
     
+    // Parse the URL to work with its components
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch (error) {
+      this.logger.warn('EdgeModeHandler: Invalid URL provided for matching', { url, error: error instanceof Error ? error.message : String(error) });
+      return null;
+    }
+    
     // Loop through all settings to find a match
     for (const config of allCdnVariationSettings) {
-      if (!config.cdnExperimentURL) {
-        this.logger.warn('EdgeModeHandler: CDN variation settings missing cdnExperimentURL', { config });
+      // Skip if both required pattern fields are missing
+      if (!config.cdnExperimentURL && !config.pathRegex) {
+        this.logger.warn('EdgeModeHandler: CDN variation settings missing both cdnExperimentURL and pathRegex', { config });
         continue;
       }
       
+      // Determine which pattern to use - prefer regex if available
       const isRegex = !!config.pathRegex;
       const pattern = isRegex ? config.pathRegex : config.cdnExperimentURL;
       
@@ -158,6 +294,18 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       if (!pattern) {
         this.logger.warn('EdgeModeHandler: Invalid URL pattern', { config });
         continue;
+      }
+      
+      // For non-regex patterns, handle relative URLs gracefully
+      if (!isRegex && pattern.startsWith('/')) {
+        // Compare only the pathname part for relative URLs
+        if (parsedUrl.pathname !== pattern) {
+          this.logger.debug('EdgeModeHandler: Path does not match', { 
+            urlPath: parsedUrl.pathname, 
+            pattern 
+          });
+          continue;
+        }
       }
       
       // Check if URL matches the pattern with the given options

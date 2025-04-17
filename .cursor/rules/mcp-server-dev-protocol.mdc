@@ -1,0 +1,22 @@
+---
+description: Implementation guidelines for MCP server development: phased approach, file organization, component integration, error handling, and progress tracking.
+globs: 
+alwaysApply: false
+---
+---
+id: mcp-server-dev-protocol
+title: MCP Server Development Protocol
+description: Rules for implementing the MCP Server code based on the phased plan.
+appliesTo: ["src/**/*.js", "tests/**/*.js", "config/**/*.json", "*.js"]
+priority: high
+tags: ["mcp-dev", "implementation", "process"]
+---
+
+1.  **Follow Phased Plan:** Implement components strictly according to the numbered steps provided in the master instruction set (derived from `planning docs/Phase*.md`). Do not skip steps or implement components out of order.
+2.  **Reference Plan Docs:** For each step, refer to the specified section in the corresponding `planning docs/Phase*.md` file for detailed requirements, function signatures, and logic.
+3.  **File Creation:** Create files and directories exactly as specified in the instructions for each step.
+4.  **Modular Implementation:** Implement logic within the designated service files (`src/services/`), route handlers within the route files (`src/routes/`), and utility functions in `src/utils/`. Maintain separation of concerns.
+5.  **Use Existing Components:** When implementing a new component (e.g., `TaskService`), utilize previously implemented components (e.g., `PlanService`, `PersistenceService`) as specified in the instructions or plan documents. Ensure correct imports (use ES Module syntax).
+6.  **Error Handling:** Implement basic error handling (try/catch blocks) in service functions and route handlers. Log errors using the `logger.js` utility. Pass errors to the Express error handler in routes (`next(error)`).
+7.  **Code Clarity:** Generate clear, readable code with appropriate comments explaining complex logic. Follow standard JavaScript/Node.js conventions.
+8.  **Confirm Completion:** Use the `=== STARTING STEP X.Y ===` and `=== COMPLETED STEP X.Y ===` markers accurately as instructed to track progress within this development task.

@@ -1,0 +1,23 @@
+{
+  "name": "edge-agent-logging-framework",
+  "version": "1.0.0",
+  "description": "Structured logging framework for Edge Agent testing audit",
+  "main": "logger.js",
+  "scripts": {
+    "test": "node test-logger.js"
+  },
+  "keywords": [
+    "logging",
+    "testing",
+    "audit",
+    "cloudflare",
+    "evidence"
+  ],
+  "author": "Testing Audit Reconciliation Project",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "uuid": "^9.0.0",
+    "node-fetch": "^2.6.7"
+  }
+} 

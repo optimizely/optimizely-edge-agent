@@ -1,0 +1,33 @@
+{
+  "success": true,
+  "environment": "local",
+  "isLocalEnvironment": true,
+  "results": [
+    {
+      "name": "Basic parameter handling",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    },
+    {
+      "name": "Empty attributes",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    },
+    {
+      "name": "No attributes field",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    }
+  ],
+  "summary": {
+    "totalTests": 3,
+    "passedTests": 3,
+    "failedTests": 0
+  }
+}

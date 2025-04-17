@@ -34,6 +34,15 @@ export class RequestForwarder implements IRequestForwarder {
   ): Promise<RequestForwardResult> {
     const startTime = Date.now();
     const originalUrl = request.getUrl().toString();
+    
+    // Ensure targetUrl exists - use originalUrl as fallback if it doesn't
+    if (options.targetUrl === null || options.targetUrl === undefined) {
+      this.logger.warn('RequestForwarder: options.targetUrl is null or undefined, using originalUrl as fallback', {
+        originalUrl
+      });
+      options.targetUrl = originalUrl;
+    }
+    
     const targetUrl = this.buildForwardUrl(originalUrl, options.targetUrl, {
       additionalQueryParams: options.additionalQueryParams,
       removeQueryParams: options.removeQueryParams,
@@ -198,13 +207,21 @@ export class RequestForwarder implements IRequestForwarder {
    */
   public buildForwardUrl(
     originalUrl: string,
-    targetUrl: string,
+    targetUrl: string | null | undefined,
     options?: {
       additionalQueryParams?: Record<string, string>;
       removeQueryParams?: string[];
       preserveOriginalQueryParams?: boolean;
     }
   ): string {
+    // If targetUrl is null or undefined, use originalUrl as fallback
+    if (targetUrl === null || targetUrl === undefined) {
+      this.logger.warn('RequestForwarder: targetUrl is null or undefined, using originalUrl as fallback', {
+        originalUrl
+      });
+      targetUrl = originalUrl;
+    }
+    
     // Parse the original and target URLs
     let parsedOriginalUrl: URL;
     let parsedTargetUrl: URL;
@@ -232,8 +249,8 @@ export class RequestForwarder implements IRequestForwarder {
         targetUrl
       });
       
-      // Return the target URL as-is if we can't parse it
-      return targetUrl;
+      // Return the original URL as fallback if we can't parse the target URL
+      return originalUrl;
     }
     
     // Preserve query parameters from the original URL if requested

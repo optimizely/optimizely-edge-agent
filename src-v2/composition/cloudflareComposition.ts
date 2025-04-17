@@ -140,31 +140,12 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     return cloudflareFactory.createResponseAdapter(request);
   };
   
-  // Create Edge Mode Handler - implementation may be incomplete
-  // This will need to be completed with shouldHandleRequest and prepareContent methods
-  const edgeModeHandler = {
-    processRequest: (request: IRequestAdapter, cdnVariationSettings: any) => {
-      return Promise.resolve(createResponseAdapter(request));
-    },
-    findMatchingConfig: (url: string, allCdnVariationSettings: any[]) => {
-      return null;
-    },
-    fetchContent: (cdnResponseURL: string, request: IRequestAdapter) => {
-      return Promise.resolve(createResponseAdapter(request));
-    },
-    transformContent: (content: string, transformFn: string) => {
-      return content;
-    },
-    forwardToOrigin: (request: IRequestAdapter, cdnVariationSettings: any) => {
-      return Promise.resolve(createResponseAdapter(request));
-    },
-    shouldHandleRequest: (request: IRequestAdapter, userContext: any) => {
-      return Promise.resolve({ handle: false, reason: "Not implemented" });
-    },
-    prepareContent: (settings: any, userContext: any, request: IRequestAdapter) => {
-      return Promise.resolve({ forwardToOrigin: false, useCache: false });
-    }
-  } as IEdgeModeHandler;
+  // Create Edge Mode Handler with full implementation
+  const edgeModeHandler = new EdgeModeHandler(
+    logger,
+    cacheService,
+    createResponseAdapter
+  );
   
   // Create Content Fetcher
   const contentFetcher = new ContentFetcher(

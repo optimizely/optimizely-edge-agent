@@ -289,31 +289,43 @@ export class ConfigurationService implements IConfigurationService {
    * @param headers - The headers.
    */
   private extractComplexHeaderValues(headers: Headers): void {
-    // Extract complex objects from headers
-    const objectHeaderMappings: Record<string, keyof OptimizelyConfigOptions> = {
-      [this.settings.attributesHeader]: 'attributes',
-      [this.settings.eventTagsHeader]: 'eventTags',
-      [this.settings.decideOptionsHeader]: 'decideOptions'
-    };
-    
-    // Process each object header
-    for (const [headerName, configKey] of Object.entries(objectHeaderMappings)) {
-      if (headers.has(headerName)) {
-        const headerValue = headers.get(headerName);
-        try {
-          const parsedValue = headerValue ? JSON.parse(headerValue) : null;
-          if (parsedValue !== null) {
-            this.setConfigValue(configKey, parsedValue, 'headers');
-          }
-        } catch (error) {
-          this.logger.debug(`${this.logPrefix} Failed to parse ${headerName} as JSON:`, error);
-          // For decideOptions, treat as comma-separated list if JSON parse fails
-          if (configKey === 'decideOptions' && headerValue) {
-            this.setConfigValue(configKey, headerValue.split(',').map(s => s.trim()), 'headers');
-          }
+    // Extract and parse more complex header values that may need special handling
+    this.extractHeaderValue(headers, 'X-Optimizely-Attributes', 'attributes');
+    this.extractHeaderValue(headers, 'X-Optimizely-Event-Tags', 'eventTags');
+    this.extractHeaderValue(headers, 'X-Optimizely-Decide-Options', 'decideOptions');
+
+    // Special handling for forced decisions
+    const forcedDecisionHeader = headers.get('X-Optimizely-Forced-Decision');
+    if (forcedDecisionHeader) {
+      console.log('[HEADER_DEBUG] Found X-Optimizely-Forced-Decision header:', forcedDecisionHeader);
+      
+      try {
+        // Parse the header value
+        const forcedDecisions = JSON.parse(forcedDecisionHeader);
+        console.log('[HEADER_DEBUG] Parsed forcedDecisions:', JSON.stringify(forcedDecisions));
+        
+        // Set directly on the configuration
+        this.setValue('forcedDecisions', forcedDecisions);
+        this.setConfigValue('forcedDecisions', forcedDecisions, 'Header: X-Optimizely-Forced-Decision');
+        
+        // Also set it explicitly in the userContext.attributes to ensure it's passed to the SDK
+        if (!this.config.attributes) {
+          this.config.attributes = {};
         }
+        
+        if (typeof this.config.attributes === 'object' && this.config.attributes !== null) {
+          this.config.attributes.forcedDecisions = forcedDecisions;
+          console.log('[HEADER_DEBUG] Added forcedDecisions to attributes:', 
+            JSON.stringify(this.config.attributes));
+        }
+      } catch (error) {
+        this.logger.error(`${this.logPrefix} Error parsing X-Optimizely-Forced-Decision header`, error);
+        console.log('[HEADER_DEBUG] Error parsing X-Optimizely-Forced-Decision header:', error);
       }
     }
+    
+    // Extract CDN variation settings if present
+    this.extractHeaderValue(headers, 'X-Optimizely-CDN-Settings', 'cdnVariationSettings');
   }
 
   /**
@@ -1292,6 +1304,8 @@ export class ConfigurationService implements IConfigurationService {
             }
           }
           
+          // Add debug logging to see what's coming in
+          console.log('[FORCED_DECISIONS_DEBUG] Validated forcedDecisions:', JSON.stringify(value));
           return null;
         }
       },
@@ -1689,6 +1703,31 @@ export class ConfigurationService implements IConfigurationService {
     }
     
     return fixedCount;
+  }
+
+  /**
+   * Extract a header value from Headers, parse it if it's JSON, and set it on the config.
+   * @param headers - The headers object
+   * @param headerName - The name of the header
+   * @param configKey - The configuration key to set
+   */
+  private extractHeaderValue(headers: Headers, headerName: string, configKey: keyof OptimizelyConfigOptions): void {
+    if (headers.has(headerName)) {
+      const headerValue = headers.get(headerName);
+      try {
+        // Try to parse as JSON
+        const parsedValue = headerValue ? JSON.parse(headerValue) : null;
+        if (parsedValue !== null) {
+          this.setConfigValue(configKey, parsedValue, 'headers');
+        }
+      } catch (error) {
+        this.logger.debug(`${this.logPrefix} Failed to parse ${headerName} as JSON:`, error);
+        // For decideOptions, treat as comma-separated list if JSON parse fails
+        if (configKey === 'decideOptions' && headerValue) {
+          this.setConfigValue(configKey, headerValue.split(',').map(s => s.trim()), 'headers');
+        }
+      }
+    }
   }
 } 
 

@@ -1,0 +1,24 @@
+---
+description: Core workflow sequence for MCP tool interactions: retrieving tasks, checking rules, verifying scope, checking protection levels, requesting approvals, and updating task status.
+globs: 
+alwaysApply: true
+---
+    ---
+    id: mcp-interaction-protocol
+    title: MCP Server Interaction Protocol
+    description: Core workflow sequence for MCP tool interactions: retrieving tasks, checking rules, verifying scope, checking protection levels, requesting approvals, and updating task status.
+    appliesTo: ["**/*"] # Applies globally during MCP-guided tasks
+    priority: highest
+    tags: ["mcp", "protocol", "core-instruction"]
+    ---
+
+    **MANDATORY MCP Interaction Protocol:**
+
+    1.  **Task Context:** Always begin work by fetching the current task details using the MCP tools (`rex_get_task_details` or `rex_get_next_task`). Understand the `description`, `targetFiles`, and `verificationCriteria`.
+    2.  **Rule Retrieval:** **Before modifying any file** (`[filePath]`), you **MUST** retrieve relevant rules using: `rex_get_relevant_rules {"filePath": "[filePath]"}`.
+    3.  **Rule Application:** Strictly apply the rules returned by the MCP system to your code changes in that specific file.
+    4.  **Scope Check:** If unsure whether a file or action is within scope, or if modifying files *not* listed in `targetFiles`, you **MUST** check using: `rex_check_scope {"componentPath": "[path]"}`.
+    5.  **Protection Check:** Before modifying a file, check its protection level using: `rex_get_protection_level {"componentPath": "[path]"}`. If `@LOCKED`, stop. If `@INTERFACE` or `@BEHAVIOR` and your change affects the interface/behavior, request approval.
+    6.  **Approval Request:** If scope/protection checks fail, if a task `requiresCheckpoint`, or if significant ambiguity arises, you **MUST** request human approval. **Do not proceed without explicit confirmation.**
+    7.  **Status Update:** Upon completing the work for a task and verifying it against `verificationCriteria`, you **MUST** update the status using: `rex_update_task_status {"planId": "[planId]", "taskId": "[taskId]", "status": "DONE", "evidence": "[brief evidence]"}`. Update status appropriately if blocked or pausing.
+    8.  **State Update:** Update core project state (`current_goal`, etc.) using `rex_update_state {"updates": {"current_goal": "[new goal]"}}` only when necessary (e.g., completing the main goal of a plan).

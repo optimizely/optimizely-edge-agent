@@ -140,6 +140,54 @@ If you encounter issues:
    - Examine detailed test results in the JSON files
    - Check for error messages in the test output
 
+## Current Status and Known Gaps
+
+As of April 2025, the following is the status of testing coverage:
+
+### Completed Tests ✅
+- Basic API functionality (/api/decide endpoint)
+- Decide-all API endpoint
+- Decide-for-keys API endpoint
+- Basic cookie management
+- Basic response headers
+
+### Known Testing Gaps 🔍
+The following tests are currently missing and need to be implemented:
+
+1. **Forced Variation Tests**:
+   - Header-based forced decisions (`X-Optimizely-Forced-Decision`)
+   - JSON payload forced decisions (`forcedDecisions` property)
+   - Query parameter forced decisions (`variation` parameter)
+
+2. **Parameter Handling Tests**:
+   - Tests for query parameters (visitor_id, flag_key, attributes.*, etc.)
+   - Tests for header options (X-Optimizely-SDK-Key, X-Optimizely-User-ID, etc.)
+   - Tests for JSON payload parameters (userId, attributes, flagKey, etc.)
+   - Tests for parameter precedence rules
+
+3. **CDN Variation Tests**:
+   - Fix for "body used already" error in existing tests
+
+4. **KV Storage Tests**:
+   - Tests for enhanced cache keys
+   - Tests for datafile caching
+   - Tests for configuration inheritance
+
+### Implementation Plan
+To address these gaps, we will:
+
+1. Create dedicated test scripts for each missing test category
+2. Update the [execution plan](./execution-plan.md) to include these new tests
+3. Fix the existing CDN variation test script
+4. Update the [verification matrix](../ai-workflow-workspace/plans/edge-agent-feature-parity-002/implementation-verification-matrix.md) after each test is implemented
+
+### Related Documentation
+- [Implementation Verification Matrix](../ai-workflow-workspace/plans/edge-agent-feature-parity-002/implementation-verification-matrix.md) - Detailed status of implementation tasks
+- [Execution Plan](./execution-plan.md) - Test execution checklist and status
+- [Issue Tracking](./issue-tracking.md) - Known issues and remediation plan
+- [Test Categories](./test-categories/) - Detailed test specifications
+- [Missing Tests Plan](./test-categories/missing-tests-plan.md) - Specifications for tests that need to be created
+
 ## Reference Documents
 
 - [Infrastructure Configuration](./infrastructure-config.md)

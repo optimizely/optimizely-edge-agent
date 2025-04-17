@@ -1,0 +1,20 @@
+---
+description: API design standards for MCP server endpoints: RESTful conventions, naming, JSON formatting, status codes, response structures, and input validation.
+globs: 
+alwaysApply: false
+---
+---
+id: mcp-server-api-design
+title: MCP Server API Design Principles
+description: Guidelines for designing and implementing MCP Server API endpoints.
+appliesTo: ["src/routes/**/*.js"]
+priority: medium
+tags: ["mcp-dev", "api", "design"]
+---
+
+1.  **RESTful Principles:** Design endpoints following RESTful conventions where applicable (e.g., use appropriate HTTP methods GET, POST, PUT, DELETE; use path parameters for specific resources like `/api/plan/:planId`).
+2.  **Clear Naming:** Use clear, descriptive names for routes and parameters (e.g., `/api/task/{taskId}/details`, not `/api/t/det`).
+3.  **JSON I/O:** Expect JSON request bodies and always respond with JSON. Set appropriate `Content-Type` headers.
+4.  **Status Codes:** Use standard HTTP status codes correctly (e.g., 200 OK, 201 Created, 400 Bad Request, 404 Not Found, 409 Conflict, 500 Internal Server Error).
+5.  **Consistent Responses:** Structure responses consistently, typically including a `message` field for status and a `data` field (or specific named field like `plan`, `task`) for the payload. For errors, include a `message` field.
+6.  **Input Validation:** Perform basic validation of request parameters and bodies in the route handler before passing data to services. Respond with 400 Bad Request for invalid input.

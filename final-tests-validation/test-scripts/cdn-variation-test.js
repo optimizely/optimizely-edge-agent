@@ -193,14 +193,33 @@ async function makeRequest(path, cached = false) {
     });
     
     const headers = Object.fromEntries(response.headers.entries());
+    const contentType = headers['content-type'] || '';
     let body;
     
+    // Process the body based on content type to avoid "body used already" errors
     try {
-      // Try to parse as JSON first
-      body = await response.json();
+      // For JSON responses
+      if (contentType.includes('application/json')) {
+        body = await response.json();
+      } 
+      // For all other types, get as text
+      else {
+        body = await response.text();
+        
+        // Try to parse as JSON even if content-type isn't set correctly
+        if (body.trim().startsWith('{') || body.trim().startsWith('[')) {
+          try {
+            body = JSON.parse(body);
+          } catch (parseError) {
+            // If parsing fails, keep as text
+            logger.debug(`Failed to parse response as JSON, keeping as text`);
+          }
+        }
+      }
     } catch (e) {
-      // If not JSON, get as text
-      body = await response.text();
+      logger.warn(`Error processing response body: ${e.message}`);
+      // Fallback to empty string if body processing fails
+      body = '(Error reading response body)';
     }
     
     return {

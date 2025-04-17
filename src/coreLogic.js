@@ -419,6 +419,13 @@ export default class CoreLogic {
 			this.logger.debug(`Optimizely processing completed [optimizelyExecute]`);
 			this.logger.debugExt('Optimizely response: ', optlyResponse);
 
+			// DEBUG: Log forced variation information
+			console.log('[LEGACY_DEBUG] decide called with:');
+			console.log('[LEGACY_DEBUG] - flagsToDecide:', flagsToDecide);
+			console.log('[LEGACY_DEBUG] - flagsToForce:', flagsToForce);
+			console.log('[LEGACY_DEBUG] - forcedDecisions:', JSON.stringify(requestConfig.forcedDecisions));
+			console.log('[LEGACY_DEBUG] - Result:', JSON.stringify(optlyResponse));
+
 			// Prepare the response based on the operation type
 			if (this.shouldReturnJsonResponse(this) && !isDecideOperation) {
 				// Datafile or config operation
@@ -1123,12 +1130,10 @@ export default class CoreLogic {
 	setResponseHeaders(response, visitorId, serializedDecisions, requestConfig) {
 		this.logger.debug('Setting response headers [setResponseHeaders]');
 		if (visitorId) {
-			// this.cdnAdapter.setResponseHeader(response, requestConfig.settings.visitorIdsHeaderName, visitorId);
 			this.cdnAdapter.headersToSetResponse[requestConfig.settings.visitorIdsHeaderName] = visitorId;
 			this.cdnAdapter.responseHeadersSet = true;
 		}
 		if (serializedDecisions) {
-			// this.cdnAdapter.setResponseHeader(response, requestConfig.settings.decisionsHeaderName, serializedDecisions);
 			this.cdnAdapter.headersToSetResponse[requestConfig.settings.decisionsHeaderName] = serializedDecisions;
 			this.cdnAdapter.responseHeadersSet = true;
 		}
@@ -1176,25 +1181,6 @@ export default class CoreLogic {
 
 		this.cdnAdapter.responseCookiesSet = true;
 		return updatedResponse;
-	}
-
-	/**
-	 * Sets response headers based on the provided visitor ID and serialized decisions.
-	 * @param {Response} response - The response object to modify.
-	 * @param {string} visitorId - The visitor ID.
-	 * @param {string} serializedDecisions - The serialized decisions string.
-	 * @param {RequestConfig} requestConfig - The request configuration object.
-	 */
-	setResponseHeaders(response, visitorId, serializedDecisions, requestConfig) {
-		this.logger.debug('Setting response headers [setResponseHeaders]');
-		if (visitorId) {
-			this.cdnAdapter.headersToSetResponse[requestConfig.settings.visitorIdsHeaderName] = visitorId;
-			this.cdnAdapter.responseHeadersSet = true;
-		}
-		if (serializedDecisions) {
-			this.cdnAdapter.headersToSetResponse[requestConfig.settings.decisionsHeaderName] = serializedDecisions;
-			this.cdnAdapter.responseHeadersSet = true;
-		}
 	}
 
 	/**

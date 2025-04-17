@@ -1,0 +1,194 @@
+{
+  "timestamp": "2025-04-10T04-06-50",
+  "testId": "forced-variation-test-2025-04-10T04-06-50",
+  "environment": {
+    "edgeAgentUrl": "http://127.0.0.1:8787",
+    "sdkKey": "8mR1pGh8u2ztUP8GqjmQq",
+    "nodeVersion": "v22.0.0",
+    "featureKeys": [
+      "test-flag",
+      "homepage-test",
+      "product-test"
+    ],
+    "experimentKeys": [
+      "ab-test-1",
+      "feature-test-1"
+    ],
+    "testUsers": [
+      {
+        "userId": "test-user-11827",
+        "attributes": {
+          "browser": "Chrome",
+          "location": "US"
+        }
+      },
+      {
+        "userId": "test-user-338111",
+        "attributes": {
+          "browser": "Firefox",
+          "location": "UK"
+        }
+      }
+    ],
+    "testVariations": [
+      "control",
+      "treatment",
+      "variant-1",
+      "variant-2"
+    ]
+  },
+  "results": [
+    {
+      "test": "Header-Based Forced Variations",
+      "description": "Verify that the Edge Agent respects forced variations via HTTP headers",
+      "result": "FAIL",
+      "method": "Header-Based",
+      "details": {
+        "testUser": {
+          "userId": "test-user-11827",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "responses": [
+          {
+            "featureKey": "test-flag",
+            "forcedVariation": "control"
+          },
+          {
+            "featureKey": "homepage-test",
+            "forcedVariation": "control"
+          },
+          {
+            "featureKey": "product-test",
+            "forcedVariation": "control"
+          },
+          {
+            "featureKey": "multiple",
+            "forcedVariation": "multiple",
+            "variationApplied": "multiple decisions"
+          }
+        ]
+      },
+      "error": "One or more requests failed"
+    },
+    {
+      "test": "JSON-Based Forced Variations",
+      "description": "Verify that the Edge Agent respects forced variations via JSON payload",
+      "result": "FAIL",
+      "method": "JSON-Based",
+      "details": {
+        "testUser": {
+          "userId": "test-user-11827",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "responses": [
+          {
+            "featureKey": "test-flag",
+            "forcedVariation": "treatment"
+          },
+          {
+            "featureKey": "homepage-test",
+            "forcedVariation": "treatment"
+          },
+          {
+            "featureKey": "product-test",
+            "forcedVariation": "treatment"
+          },
+          {
+            "featureKey": "multiple",
+            "forcedVariation": "multiple",
+            "variationApplied": "multiple decisions"
+          }
+        ]
+      },
+      "error": "One or more requests failed"
+    },
+    {
+      "test": "Query Parameter-Based Forced Variations",
+      "description": "Verify that the Edge Agent respects forced variations via query parameters",
+      "result": "FAIL",
+      "method": "Query-Based",
+      "details": {
+        "testUser": {
+          "userId": "test-user-11827",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "responses": [
+          {
+            "featureKey": "test-flag",
+            "forcedVariation": "variant-1"
+          },
+          {
+            "featureKey": "homepage-test",
+            "forcedVariation": "variant-1"
+          },
+          {
+            "featureKey": "product-test",
+            "forcedVariation": "variant-1"
+          },
+          {
+            "featureKey": "multiple",
+            "forcedVariation": "multiple",
+            "variationApplied": "multiple decisions"
+          }
+        ]
+      },
+      "error": "One or more requests failed"
+    },
+    {
+      "test": "Forced Variation Precedence",
+      "description": "Verify that the Edge Agent respects the forced variation precedence rules",
+      "result": "FAIL",
+      "method": "Precedence",
+      "details": {
+        "testUser": {
+          "userId": "test-user-11827",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "featureKey": "test-flag",
+        "headerVariation": "control",
+        "jsonVariation": "treatment",
+        "queryVariation": "variant-1",
+        "response": {},
+        "expectedPrecedenceOrder": "header > body > query"
+      },
+      "error": "Forced variation precedence not respected. Expected 'control', got 'undefined'"
+    },
+    {
+      "test": "Invalid Forced Variation Handling",
+      "description": "Verify that the Edge Agent correctly handles invalid forced variations without failing",
+      "result": "FAIL",
+      "method": "Invalid",
+      "details": {
+        "testUser": {
+          "userId": "test-user-11827",
+          "attributes": {
+            "browser": "Chrome",
+            "location": "US"
+          }
+        },
+        "featureKey": "test-flag",
+        "test1": {
+          "description": "Invalid JSON in header",
+          "success": false
+        },
+        "test2": {
+          "description": "Missing required fields in forcedDecisions",
+          "success": false
+        }
+      },
+      "error": "One or more tests failed to handle invalid forced variations gracefully"
+    }
+  ]
+}

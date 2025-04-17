@@ -1,0 +1,12 @@
+{
+  "success": false,
+  "error": {
+    "message": "Cannot find module '../../final-tests-validation/test-scripts/infrastructure-verification'\nRequire stack:\n- C:\\Users\\LAH\\Documents\\__Development\\Optimizely\\optimizely-edge-agent\\optimizely-edge-agent\\ai-workflow-workspace\\testing-audit\\adapters\\infrastructure-verification-adapter.js\n- C:\\Users\\LAH\\Documents\\__Development\\Optimizely\\optimizely-edge-agent\\optimizely-edge-agent\\test-adapter.js",
+    "stack": "Error: Cannot find module '../../final-tests-validation/test-scripts/infrastructure-verification'\nRequire stack:\n- C:\\Users\\LAH\\Documents\\__Development\\Optimizely\\optimizely-edge-agent\\optimizely-edge-agent\\ai-workflow-workspace\\testing-audit\\adapters\\infrastructure-verification-adapter.js\n- C:\\Users\\LAH\\Documents\\__Development\\Optimizely\\optimizely-edge-agent\\optimizely-edge-agent\\test-adapter.js\n    at Module._resolveFilename (node:internal/modules/cjs/loader:1202:15)\n    at Module._load (node:internal/modules/cjs/loader:1027:27)\n    at Module.require (node:internal/modules/cjs/loader:1290:19)\n    at require (node:internal/modules/helpers:188:18)\n    at Object.<anonymous> (C:\\Users\\LAH\\Documents\\__Development\\Optimizely\\optimizely-edge-agent\\optimizely-edge-agent\\ai-workflow-workspace\\testing-audit\\adapters\\infrastructure-verification-adapter.js:11:22)\n    at Module._compile (node:internal/modules/cjs/loader:1455:14)\n    at Module._extensions..js (node:internal/modules/cjs/loader:1534:10)\n    at Module.load (node:internal/modules/cjs/loader:1265:32)\n    at Module._load (node:internal/modules/cjs/loader:1081:12)\n    at Module.require (node:internal/modules/cjs/loader:1290:19)"
+  },
+  "_metadata": {
+    "adapter": "infrastructure-verification-adapter",
+    "timestamp": "2025-04-11T16:43:20.030Z",
+    "baseUrl": "http://localhost:8787"
+  }
+}

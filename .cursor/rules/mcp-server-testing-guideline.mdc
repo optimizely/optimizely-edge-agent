@@ -1,0 +1,19 @@
+---
+description: MCP server testing framework: test coverage requirements, structure patterns, assertions, test independence, and API contract verification.
+globs: 
+alwaysApply: false
+---
+---
+id: mcp-server-testing-guideline
+title: MCP Server Testing Guideline
+description: Basic guidelines for writing tests for the MCP Server.
+appliesTo: ["tests/**/*.js"]
+priority: medium
+tags: ["mcp-dev", "testing"]
+---
+
+1.  **Test Coverage:** Aim to write tests (initially integration tests using `supertest`) for all major API endpoints created.
+2.  **Test Structure:** Organize tests logically (e.g., one file per router/major feature like `state.test.js`, `plans.test.js`). Use `describe` and `it` blocks clearly.
+3.  **Assertions:** Use clear assertions (`expect`) to verify status codes and response body contents.
+4.  **Independence (Ideal):** Strive to make tests independent, although integration tests might have dependencies. Consider setup/teardown logic if needed (e.g., cleaning test data files - more advanced).
+5.  **Focus on API Contract:** Integration tests should primarily verify that the API behaves as expected (correct responses, status codes) for given inputs.

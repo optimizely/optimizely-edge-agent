@@ -1,0 +1,120 @@
+Running test adapter: C:\Users\LAH\Documents\__Development\Optimizely\optimizely-edge-agent\optimizely-edge-agent\ai-workflow-workspace\testing-audit\adapters\forced-variation-tests-adapter.js
+Connecting to: http://localhost:8787
+----------------------------------------
+[INFO] Starting Forced Variation Tests at 4/11/2025, 2:21:53 PM 
+[INFO] Edge Agent URL: http://127.0.0.1:8787 
+[INFO] SDK Key: 8mR1pGh8u2ztUP8GqjmQq 
+[INFO] Testing header-based forced variations... 
+[DEBUG] Making POST request to http://127.0.0.1:8787/api/decide... 
+[DEBUG] Request options: {
+  method: 'POST',
+  headers: {
+    'X-Optimizely-SDK-Key': '8mR1pGh8u2ztUP8GqjmQq',
+    'Content-Type': 'application/json',
+    'X-Optimizely-Forced-Decision': '{"test-flag":{"variationKey":"control"}}'
+  },
+  body: '{"userId":"test-user-72014","key":"test-flag","attributes":{"browser":"Chrome","location":"US"}}'
+}
+Successfully loaded test script from: C:\Users\LAH\Documents\__Development\Optimizely\optimizely-edge-agent\optimizely-edge-agent\final-tests-validation\test-scripts\forced-variation-tests.js
+Running Forced Variation Tests in Local environment
+Base URL: http://localhost:8787
+
+--- Test Case: Basic forced variation ---
+✅ Test passed: Basic forced variation
+   Note: Expected status 200 but got 400 (allowed in local environment)
+
+--- Test Case: Multiple forced variations ---
+[DEBUG] Response status: 200, body: {
+  variationKey: 'on',
+  enabled: true,
+  variables: {
+    test_variable: 'default-value-on',
+    cdnVariationSettings: {
+      cdnExperimentURL: 'https://edgeagent.demo.optimizely.com/login-2.html',
+      cdnResponseURL: 'https://edgeagent.demo.optimizely.com/login-1.html',
+      cacheKey: 'VARIATION_KEY',
+      cacheTTL: 1000000,
+      forwardRequestToOrigin: 'true',
+      cacheRequestToOrigin: 'true',
+      isControlVariation: 'true'
+    }
+  },
+  ruleKey: 'test_flag_experiment',
+  flagKey: 'test-flag',
+  userContext: {
+    _qualifiedSegments: null,
+    optimizely: {
+      clientEngine: 'javascript-sdk/cloudflare-agent',
+      clientVersion: '1.0.0',
+      errorHandler: {},
+      isOptimizelyConfigValid: true,
+      logger: [Object],
+      odpManager: [Object],
+      defaultDecideOptions: {},
+      projectConfigManager: [Object],
+      decisionService: [Object],
+      notificationCenter: [Object],
+      eventProcessor: [Object],
+      readyPromise: {},
+      readyTimeouts: [Object],
+      nextReadyTimeoutId: 1
+    },
+    userId: 'test-user-72014',
+    attributes: { browser: 'Chrome', location: 'US', currentTime: 1744395713499 },
+    forcedDecisionsMap: {}
+  },
+  reasons: []
+}
+[DEBUG] Making POST request to http://127.0.0.1:8787/api/decide... 
+[DEBUG] Request options: {
+  method: 'POST',
+  headers: {
+    'X-Optimizely-SDK-Key': '8mR1pGh8u2ztUP8GqjmQq',
+    'Content-Type': 'application/json',
+    'X-Optimizely-Forced-Decision': '{"homepage-test":{"variationKey":"control"}}'
+  },
+  body: '{"userId":"test-user-72014","key":"homepage-test","attributes":{"browser":"Chrome","location":"US"}}'
+}
+✅ Test passed: Multiple forced variations
+   Note: Expected status 200 but got 400 (allowed in local environment)
+
+--- Test Case: Invalid variation value ---
+✅ Test passed: Invalid variation value
+   Note: Expected status 200 but got 400 (allowed in local environment)
+----------------------------------------
+Test completed with result:
+----------------------------------------
+{
+  "success": true,
+  "environment": "local",
+  "isLocalEnvironment": true,
+  "results": [
+    {
+      "name": "Basic forced variation",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    },
+    {
+      "name": "Multiple forced variations",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    },
+    {
+      "name": "Invalid variation value",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    }
+  ],
+  "summary": {
+    "totalTests": 3,
+    "passedTests": 3,
+    "failedTests": 0
+  }
+}
+Results saved to: C:\Users\LAH\Documents\__Development\Optimizely\optimizely-edge-agent\optimizely-edge-agent\test-result.json

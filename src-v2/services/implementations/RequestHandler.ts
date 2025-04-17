@@ -1039,7 +1039,7 @@ export class RequestHandler implements IRequestHandler {
     if (attributesParam) {
       try {
         const queryAttributes = JSON.parse(attributesParam);
-        Object.assign(attributes, queryAttributes);
+        this.mergeAttributes(attributes, queryAttributes);
       } catch (error) {
         this.logger.warn('Failed to parse attributes query parameter as JSON', error);
       }
@@ -1050,7 +1050,7 @@ export class RequestHandler implements IRequestHandler {
       try {
         const body = await requestAdapter.getBodyJson<{attributes?: Record<string, unknown>}>();
         if (body.attributes) {
-          Object.assign(attributes, body.attributes);
+          this.mergeAttributes(attributes, body.attributes);
         }
       } catch (error) {
         // Ignore body parsing errors
@@ -1062,20 +1062,91 @@ export class RequestHandler implements IRequestHandler {
   }
 
   /**
+   * Merges attributes from different sources with proper handling of array attributes.
+   * @param target - The target attributes object to merge into.
+   * @param source - The source attributes to merge from.
+   */
+  private mergeAttributes(target: Record<string, any>, source: Record<string, any>): void {
+    if (!source || typeof source !== 'object') {
+      return;
+    }
+    
+    for (const [key, value] of Object.entries(source)) {
+      // Special handling for array values
+      if (Array.isArray(value)) {
+        // If target already has this key as an array, concatenate the arrays
+        if (Array.isArray(target[key])) {
+          target[key] = [...target[key], ...value];
+        } else if (target[key] === undefined) {
+          // If key doesn't exist in target yet, just assign the array
+          target[key] = [...value];
+        } else {
+          // If target has this key as a non-array, convert to array and append new values
+          target[key] = [target[key], ...value];
+        }
+      } else if (value !== null && typeof value === 'object') {
+        // For nested objects, recursively merge
+        if (!target[key] || typeof target[key] !== 'object' || Array.isArray(target[key])) {
+          target[key] = {};
+        }
+        this.mergeAttributes(target[key], value);
+      } else {
+        // For primitive values, use header/query param precedence as per documentation
+        // Headers have highest precedence, already applied first, so only overwrite if not set
+        if (target[key] === undefined) {
+          target[key] = value;
+        }
+      }
+    }
+  }
+
+  /**
    * Gets request configuration from the request adapter.
    * If ConfigurationService is available, use it, otherwise fall back to legacy implementation.
    * @param requestAdapter - The request adapter.
    * @returns A promise resolving to the request configuration.
    */
   private async getRequestConfig(requestAdapter: IRequestAdapter): Promise<Record<string, any>> {
-    // If ConfigurationService is available, use it
+    // If configurationService is available, use it
     if (this.configurationService) {
-      this.logger.debug(`${this.logPrefix} RequestHandler: Using ConfigurationService for configuration`);
-      const config = await this.configurationService.initialize(requestAdapter);
-      return config;
+      try {
+        // Configure from request
+        await this.configurationService.initialize(requestAdapter);
+        
+        // Return the configuration
+        const config = this.configurationService.getConfig();
+        
+        // Add debug logging for the forced decisions header
+        const forcedDecisionHeader = requestAdapter.getHeader('X-Optimizely-Forced-Decision');
+        if (forcedDecisionHeader) {
+          console.log('[CONFIG_DEBUG] X-Optimizely-Forced-Decision header found:', forcedDecisionHeader);
+          
+          try {
+            const parsedHeader = JSON.parse(forcedDecisionHeader);
+            console.log('[CONFIG_DEBUG] Parsed forced decisions from header:', JSON.stringify(parsedHeader));
+            
+            // Check if forcedDecisions exists in config and log it
+            if (config.forcedDecisions) {
+              console.log('[CONFIG_DEBUG] forcedDecisions in config:', JSON.stringify(config.forcedDecisions));
+            } else {
+              console.log('[CONFIG_DEBUG] No forcedDecisions in config object');
+            }
+          } catch (error) {
+            console.log('[CONFIG_DEBUG] Failed to parse forced decisions header:', error);
+          }
+        }
+        
+        // Log the complete config for debugging
+        console.log('[CONFIG_DEBUG] Final config object:', JSON.stringify(config));
+        
+        return config;
+      } catch (error) {
+        this.logger.error(`${this.logPrefix} Failed to get configuration from ConfigurationService:`, error);
+        throw error;
+      }
     }
     
-    // Legacy implementation for backward compatibility
+    // Fall back to manual configuration extraction if ConfigurationService is not available
     this.logger.debug(`${this.logPrefix} RequestHandler: Using legacy configuration extraction`);
     let config: Record<string, any> = {};
     
@@ -1159,6 +1230,40 @@ export class RequestHandler implements IRequestHandler {
     }
     
     this.logger.debug(`${this.logPrefix} RequestHandler: Extracted config from request:`, config);
+    
+    // Special handling for query parameter forced variations
+    // Check for key=flagKey&variation=variationKey pattern
+    if (url.searchParams.has('key') && url.searchParams.has('variation')) {
+      const flagKey = url.searchParams.get('key');
+      const variationKey = url.searchParams.get('variation');
+      
+      console.log(`[QUERY_DEBUG] Found forced variation in query params: flag=${flagKey}, variation=${variationKey}`);
+      
+      // Create the forced decision object
+      if (flagKey && variationKey) {
+        // Initialize forcedDecisions if not present
+        if (!config.forcedDecisions) {
+          config.forcedDecisions = {};
+        }
+        
+        // Add the forced decision
+        config.forcedDecisions[flagKey] = { variationKey };
+        
+        // Also add to attributes for compatibility with our SDK integration
+        if (!config.attributes) {
+          config.attributes = {};
+        }
+        
+        if (typeof config.attributes === 'object' && config.attributes !== null) {
+          if (!config.attributes.forcedDecisions) {
+            config.attributes.forcedDecisions = {};
+          }
+          config.attributes.forcedDecisions[flagKey] = { variationKey };
+        }
+        
+        console.log('[QUERY_DEBUG] Added forced decision to config:', JSON.stringify(config.forcedDecisions));
+      }
+    }
     
     return config;
   }

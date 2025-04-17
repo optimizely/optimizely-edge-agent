@@ -1,0 +1,17 @@
+{
+	"mcpServers": {
+		"rex-tracker": {
+			"command": "cmd",
+			"args": [
+				"/c",
+				"node",
+				"C:/Users/LAH/Documents/__Development/Optimizely/optimizely-edge-agent/optimizely-edge-agent/rex-tracker/mcp-adapter/src/adapter.js",
+				"."
+			],
+			"env": {
+                "DATA_PATH": "./rex-tracker/data",
+                "STATE_FILENAME": ".project-state.json"
+            }
+		}
+	}
+}

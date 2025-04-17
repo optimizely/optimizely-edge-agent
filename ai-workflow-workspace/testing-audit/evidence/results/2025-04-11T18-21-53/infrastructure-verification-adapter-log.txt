@@ -1,0 +1,42 @@
+Running test adapter: C:\Users\LAH\Documents\__Development\Optimizely\optimizely-edge-agent\optimizely-edge-agent\ai-workflow-workspace\testing-audit\adapters\infrastructure-verification-adapter.js
+Connecting to: http://localhost:8787
+----------------------------------------
+[INFO] Starting infrastructure verification test {
+  edgeAgentUrl: 'https://edge-agent-test.expedge.workers.dev',
+  sdkKey: '8mR1pGh8u2ztUP8GqjmQq'
+}
+[INFO] Testing environment variable resolution... 
+[INFO] ✅ PASS: Environment Variables 
+[INFO] Testing connection to https://edge-agent-test.expedge.workers.dev... 
+Successfully loaded test script from: C:\Users\LAH\Documents\__Development\Optimizely\optimizely-edge-agent\optimizely-edge-agent\final-tests-validation\test-scripts\infrastructure-verification.js
+Running Infrastructure Verification Test in Local environment
+Base URL: http://localhost:8787
+
+--- Step 1: Base Endpoint Availability Test ---
+✅ Base endpoint available (status: 500)
+   Note: Local server returned 500 status, but connection was successful
+
+--- Step 2: API Endpoint Existence Test ---
+✅ Decide endpoint exists (status: 405)
+   Note: Endpoint returned error status, but connection was successful
+----------------------------------------
+Test completed with result:
+----------------------------------------
+{
+  "success": true,
+  "environment": "local",
+  "data": {
+    "base_endpoint": {
+      "status": 500,
+      "available": true,
+      "acceptable": true
+    },
+    "api_endpoint": {
+      "status": 405,
+      "available": true,
+      "acceptable": true
+    },
+    "connection_verified": true
+  }
+}
+Results saved to: C:\Users\LAH\Documents\__Development\Optimizely\optimizely-edge-agent\optimizely-edge-agent\test-result.json

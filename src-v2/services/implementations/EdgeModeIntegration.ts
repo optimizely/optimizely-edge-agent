@@ -120,8 +120,16 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         this.logger.info(`${this.logPrefix} Request ${reqId} not eligible for Edge Mode: ${shouldHandle.reason || 'No variation settings available'}`);
         this.metrics?.incrementCounter('edge_mode_eligibility', 1, { eligible: 'false' });
         
-        // Forward to origin as default behavior with null options (will use default behavior)
-        const forwardResponse = await this.requestForwarder.forwardRequest(requestAdapter, null);
+        // Forward to origin as default behavior with minimal options
+        const forwardOptions: RequestForwardOptions = {
+          targetUrl: requestAdapter.getUrl().toString(), // Use current URL
+          followRedirects: true,
+          timeout: 30000
+        };
+        
+        this.logger.debug(`${this.logPrefix} Forwarding to origin URL: ${forwardOptions.targetUrl}`);
+        
+        const forwardResponse = await this.requestForwarder.forwardRequest(requestAdapter, forwardOptions);
         return new Response(forwardResponse.body, {
           status: forwardResponse.status,
           headers: forwardResponse.headers
@@ -134,7 +142,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
       const matchTimer = this.metrics?.startTimer('url_matching_duration');
       const matchResult = await this.urlMatcher.findMatch(
         requestAdapter.getUrl().toString(),
-        shouldHandle.variationSettings
+        shouldHandle.variationSettings || []
       );
       if (matchTimer) matchTimer.stop();
 
@@ -142,8 +150,16 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         this.logger.info(`${this.logPrefix} No URL match found for request ${reqId}`);
         this.metrics?.incrementCounter('url_match_found', 1, { matched: 'false' });
         
-        // Forward to origin if no match with null options (will use default behavior)
-        const forwardResponse = await this.requestForwarder.forwardRequest(requestAdapter, null);
+        // Forward to origin if no match with default options using current URL
+        const forwardOptions: RequestForwardOptions = {
+          targetUrl: requestAdapter.getUrl().toString(), // Use current URL
+          followRedirects: true,
+          timeout: 30000
+        };
+        
+        this.logger.debug(`${this.logPrefix} No match found. Forwarding to origin URL: ${forwardOptions.targetUrl}`);
+        
+        const forwardResponse = await this.requestForwarder.forwardRequest(requestAdapter, forwardOptions);
         return new Response(forwardResponse.body, {
           status: forwardResponse.status,
           headers: forwardResponse.headers
@@ -218,62 +234,116 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         // Get the current URL as fallback
         const currentUrl = requestAdapter.getUrl().toString();
         
+        // Determine which query parameters to remove (especially Optimizely-specific ones)
+        const optimizelyParams = ['optimizely_token', 'optimizely_x', 'optimizely_opt_out', 'optimizely_disable', 'sdkKey'];
+        
+        // Properly check cdnResponseURL and provide logging for debugging
+        if (!safeSettings.cdnResponseURL) {
+          this.logger.warn(`${this.logPrefix} Missing cdnResponseURL in variation settings, using current URL as fallback`);
+        }
+        
         // Forward the request to origin with proper fallback for targetUrl
         const forwardOptions: RequestForwardOptions = {
-          targetUrl: safeSettings.cdnResponseURL || currentUrl,
+          targetUrl: safeSettings.cdnResponseURL || currentUrl, // Use currentUrl as fallback
           followRedirects: true,
-          timeout: 30000
+          timeout: 30000,
+          removeQueryParams: optimizelyParams // Remove Optimizely-specific query parameters when forwarding
         };
         
         // Log the target URL for debugging
         this.logger.debug(`${this.logPrefix} Forwarding to target URL: ${forwardOptions.targetUrl}`);
         
-        const forwardResponse = await this.requestForwarder.forwardRequest(
-          requestAdapter,
-          forwardOptions
-        );
-        
-        // Cache the response if enabled
-        if (contentResult.useCache) {
-          const cacheKey = this.cacheManager.generateCacheKey(
-            requestAdapter.getUrl().toString(),
-            { settings: JSON.stringify(safeSettings) }
+        try {
+          const forwardResponse = await this.requestForwarder.forwardRequest(
+            requestAdapter,
+            forwardOptions
           );
           
-          // Cast to any to bypass the type checking issues
-          const cacheOptions: any = {
-            ttl: safeSettings.cacheTTL || "3600"
-          };
+          // Cache the response if enabled
+          if (contentResult.useCache) {
+            const cacheKey = this.cacheManager.generateCacheKey(
+              requestAdapter.getUrl().toString(),
+              { settings: JSON.stringify(safeSettings) }
+            );
+            
+            // Cast to any to bypass the type checking issues
+            const cacheOptions: any = {
+              ttl: safeSettings.cacheTTL || "3600"
+            };
+            
+            await this.cacheManager.set(
+              cacheKey,
+              {
+                content: forwardResponse.body,
+                headers: forwardResponse.headers,
+                status: forwardResponse.status
+              },
+              cacheOptions
+            );
+            
+            this.logger.info(`${this.logPrefix} Cached response for request ${reqId}`);
+          }
           
-          await this.cacheManager.set(
-            cacheKey,
-            {
-              content: forwardResponse.body,
-              headers: forwardResponse.headers,
-              status: forwardResponse.status
-            },
-            cacheOptions
-          );
+          // Apply any transformations if transformContent exists
+          let responseBody = forwardResponse.body;
+          if (safeSettings.transformContent) {
+            const transformResult = await this.contentTransformer.transformWithFunction(
+              responseBody,
+              safeSettings.transformContent,
+              { contentType: 'text/html' }
+            );
+            responseBody = transformResult.content;
+            this.logger.info(`${this.logPrefix} Transformed content for request ${reqId}`);
+          }
           
-          this.logger.info(`${this.logPrefix} Cached response for request ${reqId}`);
+          return new Response(responseBody, {
+            status: forwardResponse.status,
+            headers: forwardResponse.headers
+          });
+        } catch (error) {
+          this.logger.error(`${this.logPrefix} Error forwarding request ${reqId}:`, error);
+          
+          // Return error response with fallback behavior
+          // Instead of returning an error, we'll forward to the original URL as a last resort
+          this.logger.info(`${this.logPrefix} Falling back to direct forwarding of original request for ${reqId}`);
+          
+          try {
+            // Simple fallback forward request to the original URL
+            const fallbackOptions: RequestForwardOptions = {
+              targetUrl: currentUrl,
+              followRedirects: true,
+              timeout: 30000,
+              removeQueryParams: optimizelyParams
+            };
+            
+            const fallbackResponse = await this.requestForwarder.forwardRequest(
+              requestAdapter,
+              fallbackOptions
+            );
+            
+            return new Response(fallbackResponse.body, {
+              status: fallbackResponse.status,
+              headers: fallbackResponse.headers
+            });
+          } catch (fallbackError) {
+            // If even the fallback fails, return a meaningful error
+            this.logger.error(`${this.logPrefix} Fallback forwarding also failed for ${reqId}:`, fallbackError);
+            
+            return new Response(
+              JSON.stringify({
+                error: 'Error processing Edge Mode request',
+                message: 'Failed to forward request, both primary and fallback mechanisms failed.'
+              }),
+              {
+                status: 502,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Request-ID': reqId
+                }
+              }
+            );
+          }
         }
-        
-        // Apply any transformations if transformContent exists
-        let responseBody = forwardResponse.body;
-        if (safeSettings.transformContent) {
-          const transformResult = await this.contentTransformer.transformWithFunction(
-            responseBody,
-            safeSettings.transformContent,
-            { contentType: 'text/html' }
-          );
-          responseBody = transformResult.content;
-          this.logger.info(`${this.logPrefix} Transformed content for request ${reqId}`);
-        }
-        
-        return new Response(responseBody, {
-          status: forwardResponse.status,
-          headers: forwardResponse.headers
-        });
       } else {
         // Serve content directly
         this.logger.info(`${this.logPrefix} Serving direct content for request ${reqId}`);
@@ -322,61 +392,113 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         const currentUrl = requestAdapter.getUrl().toString();
         
         // Make sure cdnResponseURL is not null or empty
+        if (!safeSettings.cdnResponseURL) {
+          this.logger.warn(`${this.logPrefix} Missing cdnResponseURL in variation settings, using current URL as fallback`);
+        }
+        
         const responseUrl = safeSettings.cdnResponseURL || currentUrl;
         this.logger.debug(`${this.logPrefix} Fetching content from URL: ${responseUrl}`);
         
-        // Fetch the content with proper URL fallback
-        const fetchTimer = this.metrics?.startTimer('content_fetch_duration');
-        const contentResponse = await this.contentFetcher.fetchContent(
-          responseUrl,
-          requestAdapter,
-          { timeout: 10000 }
-        );
-        if (fetchTimer) fetchTimer.stop();
-        
-        // Cache the content if enabled
-        if (contentResult.useCache) {
-          const cacheKey = this.cacheManager.generateCacheKey(
-            requestAdapter.getUrl().toString(),
-            { settings: JSON.stringify(safeSettings) }
+        try {
+          // Fetch the content with proper URL fallback
+          const fetchTimer = this.metrics?.startTimer('content_fetch_duration');
+          const contentResponse = await this.contentFetcher.fetchContent(
+            responseUrl,
+            requestAdapter,
+            { timeout: 10000 }
           );
+          if (fetchTimer) fetchTimer.stop();
           
-          // Cast to any to bypass the type checking issues
-          const cacheOptions: any = {
-            ttl: safeSettings.cacheTTL || "3600"
-          };
+          // Cache the content if enabled
+          if (contentResult.useCache) {
+            const cacheKey = this.cacheManager.generateCacheKey(
+              requestAdapter.getUrl().toString(),
+              { settings: JSON.stringify(safeSettings) }
+            );
+            
+            // Cast to any to bypass the type checking issues
+            const cacheOptions: any = {
+              ttl: safeSettings.cacheTTL || "3600"
+            };
+            
+            await this.cacheManager.set(
+              cacheKey,
+              {
+                content: contentResponse.response.getBody(),
+                headers: this.convertHeadersToRecord(contentResponse.response.getHeaders()),
+                status: contentResponse.response.getStatus()
+              },
+              cacheOptions
+            );
+            
+            this.logger.info(`${this.logPrefix} Cached direct content for request ${reqId}`);
+          }
           
-          await this.cacheManager.set(
-            cacheKey,
-            {
-              content: contentResponse.response.getBody(),
-              headers: this.convertHeadersToRecord(contentResponse.response.getHeaders()),
-              status: contentResponse.response.getStatus()
-            },
-            cacheOptions
-          );
+          // Apply any transformations if transformContent exists
+          let finalContent = contentResponse.response.getBody();
+          if (safeSettings.transformContent) {
+            const transformTimer = this.metrics?.startTimer('transform_duration');
+            const transformResult = await this.contentTransformer.transformWithFunction(
+              finalContent,
+              safeSettings.transformContent,
+              { contentType: 'text/html' }
+            );
+            finalContent = transformResult.content;
+            if (transformTimer) transformTimer.stop();
+            this.logger.info(`${this.logPrefix} Transformed direct content for request ${reqId}`);
+          }
           
-          this.logger.info(`${this.logPrefix} Cached direct content for request ${reqId}`);
+          return new Response(finalContent, {
+            status: contentResponse.response.getStatus(),
+            headers: this.convertHeadersToRecord(contentResponse.response.getHeaders())
+          });
+        } catch (error) {
+          this.logger.error(`${this.logPrefix} Error fetching direct content for ${reqId}:`, error);
+          
+          // Return error response with fallback behavior
+          // Instead of returning an error, we'll forward to the original URL as a last resort
+          this.logger.info(`${this.logPrefix} Falling back to direct forwarding of original request for ${reqId}`);
+          
+          try {
+            // Define Optimizely-specific params to remove
+            const optimizelyParams = ['optimizely_token', 'optimizely_x', 'optimizely_opt_out', 'optimizely_disable', 'sdkKey'];
+            
+            // Simple fallback forward request to the original URL
+            const fallbackOptions: RequestForwardOptions = {
+              targetUrl: currentUrl,
+              followRedirects: true,
+              timeout: 30000,
+              removeQueryParams: optimizelyParams
+            };
+            
+            const fallbackResponse = await this.requestForwarder.forwardRequest(
+              requestAdapter,
+              fallbackOptions
+            );
+            
+            return new Response(fallbackResponse.body, {
+              status: fallbackResponse.status,
+              headers: fallbackResponse.headers
+            });
+          } catch (fallbackError) {
+            // If even the fallback fails, return a meaningful error
+            this.logger.error(`${this.logPrefix} Fallback forwarding also failed for ${reqId}:`, fallbackError);
+            
+            return new Response(
+              JSON.stringify({
+                error: 'Error processing Edge Mode request',
+                message: 'Failed to fetch content, both primary and fallback mechanisms failed.'
+              }),
+              {
+                status: 502,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Request-ID': reqId
+                }
+              }
+            );
+          }
         }
-        
-        // Apply any transformations if transformContent exists
-        let finalContent = contentResponse.response.getBody();
-        if (safeSettings.transformContent) {
-          const transformTimer = this.metrics?.startTimer('transform_duration');
-          const transformResult = await this.contentTransformer.transformWithFunction(
-            finalContent,
-            safeSettings.transformContent,
-            { contentType: 'text/html' }
-          );
-          finalContent = transformResult.content;
-          if (transformTimer) transformTimer.stop();
-          this.logger.info(`${this.logPrefix} Transformed direct content for request ${reqId}`);
-        }
-        
-        return new Response(finalContent, {
-          status: contentResponse.response.getStatus(),
-          headers: this.convertHeadersToRecord(contentResponse.response.getHeaders())
-        });
       }
     } catch (error) {
       this.logger.error(`${this.logPrefix} Error processing Edge Mode request ${reqId}:`, error);

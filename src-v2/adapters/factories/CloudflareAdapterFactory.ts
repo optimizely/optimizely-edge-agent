@@ -51,7 +51,6 @@ export class CloudflareAdapterFactory {
   // Method to create or get cached LoggerAdapter
   private getLoggerAdapter(): ILoggerAdapter {
     if (!this.loggerAdapter) {
-      // Logger depends on EnvironmentAdapter to get log level
       const envAdapter = this.getEnvironmentAdapter();
       this.loggerAdapter = new CloudflareLoggerAdapter(envAdapter);
     }
@@ -84,7 +83,11 @@ export class CloudflareAdapterFactory {
   }
 
   createLoggerAdapter(): ILoggerAdapter {
-    return this.getLoggerAdapter(); // Return cached instance
+    if (!this.loggerAdapter) {
+      const envAdapter = this.getEnvironmentAdapter();
+      this.loggerAdapter = new CloudflareLoggerAdapter(envAdapter);
+    }
+    return this.loggerAdapter;
   }
 
   createMetricsAdapter(): IMetricsAdapter {

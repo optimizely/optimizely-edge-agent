@@ -1,0 +1,18 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+     ---
+    id: scope-boundary-enforcement
+    title: Scope Boundary Enforcement
+    description: Strict adherence to defined scope boundaries.
+    appliesTo: ["**/*"]
+    priority: high
+    tags: ["scope", "safety", "governance"]
+    ---
+
+    1.  **Adhere to Defined Scope:** Only modify files explicitly listed as `targetFiles` for the current task or confirmed as in-scope via `rex_check_scope {"componentPath": "[path]"}`.
+    2.  **Respect Out-of-Scope:** Never modify files or components designated as out-of-scope in the project configuration or plan.
+    3.  **Query Ambiguity:** If a necessary modification involves a file not explicitly in scope, use `rex_check_scope` and request approval if the check indicates it's out-of-scope or ambiguous but necessary.
+    4.  **Verify Scope Post-Change:** Briefly confirm that only intended files were modified.

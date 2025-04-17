@@ -1,0 +1,20 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+     ---
+    id: component-protection-adherence
+    title: Component Protection Adherence
+    description: Safety protocol for respecting component protection levels (@LOCKED, @INTERFACE, @BEHAVIOR) when modifying files, requiring proper checks and approvals before any edits.
+    appliesTo: ["**/*"]
+    priority: high
+    tags: ["protection", "safety", "governance"]
+    ---
+
+    1.  **Check Level Before Edit:** Before modifying any file, determine its protection level using `rex_get_protection_level {"componentPath": "[path]"}`.
+    2.  **`@LOCKED`:** Modification is prohibited. Stop and report if modification seems necessary.
+    3.  **`@INTERFACE`:** Internal implementation changes are permitted if the external interface (method signatures, API contracts) and behavior remain unchanged. Changes *to* the interface require explicit approval.
+    4.  **`@BEHAVIOR`:** Interface or internal changes are permitted *only if* functional behavior is preserved (verified by tests). Changes *to* the core behavior require explicit approval.
+    5.  **`@FLEXIBLE`:** Modifications permitted according to task scope and standard procedures.
+

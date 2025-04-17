@@ -1,0 +1,37 @@
+{
+  "testId": "basic-test",
+  "runId": "a3ddaa1d-b0df-4179-a4aa-d38daf002d92",
+  "startTime": "2025-04-11T00:30:35.161Z",
+  "endTime": null,
+  "result": null,
+  "environment": {
+    "nodeVersion": "v22.0.0",
+    "platform": "win32",
+    "baseUrl": "http://localhost:8787",
+    "testType": "default",
+    "environment": {}
+  },
+  "summary": {
+    "assertions": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0
+    },
+    "steps": {
+      "total": 0,
+      "passed": 0,
+      "failed": 0,
+      "skipped": 0
+    },
+    "duration": 0,
+    "errors": 0,
+    "warnings": 0,
+    "cloudflareEvidence": false
+  },
+  "artifacts": [],
+  "integrityData": {
+    "evidenceHash": null,
+    "signatureTimestamp": "2025-04-11T00:30:35.167Z"
+  }
+}

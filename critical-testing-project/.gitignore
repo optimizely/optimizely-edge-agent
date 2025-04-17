@@ -1,0 +1,24 @@
+# Node.js dependencies
+node_modules/
+
+# Environment variables
+.env
+
+# Test results
+results/
+
+# Logs
+*.log
+wrangler-logs.txt
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# IDE folders
+.idea/
+.vscode/
+
+# Build output
+dist/
+build/ 

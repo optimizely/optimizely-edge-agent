@@ -1,0 +1,48 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+**MCP OPERATIONAL WORKFLOW**
+
+Follow this precise sequence when implementing features:
+
+1. **INITIALIZATION**
+   - Check project state: `rex_get_state_summary`
+    **Plan Creation Protocol:** When asked to create an implementation plan from a TDD or PRD, you MUST follow this EXACT sequence:
+   - If no plan exists for a requested feature, ID, planId, name, title or description:
+     - **Analysis phase is MANDATORY before plan creation:**
+       1. First analyze TDD/PRD document thoroughly
+       2. Extract key requirements, components, dependencies
+       3. Design a logical task sequence with proper dependencies
+       4. Structure implementation according to project architecture patterns
+       5. Create complete plan with all tasks in a single operation:
+          `rex_create_plan {"planId": "[feature-name]", "planName": "[Feature Name]", "description": "Implementation plan for [feature]", "tasks": [detailed-tasks-array]}`
+       - This reserves the plan ID and ensures proper storage location       
+   - Get plan details: `rex_get_plan {"planId": "[planId]"}`
+   - Set current feature: `rex_update_state {"updates": {"current_feature": "feature-name"}}`
+
+2. **EXECUTION LOOP**
+   - Get next task: `rex_get_next_task {"planId": "[planId]"}`
+   - Mark as IN_PROGRESS with evidence
+   - **FOR EACH TARGET FILE:**
+     - Check scope and protection
+     - **Get rules before editing**: `rex_get_relevant_rules {"filePath": "[filePath]"}`
+     - Implement changes using ONLY Cursor tools (read_file, edit_file, etc.)
+   - Add implementation notes
+   - Verify against criteria
+   - Mark as DONE with detailed evidence
+
+3. **STATUS MANAGEMENT**
+   - **PENDING**: Initial state; waiting to be started
+   - **IN_PROGRESS**: Currently being worked on (update when starting)
+   - **DONE**: Completed and verified against ALL criteria
+   - **BLOCKED**: Cannot proceed due to external dependency (explain reason)
+   - **FAILED**: Task impossible as defined (provide alternative)
+
+4. **TOOL SELECTION**
+   - Use MCP tools ONLY for: plan/task management, scope checks, rules
+   - Use Cursor tools ONLY for: implementation code, documentation (non-plan)
+   - NEVER use direct file tools for plans or MCP tools for implementation
+
+Request approval if blocked by scope constraints, protection levels, or requirements ambiguity.

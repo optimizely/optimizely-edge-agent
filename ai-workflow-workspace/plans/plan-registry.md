@@ -1,74 +1,47 @@
 ---
 type: "registry"
-purpose: "plan-registry"
+purpose: "plan-tracking"
 version: "1.0"
 status: "Active"
 description: "Registry of all implementation plans"
-ai_instructions: "Update this registry whenever a new plan is created or a plan status changes"
+ai_instructions: "This file tracks all plans in the AI Workflow Framework. Add new plans at the top of the table."
 dateCreated: "2025-03-19"
-lastUpdated: "2025-04-07"
+lastUpdated: "2025-03-19"
 ---
 
-# Implementation Plan Registry
+# AI Workflow Implementation Plan Registry
 
-This registry tracks all implementation plans and their current status.
+This registry tracks all implementation plans in reverse chronological order (newest plans at the top).
 
 ## Active Plans
 
-| Plan ID | Date | Status | Progress | Description | Last Update |
-|:---|:---|:---:|:---:|:---|:---|
-| [rearch-opti-edge-agent-impl-001](ai-workflow-workspace/plans/rearch-opti-edge-agent-impl-001) | 2023-03-31 | 🟠 IMPLEMENTATION RECOVERY | 100% (API) | Optimizely Edge Agent Re-architecture | 2025-04-10 |
-| [edge-agent-feature-parity-002](ai-workflow-workspace/plans/edge-agent-feature-parity-002) | 2025-04-07 | 🔵 PLANNING | 10% | Optimizely Edge Agent Feature Parity Completion | 2025-04-07 |
-| [refactoring-payment-processor-impl-001](ai-workflow-workspace/plans/refactoring-payment-processor-impl-001) | 2025-03-24 | 🟠 IN PROGRESS | 60% | Payment Processor Refactoring | 2025-03-28 |
-| [ai-workflow-max-migration-impl-001](ai-workflow-workspace/plans/ai-workflow-max-migration-impl-001) | 2025-03-20 | 🟠 IN PROGRESS | 40% | Migration to AI Workflow Framework v2 | 2025-03-27 |
-| [sdk-optimize-js-types-001](ai-workflow-workspace/plans/sdk-optimize-js-types-001) | 2023-04-01 | ✅ COMPLETED | COMPLETED (7/7) | Feature Experimentation SDK TypeScript Types | 2023-04-01 |
+| Status | Plan ID | Mode | Description | Progress |
+|:---:|:---|:---|:---|:---:|
+| 🟡 | [plan-test-workspace-templates-2025-03-19](AI-workflow-v2/plans/plan-test-workspace-templates-2025-03-19) | @mode:manual | Test of workspace templates | 0% |
+| 🟢 | [plan-esm-migration-2025-05-20](AI-workflow-v2/plans/plan-esm-migration-2025-05-20) | @mode:manual | Migrate framework to ESM modules | 100% |
 
-## Completed Plans
+## Example Plans 
 
-| Plan ID | Date | Status | Description | Completion Date |
-|:---|:---|:---:|:---|:---|
-| [esm-migration-impl-001](ai-workflow-workspace/plans/esm-migration-impl-001) | 2025-05-20 | ✅ COMPLETE | Migration to ES Modules | 2025-05-22 |
-| [api-gateway-implementation-001](ai-workflow-workspace/plans/api-gateway-implementation-001) | 2025-03-18 | ✅ COMPLETE | API Gateway Implementation | 2025-03-20 |
+| Status | Plan ID | Mode | Description |
+|:---:|:---|:---|:---|
+| 🟢 | [auto-example-2025-03-17](AI-workflow-v2/ai-workflow-workspace/plans/examples/auto-example-2025-03-17) | @mode:auto | Example of automatic mode plan |
+| 🟢 | [semi-auto-example-2025-03-16](AI-workflow-v2/ai-workflow-workspace/plans/examples/semi-auto-example-2025-03-16) | @mode:semi | Example of semi-automatic mode plan |
+| 🟢 | [manual-example-2025-03-15](AI-workflow-v2/ai-workflow-workspace/plans/examples/manual-example-2025-03-15) | @mode:manual | Example of manual mode plan |
 
-## Pending Review
+## Status Legend
 
-| Plan ID | Date | Status | Description | Review Due |
-|:---|:---|:---:|:---|:---|
-| [service-mesh-rollout-impl-001](ai-workflow-workspace/plans/service-mesh-rollout-impl-001) | 2025-03-22 | 🟡 REVIEW | Service Mesh Rollout Plan | 2025-03-29 |
+- 🟢 Complete - Implementation finished
+- 🔵 Review - Implementation ready for review
+- 🟠 In Progress - Implementation in progress
+- 🟡 Planning - Plan created but not started
+- ⚫ Archived - Plan no longer relevant
+- ⚠️ Blocked - Implementation blocked
 
-## Plan Status Codes
+## How to Add a New Plan
 
-- ✅ **COMPLETE**: Implementation finished and verified
-- 🟠 **IN PROGRESS**: Implementation actively underway
-- 🟠 **IMPLEMENTATION RECOVERY**: Implementation recovery in progress
-- ⚠️ **VERIFICATION RESET**: Verification phase failed and requires reset
-- 🟡 **REVIEW**: Awaiting review or approval
-- 🔵 **PLANNING**: In planning phase, not yet started
-- ⚪ **PAUSED**: Implementation temporarily paused
-- ❌ **CANCELLED**: Implementation cancelled
-
-## Recent Plan Updates
-
-- **2025-04-07**: Added `edge-agent-feature-parity-002` plan to address feature parity gaps in Edge Agent implementation
-- **2025-04-10**: Updated `rearch-opti-edge-agent-impl-001` to IMPLEMENTATION RECOVERY with 100% progress for API Endpoints implementation - All API endpoints now fully implemented
-- **2025-04-08**: Updated `rearch-opti-edge-agent-impl-001` to 100% progress for Edge Mode functionality
-- **2023-11-01**: Updated `rearch-opti-edge-agent-impl-001` to 50% progress - Implemented CDN-specific composition pattern
-- **2023-10-31**: Updated `rearch-opti-edge-agent-impl-001` - Added metrics and logging enhancements
-- **2023-10-30**: Updated `rearch-opti-edge-agent-impl-001` - Implemented enhanced DecisionService
-- **2023-04-05**: Updated `rearch-opti-edge-agent-impl-001` to Phase 2 - Focus on Cloudflare implementation
-- **2025-03-28**: Updated `refactoring-payment-processor-impl-001` to 60% progress
-- **2025-03-27**: Updated `ai-workflow-max-migration-impl-001` to 40% progress
-- **2025-03-22**: Added `service-mesh-rollout-impl-001` for review
-- **2025-03-20**: Completed `api-gateway-implementation-001`
-
-## How to Register a New Plan
-
-1. Create the plan directory: `ai-workflow-workspace/plans/[plan-id]/`
-2. Add required files: `README.md`, `plan.md`, `status.md`
-3. Add an entry to this registry under the appropriate section
-4. Update the "Recent Plan Updates" section with a new entry
+When creating a new plan, add it to the top of the Active Plans table with:
 
 ```markdown
-| [plan-id](ai-workflow-workspace/plans/[plan-id]) | YYYY-MM-DD | 🔵 PLANNING | 0% | Brief description | YYYY-MM-DD |
+| 🟡 | [plan-name-YYYY-MM-DD](AI-workflow-v2/plans/plan-name-YYYY-MM-DD) | @mode:mode | Brief description | 0% |
 ```
 

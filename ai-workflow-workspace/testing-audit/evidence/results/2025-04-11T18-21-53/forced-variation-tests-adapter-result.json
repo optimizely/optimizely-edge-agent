@@ -1,0 +1,33 @@
+{
+  "success": true,
+  "environment": "local",
+  "isLocalEnvironment": true,
+  "results": [
+    {
+      "name": "Basic forced variation",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    },
+    {
+      "name": "Multiple forced variations",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    },
+    {
+      "name": "Invalid variation value",
+      "success": true,
+      "expected": 200,
+      "actual": 400,
+      "acceptable": true
+    }
+  ],
+  "summary": {
+    "totalTests": 3,
+    "passedTests": 3,
+    "failedTests": 0
+  }
+}
