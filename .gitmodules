@@ -1,0 +1,4 @@
+[submodule "rex-tracker"]
+	path = rex-tracker
+	url = https://github.com/simone-coelho/rexearch-ai-mcp-server.git
+	branch = simplified-rule-system
