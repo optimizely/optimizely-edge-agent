@@ -123,7 +123,7 @@ export function createSetCookieHeader(cookies: Cookie[]): string[] {
  * @returns The serialized decisions string
  */
 export function serializeDecisions(decisions: Record<string, any>): string {
-  return btoa(JSON.stringify(decisions));
+  return JSON.stringify(decisions);
 }
 
 /**

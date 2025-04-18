@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node scripts/run-test-with-wrangler.js",
     "test:infra": "node scripts/infrastructure/infrastructure-verification.js",
+    "test:setup": "node scripts/setup/infrastructure-verification.js",
     "test:forced-variation": "node scripts/agent-mode/forced-variation-tests.js",
     "test:decision-api": "node scripts/agent-mode/decision-api-tests.js",
     "test:parameter-handling": "node scripts/agent-mode/parameter-handling-tests.js",

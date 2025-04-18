@@ -155,7 +155,7 @@ export interface IEdgeModeHandler {
   transformContent(
     content: string,
     transformFn: string
-  ): string;
+  ): Promise<string>;
   
   /**
    * Forwards a request to the origin server

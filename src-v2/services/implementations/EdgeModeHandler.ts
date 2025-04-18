@@ -137,10 +137,10 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     const matchingConfig = this.findMatchingConfig(url.toString(), mockVariationSettings);
     
     if (matchingConfig) {
-      this.logger.debug(`${this.logPrefix} Found matching configuration, request should be handled by Edge Mode`, { 
+      this.logger.debug(`${this.logPrefix} Found matching configuration, request should be handled by Edge Mode`, JSON.stringify({ 
         url: url.toString(),
         matchingPattern: matchingConfig.pathRegex || matchingConfig.cdnExperimentURL
-      });
+      }));
       
       return { 
         handle: true, 
@@ -188,13 +188,13 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       const forwardToOrigin = isTrue(safeSettings.forwardRequestToOrigin);
       
       // Log settings
-      this.logger.debug(`${this.logPrefix} Preparing content with settings:`, {
+      this.logger.debug(`${this.logPrefix} Preparing content with settings:`, JSON.stringify({
         useCache,
         forwardToOrigin,
         hasTransform: !!safeSettings.transformContent,
         hasCdnResponseURL: !!safeSettings.cdnResponseURL,
         sdkKeyUsed: sdkKey ? `${sdkKey.substring(0, 4)}...` : undefined
-      });
+      }));
       
       // Return content preparation result
       return {
@@ -202,7 +202,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
         forwardToOrigin
       };
     } catch (error) {
-      this.logger.error(`${this.logPrefix} Error preparing content:`, error);
+      this.logger.error(`${this.logPrefix} Error preparing content:`, JSON.stringify(error instanceof Error ? error.message : String(error)));
       // Default behavior in case of error
       return {
         useCache: true,
@@ -223,29 +223,72 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     cdnVariationSettings: CDNVariationSettings
   ): Promise<IResponseAdapter> {
     try {
-      this.logger.debug('EdgeModeHandler: Processing request in Edge Mode', {
+      this.logger.debug('EdgeModeHandler: Processing request', JSON.stringify({
         url: request.getUrl().toString(),
-        cdnExperimentURL: cdnVariationSettings.cdnExperimentURL,
-        cdnResponseURL: cdnVariationSettings.cdnResponseURL
-      });
+        cdnResponseURL: cdnVariationSettings.cdnResponseURL,
+        forwardRequestToOrigin: cdnVariationSettings.forwardRequestToOrigin
+      }));
       
-      // If we need to forward to origin, do that first
-      if (isTrue(cdnVariationSettings.forwardRequestToOrigin)) {
+      // Determine if we should fetch content from CDN or forward to origin
+      if (cdnVariationSettings.cdnResponseURL) {
+        // Fetch from CDN
+        const response = await this.fetchContent(cdnVariationSettings.cdnResponseURL, request);
+        
+        // Apply content transformation if specified
+        if (cdnVariationSettings.transformContent) {
+          try {
+            const body = await response.getBody();
+            if (body) {
+              const transformedContent = await this.transformContent(body, cdnVariationSettings.transformContent);
+              response.send(transformedContent);
+            }
+          } catch (error) {
+            this.logger.error('EdgeModeHandler: Error transforming CDN content', JSON.stringify({
+              error: error instanceof Error ? error.message : String(error)
+            }));
+            // Continue with original content if transformation fails
+          }
+        }
+        
+        // Apply response headers from CDN variation settings
+        if (cdnVariationSettings.responseHeaders && typeof cdnVariationSettings.responseHeaders === 'object') {
+          for (const [key, value] of Object.entries(cdnVariationSettings.responseHeaders)) {
+            if (value !== undefined && value !== null) {
+              try {
+                response.setHeader(key, String(value));
+              } catch (headerError) {
+                this.logger.warn(`EdgeModeHandler: Error setting custom header ${key}`, JSON.stringify({
+                  value, 
+                  error: headerError instanceof Error ? headerError.message : String(headerError)
+                }));
+              }
+            }
+          }
+        }
+        
+        return response;
+      } else if (isTrue(cdnVariationSettings.forwardRequestToOrigin)) {
+        // Forward to origin
         return this.forwardToOrigin(request, cdnVariationSettings);
+      } else {
+        // Neither CDN URL nor forward to origin is specified
+        this.logger.warn('EdgeModeHandler: Neither CDN URL nor forward to origin is specified in variation settings');
+        const response = this.createResponseAdapter(request);
+        response.status(400); // Bad Request
+        response.send('CDN variation configuration error: No content source specified');
+        return response;
       }
-      
-      // Otherwise, fetch content from CDN response URL
-      return this.fetchContent(cdnVariationSettings.cdnResponseURL, request);
     } catch (error) {
-      this.logger.error('EdgeModeHandler: Error processing request', {
+      this.logger.error('EdgeModeHandler: Error processing request', JSON.stringify({
         url: request.getUrl().toString(),
-        error: error instanceof Error ? error.message : String(error)
-      });
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }));
       
-      // Create a simple error response
+      // Create an error response
       const response = this.createResponseAdapter(request);
-      response.status(500);
-      response.send('Error processing Edge Mode request');
+      response.status(500); // Internal Server Error
+      response.send('Error processing request');
       return response;
     }
   }
@@ -261,7 +304,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     url: string,
     allCdnVariationSettings: CDNVariationSettings[]
   ): CDNVariationSettings | null {
-    this.logger.debug('EdgeModeHandler: Finding matching config for URL', { url });
+    this.logger.debug('EdgeModeHandler: Finding matching config for URL', JSON.stringify({ url }));
     
     // No settings, no match
     if (!allCdnVariationSettings || allCdnVariationSettings.length === 0) {
@@ -272,9 +315,14 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     // Parse the URL to work with its components
     let parsedUrl: URL;
     try {
-      parsedUrl = new URL(url);
+      // Add protocol if not present to make URL parsing work
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        parsedUrl = new URL(`https://${url}`);
+      } else {
+        parsedUrl = new URL(url);
+      }
     } catch (error) {
-      this.logger.warn('EdgeModeHandler: Invalid URL provided for matching', { url, error: error instanceof Error ? error.message : String(error) });
+      this.logger.warn('EdgeModeHandler: Invalid URL provided for matching', JSON.stringify({ url, error: error instanceof Error ? error.message : String(error) }));
       return null;
     }
     
@@ -282,7 +330,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     for (const config of allCdnVariationSettings) {
       // Skip if both required pattern fields are missing
       if (!config.cdnExperimentURL && !config.pathRegex) {
-        this.logger.warn('EdgeModeHandler: CDN variation settings missing both cdnExperimentURL and pathRegex', { config });
+        this.logger.warn('EdgeModeHandler: CDN variation settings missing both cdnExperimentURL and pathRegex', JSON.stringify({ config }));
         continue;
       }
       
@@ -292,42 +340,60 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       
       // If no pattern, skip
       if (!pattern) {
-        this.logger.warn('EdgeModeHandler: Invalid URL pattern', { config });
+        this.logger.warn('EdgeModeHandler: Invalid URL pattern', JSON.stringify({ config }));
         continue;
       }
       
-      // For non-regex patterns, handle relative URLs gracefully
+      // For non-regex patterns, first try a direct path comparison for efficiency
       if (!isRegex && pattern.startsWith('/')) {
-        // Compare only the pathname part for relative URLs
-        if (parsedUrl.pathname !== pattern) {
-          this.logger.debug('EdgeModeHandler: Path does not match', { 
-            urlPath: parsedUrl.pathname, 
-            pattern 
-          });
-          continue;
+        const normalizedUrlPath = this.urlMatcher.normalizePath(parsedUrl.pathname);
+        const normalizedPattern = this.urlMatcher.normalizePath(pattern);
+        
+        if (normalizedUrlPath === normalizedPattern) {
+          // For direct path matches, still check query params if required
+          if (config.requiredQueryParams && config.requiredQueryParams.length > 0) {
+            const allParamsPresent = config.requiredQueryParams.every(
+              param => parsedUrl.searchParams.has(param)
+            );
+            if (!allParamsPresent) {
+              this.logger.debug(`EdgeModeHandler: Path matches but missing required query params - url: ${url}, pattern: ${pattern}, requiredParams: ${JSON.stringify(config.requiredQueryParams)}`);
+              continue;
+            }
+          }
+          
+          this.logger.debug('EdgeModeHandler: Found direct path match', JSON.stringify({
+            urlPath: parsedUrl.pathname,
+            pattern
+          }));
+          return config;
         }
+        
+        this.logger.debug('EdgeModeHandler: Path does not match', JSON.stringify({ 
+          urlPath: parsedUrl.pathname, 
+          normalizedUrlPath,
+          pattern,
+          normalizedPattern
+        }));
       }
       
-      // Check if URL matches the pattern with the given options
+      // Use URLMatcher for all matching scenarios including regex
       const matches = this.urlMatcher.matches(url, pattern, {
-        isRegex,
+        isRegex: isRegex,
         requiredQueryParams: config.requiredQueryParams,
         ignoreQueryParams: config.ignoreQueryParams
       });
       
       if (matches) {
-        this.logger.debug('EdgeModeHandler: Found matching config', { 
+        this.logger.debug('EdgeModeHandler: Found matching config via URLMatcher', JSON.stringify({ 
           url, 
           pattern,
-          isRegex,
-          requiredQueryParams: config.requiredQueryParams,
-          ignoreQueryParams: config.ignoreQueryParams
-        });
+          isRegex
+        }));
         return config;
       }
     }
     
-    this.logger.debug('EdgeModeHandler: No matching config found for URL', { url });
+    this.logger.debug('EdgeModeHandler: No matching config found for URL', JSON.stringify({ url }));
     return null;
   }
   
@@ -342,7 +408,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     cdnResponseURL: string,
     request: IRequestAdapter
   ): Promise<IResponseAdapter> {
-    this.logger.debug('EdgeModeHandler: Fetching content', { cdnResponseURL });
+    this.logger.debug('EdgeModeHandler: Fetching content', JSON.stringify({ cdnResponseURL }));
     
     try {
       // Create a response object
@@ -352,7 +418,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       // Note: In a real implementation, we'd use a more sophisticated caching strategy
       const cachedContent = await this.cacheService.get(cdnResponseURL);
       if (cachedContent) {
-        this.logger.debug('EdgeModeHandler: Serving cached content', { cdnResponseURL });
+        this.logger.debug('EdgeModeHandler: Serving cached content', JSON.stringify({ cdnResponseURL }));
         response.send(cachedContent);
         response.setHeader('X-Edge-Cache', 'HIT');
         return response;
@@ -369,29 +435,45 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       const content = await fetchResponse.text();
       
       // Set basic response properties
-      response.status(fetchResponse.status);
-      response.send(content);
+      response.status(fetchResponse.status || 200);
       
       // Copy headers from fetch response - safe way to handle headers
       fetchResponse.headers.forEach((value, key) => {
-        response.setHeader(key, value);
+        if (value !== undefined && value !== null) {
+          try {
+            response.setHeader(key, String(value));
+          } catch (headerError) {
+            this.logger.warn(`EdgeModeHandler: Error setting header ${key}`, JSON.stringify({
+              value,
+              error: headerError instanceof Error ? headerError.message : String(headerError)
+            }));
+          }
+        }
       });
       
       // Add cache indicator
       response.setHeader('X-Edge-Cache', 'MISS');
       
-      // Store in cache if successful
-      if (fetchResponse.ok) {
+      // Send content last after setting headers
+      if (content !== undefined && content !== null) {
+        response.send(content);
+      } else {
+        response.send('');
+      }
+      
+      // Store in cache if successful - ensure this happens before we return
+      if (fetchResponse.ok && content) {
         // In a real implementation, we'd respect cache headers and TTL
         await this.cacheService.set(cdnResponseURL, content, 60 * 60); // 1 hour default TTL
+        this.logger.debug('EdgeModeHandler: Cached content', JSON.stringify({ cdnResponseURL }));
       }
       
       return response;
     } catch (error) {
-      this.logger.error('EdgeModeHandler: Error fetching content', {
+      this.logger.error('EdgeModeHandler: Error fetching content', JSON.stringify({
         cdnResponseURL,
         error: error instanceof Error ? error.message : String(error)
-      });
+      }));
       
       // Create an error response
       const response = this.createResponseAdapter(request);
@@ -402,76 +484,40 @@ export class EdgeModeHandler implements IEdgeModeHandler {
   }
   
   /**
-   * Transforms content based on the transformContent function in CDN variation settings
-   * 
-   * @param content The content to transform
-   * @param transformFn The transformation function (as string)
-   * @returns The transformed content
+   * Apply transformation functions to content.
+   * @param content - Content to transform
+   * @param transformFn - Transformation function as a string
+   * @returns Transformed content
    */
-  public transformContent(content: string, transformFn: string): string {
-    if (!transformFn) {
-      return content;
-    }
-    
+  public async transformContent(
+    content: string,
+    transformFn: string
+  ): Promise<string> {
     try {
-      // Create a safer sandboxed environment without browser APIs
-      const sandbox = {
-        content,
-        console: {
-          log: (...args: any[]) => this.logger.debug('Transform function log:', ...args),
-          warn: (...args: any[]) => this.logger.warn('Transform function warning:', ...args),
-          error: (...args: any[]) => this.logger.error('Transform function error:', ...args)
-        },
-        // Add any other safe globals the transform function might need
-        String, Number, Array, Object, RegExp, JSON
-      };
+      if (!transformFn || transformFn.trim() === '') {
+        return content;
+      }
+
+      this.logger.debug(`Applying transformation function`);
       
-      // Execute in a safer way that doesn't require browser APIs
-      const transformScript = `
-        const window = undefined;
-        const document = undefined;
-        const localStorage = undefined;
-        const sessionStorage = undefined;
-        
-        try {
-          ${transformFn}
-          
-          // If transform function doesn't explicitly return, assume it modifies content directly
-          typeof transform === 'function' ? transform(content) : content;
-        } catch (error) {
-          console.error('Error in transform function:', error.message);
-          content; // Return original content on error
-        }
-      `;
+      // Create a function from the string
+      // The function should have access to the content variable
+      // eslint-disable-next-line no-new-func
+      const fn = new Function('content', transformFn);
       
-      // Use Function constructor with explicit arguments for better isolation
-      const sandboxedFn = new Function('content', 'console', 'String', 'Number', 
-        'Array', 'Object', 'RegExp', 'JSON', transformScript);
+      // Execute the function with the content
+      const transformedContent = fn(content);
       
-      // Execute with controlled context
-      const transformedContent = sandboxedFn(
-        content, 
-        sandbox.console,
-        String, Number, Array, Object, RegExp, JSON
-      );
-      
-      // Ensure the result is a string
+      // Ensure we always return a string
       if (typeof transformedContent !== 'string') {
-        this.logger.warn('EdgeModeHandler: Transform function did not return a string', {
-          originalType: typeof content,
-          transformedType: typeof transformedContent
-        });
+        this.logger.warn('Transform function did not return a string. Using original content.');
         return content;
       }
       
       return transformedContent;
     } catch (error) {
-      this.logger.error('EdgeModeHandler: Error transforming content', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      
-      // Return original content on error
-      return content;
+      this.logger.error(`Error applying transformation function: ${error instanceof Error ? error.message : String(error)}`);
+      return content; // Return original content if transformation fails
     }
   }
   
@@ -500,139 +546,140 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     request: IRequestAdapter,
     cdnVariationSettings: CDNVariationSettings
   ): Promise<IResponseAdapter> {
-    const url = request.getUrl().toString();
-    this.logger.debug('EdgeModeHandler: Forwarding request to origin', { url });
-    
     try {
-      // Create a new Request object for forwarding
-      const headers = new Headers();
+      this.logger.debug('EdgeModeHandler: Forwarding request to origin', JSON.stringify({
+        url: request.getUrl().toString()
+      }));
       
-      // Safely copy headers from original request
-      const requestHeaders = request.getHeaders();
-      // If Headers implements forEach, use it directly
-      if (typeof requestHeaders.forEach === 'function') {
-        requestHeaders.forEach((value, key) => {
-          headers.set(key, value);
-        });
-      } else {
-        // Fall back to manual handling for non-standard Headers objects
-        Object.keys(requestHeaders).forEach(key => {
-          const value = request.getHeader(key);
-          if (value) {
-            headers.set(key, value);
+      const cacheKey = this.generateCacheKey(request);
+      
+      // Check cache first if caching is enabled
+      if (cdnVariationSettings.cacheRequestToOrigin && this.cacheService) {
+        try {
+          const cachedResponse = await this.cacheService.get(cacheKey);
+          if (cachedResponse) {
+            this.logger.debug('EdgeModeHandler: Found cached origin response', JSON.stringify({ cacheKey }));
+            
+            try {
+              // Parse the cached response
+              const parsedResponse = JSON.parse(cachedResponse);
+              
+              // Create a response adapter
+              const response = this.createResponseAdapter(request);
+              
+              // Set status
+              if (parsedResponse.status) {
+                response.status(parsedResponse.status);
+              }
+              
+              // Set headers
+              if (parsedResponse.headers && typeof parsedResponse.headers === 'object') {
+                for (const [key, value] of Object.entries(parsedResponse.headers)) {
+                  if (value !== undefined && value !== null) {
+                    response.setHeader(key, String(value));
+                  }
+                }
+              }
+              
+              // Set body
+              if (parsedResponse.body) {
+                response.send(parsedResponse.body);
+              }
+              
+              // Apply custom headers from CDN variation settings
+              if (cdnVariationSettings.responseHeaders && typeof cdnVariationSettings.responseHeaders === 'object') {
+                for (const [key, value] of Object.entries(cdnVariationSettings.responseHeaders)) {
+                  if (value !== undefined && value !== null) {
+                    response.setHeader(key, String(value));
+                  }
+                }
+              }
+              
+              return response;
+            } catch (parseError) {
+              this.logger.warn('EdgeModeHandler: Error parsing cached origin response', JSON.stringify({
+                error: parseError instanceof Error ? parseError.message : String(parseError),
+                cachedResponse
+              }));
+              // Continue with origin fetch if parsing fails
+            }
           }
-        });
-      }
-      
-      // Add X-Forwarded headers if not already set
-      if (!headers.has('X-Forwarded-For')) {
-        // Use a default value since getClientIP doesn't exist on IRequestAdapter
-        headers.set('X-Forwarded-For', request.getHeader('CF-Connecting-IP') || 'unknown');
-      }
-      
-      // Create fetch request options
-      const fetchOptions: RequestInit = {
-        method: request.getMethod(),
-        headers,
-        redirect: 'follow',
-      };
-      
-      // Add body for non-GET/HEAD requests
-      if (!['GET', 'HEAD'].includes(request.getMethod().toUpperCase())) {
-        fetchOptions.body = await request.getBody();
-      }
-      
-      // Handle caching if enabled
-      if (isTrue(cdnVariationSettings.cacheRequestToOrigin)) {
-        const cacheKey = `origin:${url}`;
-        
-        // Try to get from cache first
-        const cachedResponse = await this.cacheService.get(cacheKey);
-        if (cachedResponse) {
-          this.logger.debug('EdgeModeHandler: Serving cached origin response', { url });
-          
-          // Parse the cached response
-          const parsedResponse = JSON.parse(cachedResponse);
-          
-          // Create a response from the cached data
-          const response = this.createResponseAdapter(request);
-          response.status(parsedResponse.status);
-          response.send(parsedResponse.body);
-          
-          // Set headers from cached response
-          for (const [key, value] of Object.entries(parsedResponse.headers)) {
-            response.setHeader(key, value as string);
-          }
-          
-          // Add cache indicator
-          response.setHeader('X-Edge-Origin-Cache', 'HIT');
-          
-          return response;
+        } catch (cacheError) {
+          this.logger.warn('EdgeModeHandler: Error fetching from cache', JSON.stringify({
+            error: cacheError instanceof Error ? cacheError.message : String(cacheError),
+            cacheKey
+          }));
+          // Continue with origin fetch if cache fetch fails
         }
       }
       
       // Fetch from origin
-      const fetchResponse = await fetch(url, fetchOptions);
-      
-      // Create a response object
-      const response = this.createResponseAdapter(request);
-      
-      // Set basic response properties
-      response.status(fetchResponse.status);
-      
-      // Copy headers from fetch response
-      fetchResponse.headers.forEach((value, key) => {
-        response.setHeader(key, value);
-      });
-      
-      // Get response body
-      const body = await fetchResponse.text();
+      const originResponse = await this.fetchFromOrigin(request);
       
       // Apply content transformation if specified
-      const finalBody = cdnVariationSettings.transformContent 
-        ? this.transformContent(body, cdnVariationSettings.transformContent)
-        : body;
-      
-      response.send(finalBody);
-      
-      // Add response headers from CDN variation settings
-      if (cdnVariationSettings.responseHeaders) {
-        for (const [key, value] of Object.entries(cdnVariationSettings.responseHeaders)) {
-          response.setHeader(key, value);
+      if (cdnVariationSettings.transformContent) {
+        try {
+          const body = await originResponse.getBody();
+          if (body) {
+            const transformedContent = await this.transformContent(body, cdnVariationSettings.transformContent);
+            originResponse.send(transformedContent);
+          }
+        } catch (error) {
+          this.logger.error('EdgeModeHandler: Error transforming origin content', JSON.stringify({
+            error: error instanceof Error ? error.message : String(error)
+          }));
+          // Continue with original content if transformation fails
         }
       }
       
-      // Add cache indicator
-      response.setHeader('X-Edge-Origin-Cache', 'MISS');
-      
-      // Cache the response if enabled
-      if (isTrue(cdnVariationSettings.cacheRequestToOrigin) && fetchResponse.ok) {
-        const cacheKey = `origin:${url}`;
-        
-        // Parse the TTL to a number - handle both string and number inputs
-        let ttl = 60 * 60; // Default 1 hour
-        if (cdnVariationSettings.cacheTTL) {
-          if (typeof cdnVariationSettings.cacheTTL === 'string') {
-            ttl = parseInt(cdnVariationSettings.cacheTTL, 10) || ttl;
-          } else if (typeof cdnVariationSettings.cacheTTL === 'number') {
-            ttl = cdnVariationSettings.cacheTTL;
+      // Apply custom headers from CDN variation settings
+      if (cdnVariationSettings.responseHeaders && typeof cdnVariationSettings.responseHeaders === 'object') {
+        for (const [key, value] of Object.entries(cdnVariationSettings.responseHeaders)) {
+          if (value !== undefined && value !== null) {
+            try {
+              originResponse.setHeader(key, String(value));
+            } catch (headerError) {
+              this.logger.warn(`EdgeModeHandler: Error setting custom header ${key}`, JSON.stringify({
+                value, 
+                error: headerError instanceof Error ? headerError.message : String(headerError)
+              }));
+            }
           }
         }
-        
-        // Cache the response data
-        await this.cacheService.set(cacheKey, JSON.stringify({
-          status: fetchResponse.status,
-          headers: this.headersToRecord(fetchResponse.headers),
-          body: finalBody
-        }), ttl);
       }
       
-      return response;
+      // Cache the response if caching is enabled and the response is valid
+      if (cdnVariationSettings.cacheRequestToOrigin && this.cacheService) {
+        try {
+          const responseToCache = {
+            status: originResponse.getStatus(),
+            headers: originResponse.getHeaders(),
+            body: await originResponse.getBody()
+          };
+          
+          await this.cacheService.set(
+            cacheKey, 
+            JSON.stringify(responseToCache), 
+            cdnVariationSettings.cacheTTL || 300 // Default TTL of 5 minutes
+          );
+          
+          this.logger.debug('EdgeModeHandler: Cached origin response', JSON.stringify({ cacheKey }));
+        } catch (cacheError) {
+          this.logger.warn('EdgeModeHandler: Error caching origin response', JSON.stringify({
+            error: cacheError instanceof Error ? cacheError.message : String(cacheError),
+            cacheKey
+          }));
+          // Continue without caching if there's an error
+        }
+      }
+      
+      return originResponse;
     } catch (error) {
-      this.logger.error('EdgeModeHandler: Error forwarding request to origin', {
-        url,
-        error: error instanceof Error ? error.message : String(error)
-      });
+      this.logger.error('EdgeModeHandler: Error forwarding request to origin', JSON.stringify({
+        url: request.getUrl().toString(),
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      }));
       
       // Create an error response
       const response = this.createResponseAdapter(request);
@@ -640,5 +687,68 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       response.send('Error forwarding request to origin');
       return response;
     }
+  }
+
+  private async fetchFromOrigin(request: IRequestAdapter): Promise<IResponseAdapter> {
+    // Create a fetch request that mimics the original request
+    const url = request.getUrl().toString();
+    const method = request.getMethod();
+    const headers = request.getHeaders();
+    const body = await request.getBody();
+    
+    this.logger.debug('EdgeModeHandler: Fetching from origin', JSON.stringify({
+      url,
+      method,
+      headersCount: Object.keys(headers).length
+    }));
+    
+    try {
+      // Create a response adapter to hold the response
+      const response = this.createResponseAdapter(request);
+      
+      // Use the fetch API to make the request
+      const fetchResponse = await fetch(url, {
+        method,
+        headers,
+        body,
+        redirect: 'follow'
+      });
+      
+      // Set the status
+      response.status(fetchResponse.status);
+      
+      // Copy the headers
+      fetchResponse.headers.forEach((value, key) => {
+        response.setHeader(key, value);
+      });
+      
+      // Set the body
+      const responseBody = await fetchResponse.text();
+      response.send(responseBody);
+      
+      return response;
+    } catch (error) {
+      this.logger.error('EdgeModeHandler: Error in fetchFromOrigin', JSON.stringify({
+        url,
+        error: error instanceof Error ? error.message : String(error)
+      }));
+      
+      // Create an error response
+      const response = this.createResponseAdapter(request);
+      response.status(502); // Bad Gateway
+      response.send('Error fetching from origin');
+      return response;
+    }
+  }
+
+  private generateCacheKey(request: IRequestAdapter): string {
+    // Create a unique cache key based on URL and HTTP method
+    const url = request.getUrl().toString();
+    const method = request.getMethod().toUpperCase();
+    
+    // Add variations for different request types as needed
+    // For example, include vary headers or query parameters that affect caching
+    
+    return `origin:${method}:${url}`;
   }
 } 

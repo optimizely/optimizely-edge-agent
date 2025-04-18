@@ -24,6 +24,7 @@ We've created a structured approach to address the critical testing needs:
 2. **Documentation Framework**: Set up templates for feature parity analysis and test coverage tracking
 3. **Infrastructure Testing**: Created initial infrastructure verification test script
 4. **Test Runner**: Implemented Wrangler Dev integration for local testing with log capture
+5. **Analysis Reports**: Established a documentation system in the `docs/` directory with numbered reports (00-XX) to maintain historical context of all findings and insights. See `docs/index.md` for the current list of available reports.
 
 ## Next Steps
 

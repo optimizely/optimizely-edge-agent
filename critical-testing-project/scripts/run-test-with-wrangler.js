@@ -177,7 +177,8 @@ async function main() {
     
     // Define tests to run
     const testScripts = [
-      path.join(__dirname, 'infrastructure/infrastructure-verification.js')
+      path.join(__dirname, 'infrastructure/infrastructure-verification.js'),
+      path.join(__dirname, 'agent-mode/sdk-key-parameters.test.js')
       // Add more test scripts here as they are created
     ];
     

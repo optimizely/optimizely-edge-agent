@@ -271,15 +271,6 @@ export class AbstractResponse {
 	}
 
 	/**
-	 * Gets a cookie from the request.
-	 * @param {string} name - The name of the cookie.
-	 * @returns {string|null} - The value of the cookie, or null if not found.
-	 */
-	getCookie(name) {
-		return AbstractResponse.getCookie(name);
-	}
-
-	/**
 	 * Get a cookie from the response.
 	 * @param {Response|Object} response - The response object.
 	 * @param {string} name - The name of the cookie.
@@ -413,47 +404,6 @@ export class AbstractResponse {
 
 	setHeaderInResponse(response, name, value) {
 		AbstractResponse.setHeaderInResponse(response, name, value);
-	}
-
-	/**
-	 * Get a cookie from the response.
-	 * @param {Response} response - The response object.
-	 * @param {string} name - The name of the cookie.
-	 * @returns {string|null} - The value of the cookie, or null if not found.
-	 */
-	static getCookieFromResponse(response, name) {
-		logger().debugExt('AbstractResponse - Getting cookie from response [getCookieFromResponse]', `Name: ${name}`);
-		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
-		let cookies;
-
-		switch (cdnProvider) {
-			case 'cloudflare':
-			case 'fastly':
-			case 'vercel':
-			case 'akamai':
-				cookies = response.headers.get('Set-Cookie');
-				break;
-			case 'cloudfront':
-				cookies = response.headers['set-cookie'];
-				break;
-			default:
-				throw new Error('Unsupported CDN provider.');
-		}
-
-		if (!cookies) return null;
-
-		const cookieArray = cookies.split(';').map((cookie) => cookie.trim());
-		for (const cookie of cookieArray) {
-			const [cookieName, cookieValue] = cookie.split('=');
-			if (cookieName === name) {
-				return cookieValue;
-			}
-		}
-		return null;
-	}
-
-	getCookieFromResponse(response, name) {
-		return AbstractResponse.getCookieFromResponse(response, name);
 	}
 
 	/**
@@ -594,41 +544,5 @@ export class AbstractResponse {
 	 */
 	cloneResponse(response) {
 		return AbstractResponse.cloneResponse(response);
-	}
-
-	/**
-	 * Creates a new response based on the provided body and options.
-	 * Supports Cloudflare, Akamai, Fastly, CloudFront, and Vercel.
-	 * @param {any} body - The body of the response.
-	 * @param {Object} options - The options object for the response.
-	 * @returns {Response} - The new response object.
-	 */
-	static createNewResponse(body, options) {
-		logger().debugExt('AbstractResponse - Creating new response [createNewResponse]', 'Body', body, 'Options', options);
-		const cdnProvider = defaultSettings.cdnProvider.toLowerCase();
-
-		switch (cdnProvider) {
-			case 'cloudflare':
-			case 'fastly':
-			case 'vercel':
-				return new Response(body, options);
-			case 'akamai':
-			case 'cloudfront':
-				// For Akamai and CloudFront, we assume the standard Response constructor works
-				return new Response(body, options);
-			default:
-				throw new Error('Unsupported CDN provider.');
-		}
-	}
-
-	/**
-	 * Creates a new response based on the provided body and options.
-	 * Supports Cloudflare, Akamai, Fastly, CloudFront, and Vercel.
-	 * @param {any} body - The body of the response.
-	 * @param {Object} options - The options object for the response.
-	 * @returns {Response} - The new response object.
-	 */
-	createNewResponse(body, options) {
-		return AbstractResponse.createNewResponse(body, options);
 	}
 }

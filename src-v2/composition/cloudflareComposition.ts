@@ -263,10 +263,72 @@ export async function handleCloudflareWorkerRequest(
       }
     }
 
-    // 5. Return the response
+    // 5. Validate headers to prevent TypeError
+    const validatedHeaders = new Headers();
+    
+    if (result.headers) {
+      // Log the original headers
+      console.debug("[Cloudflare Composition] Original headers:", JSON.stringify(result.headers));
+      
+      // Special handling for Set-Cookie headers
+      let setCookieValues: string[] = [];
+      
+      // Validate each header
+      Object.entries(result.headers).forEach(([name, value]) => {
+        // Skip if name or value is undefined/null
+        if (!name || value === undefined || value === null) {
+          console.warn(`[Cloudflare Composition] Skipping invalid header: ${name}:${value}`);
+          return;
+        }
+        
+        try {
+          // Special handling for Set-Cookie which needs to be added via append(), not set()
+          if (name.toLowerCase() === 'set-cookie') {
+            // For Set-Cookie, we need to handle multiple values and append each separately
+            if (typeof value === 'string') {
+              // Split multiple cookies if they're combined with \n
+              const cookies = value.split('\n');
+              cookies.forEach(cookie => {
+                if (cookie && cookie.trim()) {
+                  try {
+                    setCookieValues.push(cookie.trim());
+                  } catch (cookieError) {
+                    console.warn(`[Cloudflare Composition] Error adding cookie: ${cookie}`, cookieError);
+                  }
+                }
+              });
+            }
+          } else {
+            // Convert value to string and validate it's not empty
+            const stringValue = String(value).trim();
+            if (stringValue) {
+              validatedHeaders.set(name, stringValue);
+            } else {
+              console.warn(`[Cloudflare Composition] Skipping empty header: ${name}`);
+            }
+          }
+        } catch (headerError) {
+          console.warn(`[Cloudflare Composition] Error setting header ${name}:`, headerError);
+        }
+      });
+      
+      // Add Set-Cookie headers after processing all other headers
+      if (setCookieValues.length > 0) {
+        console.debug(`[Cloudflare Composition] Adding ${setCookieValues.length} Set-Cookie headers`);
+        setCookieValues.forEach(cookie => {
+          try {
+            validatedHeaders.append('Set-Cookie', cookie);
+          } catch (cookieError) {
+            console.warn(`[Cloudflare Composition] Error appending cookie: ${cookie}`, cookieError);
+          }
+        });
+      }
+    }
+
+    // 6. Return the response with validated headers
     return new Response(result.body, {
       status: result.status,
-      headers: result.headers
+      headers: validatedHeaders
     });
   } catch (error) {
     // Handle any errors that occurred during processing

@@ -149,7 +149,7 @@ describe('Response Headers Integration Tests', () => {
     expect(response.headers['X-Optimizely-Decision']).toBeDefined();
     
     // Verify the decision is base64 encoded JSON
-    const decodedDecision = JSON.parse(atob(response.headers['X-Optimizely-Decision']));
+    const decodedDecision = JSON.parse(response.headers['X-Optimizely-Decision']);
     expect(decodedDecision['test-flag']).toBeDefined();
     expect(decodedDecision['test-flag'].variationKey).toBe('variation-a');
   });
@@ -319,7 +319,7 @@ describe('Response Headers Integration Tests', () => {
     const response = await requestHandler.handleRequest(mockRequest);
     
     // Verify the decision header is trimmed
-    const decodedDecision = JSON.parse(atob(response.headers['X-Optimizely-Decision']));
+    const decodedDecision = JSON.parse(response.headers['X-Optimizely-Decision']);
     expect(decodedDecision['test-flag']).toBeDefined();
     
     // Should have only essential fields

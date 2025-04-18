@@ -21,7 +21,8 @@ critical-testing-project/
 ├── docs/                          # Documentation
 │   ├── architecture/              # Architecture documentation
 │   ├── api/                       # API documentation
-│   └── test-criteria/             # Test verification criteria
+│   ├── test-criteria/             # Test verification criteria
+│   └── *.md                       # Analysis reports and summaries
 ├── test-plan/                     # Test planning documents
 │   ├── feature-parity-matrix.md   # Feature comparison matrix
 │   └── test-coverage-map.md       # Test coverage analysis
@@ -33,6 +34,17 @@ critical-testing-project/
 │   └── reports/                   # Generated test reports
 └── utils/                         # Utility scripts for testing
 ```
+
+## Documentation Reports
+
+All analysis summaries, architectural reviews, and investigation reports are stored in the `docs/` directory with a numerical prefix (e.g., `00-summary-existing-infrastructure.md`) for chronological ordering. These documents serve as:
+
+- Historical record of findings and insights
+- Reference material for implementation decisions
+- Evidence of analysis for later review
+- Context for future test development
+
+Each report is numbered sequentially to maintain a timeline of the project's progression.
 
 ## Getting Started
 

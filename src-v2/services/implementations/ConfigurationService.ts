@@ -115,8 +115,16 @@ export class ConfigurationService implements IConfigurationService {
    * @returns The updated configuration.
    */
   updateConfig(newConfig: Partial<OptimizelyConfigOptions>): OptimizelyConfigOptions {
+    this.logger.debug(`${this.logPrefix} Updating config with: ${JSON.stringify(newConfig)}`);
+    
+    if ('sdkKey' in newConfig) {
+      this.logger.debug(`${this.logPrefix} SDK Key being updated to: '${newConfig.sdkKey}'`);
+    }
+    
     this.config = { ...this.config, ...newConfig };
     this.updateMetadata();
+    
+    this.logger.debug(`${this.logPrefix} SDK Key after config update: '${this.config.sdkKey}'`);
     return this.config;
   }
 
@@ -188,6 +196,13 @@ export class ConfigurationService implements IConfigurationService {
     this.logger.debug(`${this.logPrefix} Initializing from headers`);
     const headers = request.getHeaders();
     
+    // Log all headers for debugging
+    const headerEntries: string[] = [];
+    headers.forEach((value, key) => {
+      headerEntries.push(`${key}=${value}`);
+    });
+    this.logger.debug(`${this.logPrefix} Request headers: ${headerEntries.join(', ')}`);
+    
     // Process headers to extract configuration values
     headers.forEach((value, key) => {
       // Handle both x-optly-* and X-Optimizely-* headers
@@ -211,17 +226,23 @@ export class ConfigurationService implements IConfigurationService {
         
         // Store in config
         this.setConfigValue(configKey as keyof OptimizelyConfigOptions, configValue, 'headers');
+        this.logger.debug(`${this.logPrefix} Extracted header config: ${key} -> ${configKey} = ${JSON.stringify(configValue)}`);
       }
     });
     
     // Handle special headers with direct mapping
     if (headers.has('X-Optimizely-User-Id') && !this.config.userId) {
       this.setConfigValue('userId', headers.get('X-Optimizely-User-Id'), 'headers');
+      this.logger.debug(`${this.logPrefix} Extracted User-Id from header: ${headers.get('X-Optimizely-User-Id')}`);
     }
     
     // SDK Key header has direct mapping
     if (headers.has(this.settings.sdkKeyHeader)) {
-      this.setConfigValue('sdkKey', headers.get(this.settings.sdkKeyHeader), 'headers');
+      const sdkKeyValue = headers.get(this.settings.sdkKeyHeader);
+      this.logger.debug(`${this.logPrefix} Found SDK Key in header '${this.settings.sdkKeyHeader}': '${sdkKeyValue}'`);
+      this.setConfigValue('sdkKey', sdkKeyValue, 'headers');
+    } else {
+      this.logger.debug(`${this.logPrefix} No SDK Key found in headers. Looking for: '${this.settings.sdkKeyHeader}'`);
     }
     
     // Extract boolean values from headers
@@ -357,6 +378,9 @@ export class ConfigurationService implements IConfigurationService {
     const queryParams = url.searchParams;
     const prioritizeHeaders = this.settings.prioritizeHeadersOverQueryParams;
     
+    // Log all query parameters for debugging
+    this.logger.debug(`${this.logPrefix} Query parameters: ${Array.from(queryParams.entries()).map(([k, v]) => `${k}=${v}`).join(', ')}`);
+    
     // Map of query parameter names to config keys
     const queryParamMapping = this.getQueryParamMapping();
     
@@ -373,31 +397,39 @@ export class ConfigurationService implements IConfigurationService {
               const parsedValue = paramValue ? JSON.parse(paramValue) : null;
               if (parsedValue !== null) {
                 this.setConfigValue(configKey as keyof OptimizelyConfigOptions, parsedValue, 'queryParams');
+                this.logger.debug(`${this.logPrefix} Extracted complex query param: ${paramName} -> ${configKey} = ${JSON.stringify(parsedValue)}`);
               }
             } catch (error) {
               this.logger.debug(`${this.logPrefix} Failed to parse ${paramName} as JSON:`, error);
             }
           } else if (configKey === 'decideOptions' && paramValue) {
             // Handle decide options as comma-separated list
-            this.setConfigValue(
-              'decideOptions', 
-              paramValue.split(',').map(s => s.trim()), 
-              'queryParams'
-            );
+            const decideOptions = paramValue.split(',').map(s => s.trim());
+            this.setConfigValue('decideOptions', decideOptions, 'queryParams');
+            this.logger.debug(`${this.logPrefix} Extracted decide options from query param: ${paramName} = ${decideOptions.join(', ')}`);
           } else if (['true', 'false'].includes(paramValue?.toLowerCase() || '')) {
             // Handle boolean values
-            this.setConfigValue(
-              configKey as keyof OptimizelyConfigOptions, 
-              paramValue?.toLowerCase() === 'true', 
-              'queryParams'
-            );
+            const boolValue = paramValue?.toLowerCase() === 'true';
+            this.setConfigValue(configKey as keyof OptimizelyConfigOptions, boolValue, 'queryParams');
+            this.logger.debug(`${this.logPrefix} Extracted boolean query param: ${paramName} -> ${configKey} = ${boolValue}`);
           } else {
             // Handle regular values
             this.setConfigValue(configKey as keyof OptimizelyConfigOptions, paramValue, 'queryParams');
+            this.logger.debug(`${this.logPrefix} Extracted query param: ${paramName} -> ${configKey} = ${paramValue}`);
+            
+            // Special logging for sdkKey
+            if (configKey === 'sdkKey') {
+              this.logger.debug(`${this.logPrefix} Found SDK Key in query parameter '${paramName}': '${paramValue}'`);
+            }
           }
+        } else if (configKey === 'sdkKey') {
+          this.logger.debug(`${this.logPrefix} SDK Key from query param '${paramName}' not used because headers take precedence and we already have an SDK Key`);
         }
       }
     }
+    
+    // Log current SDK key after query param processing
+    this.logger.debug(`${this.logPrefix} Current SDK Key after query params: '${this.config.sdkKey}'`);
     
     // Special handling for flag keys (can have multiple values)
     if (queryParams.has('keys')) {
@@ -459,12 +491,14 @@ export class ConfigurationService implements IConfigurationService {
     // Only process body for POST/PUT methods
     const method = request.getMethod();
     if (!['POST', 'PUT'].includes(method)) {
+      this.logger.debug(`${this.logPrefix} Skipping body processing for ${method} request`);
       return;
     }
     
     // Check content type
     const contentType = request.getHeaders().get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
+      this.logger.debug(`${this.logPrefix} Skipping body processing for non-JSON content-type: ${contentType}`);
       return;
     }
     
@@ -472,30 +506,46 @@ export class ConfigurationService implements IConfigurationService {
     try {
       const body = await request.getBodyJson<Record<string, any>>();
       if (!body) {
+        this.logger.debug(`${this.logPrefix} No body found or body is empty`);
         return;
       }
+      
+      this.logger.debug(`${this.logPrefix} Request body: ${JSON.stringify(body)}`);
       
       // Process each property in the body
       for (const [key, value] of Object.entries(body)) {
         // Skip if already set from headers or query params
         if (this.config[key as keyof OptimizelyConfigOptions] === undefined) {
           this.setConfigValue(key as keyof OptimizelyConfigOptions, value, 'body');
+          this.logger.debug(`${this.logPrefix} Extracted from body: ${key} = ${JSON.stringify(value)}`);
+          
+          // Special logging for sdkKey
+          if (key === 'sdkKey') {
+            this.logger.debug(`${this.logPrefix} Found SDK Key in request body: '${value}'`);
+          }
+        } else if (key === 'sdkKey') {
+          this.logger.debug(`${this.logPrefix} SDK Key from body not used because headers/query params take precedence and we already have an SDK Key: '${this.config.sdkKey}'`);
         }
       }
       
       // Special handling for userId/visitorId (aliases)
       if (body.userId && !this.config.visitorId) {
         this.setConfigValue('visitorId', body.userId, 'body');
+        this.logger.debug(`${this.logPrefix} Using userId from body as visitorId: ${body.userId}`);
       }
       
       // Ensure flagKeys is an array
       if (body.flagKeys && !Array.isArray(this.config.flagKeys)) {
         this.setConfigValue('flagKeys', Array.isArray(body.flagKeys) ? body.flagKeys : [body.flagKeys], 'body');
+        this.logger.debug(`${this.logPrefix} Converted flagKeys to array: ${JSON.stringify(this.config.flagKeys)}`);
       }
       
     } catch (error) {
       this.logger.debug(`${this.logPrefix} Failed to parse request body as JSON:`, error);
     }
+    
+    // Log current SDK key after body processing
+    this.logger.debug(`${this.logPrefix} Current SDK Key after body processing: '${this.config.sdkKey}'`);
   }
 
   /**
