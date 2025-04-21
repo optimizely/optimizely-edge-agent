@@ -4,7 +4,11 @@ import { ILoggerAdapter } from '../../adapters/interfaces/ILoggerAdapter';
 import { ICacheService } from '../interfaces/ICacheService';
 import { CDNVariationSettings, IEdgeModeHandler, ContentPreparationResult, ShouldHandleResult } from '../interfaces/IEdgeModeHandler';
 import { URLMatcher } from './URLMatcher';
-import { OptimizelyUserContext } from '../interfaces/IDecisionService';
+import { 
+  OptimizelyUserContext, 
+  IDecisionService, 
+  OptimizelyDecision 
+} from '../interfaces/IDecisionService';
 
 /**
  * Factory function to create a response adapter based on the request
@@ -34,6 +38,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
   private cacheService: ICacheService;
   private createResponseAdapter: ResponseAdapterFactory;
   private readonly logPrefix = '[EdgeModeHandler]';
+  private decisionService: IDecisionService;
   
   /**
    * Creates a new instance of EdgeModeHandler
@@ -41,16 +46,85 @@ export class EdgeModeHandler implements IEdgeModeHandler {
    * @param logger Logger adapter
    * @param cacheService Cache service for storing responses
    * @param createResponseAdapter Factory function to create response adapters
+   * @param decisionService Decision service for fetching feature flag decisions
    */
   constructor(
     logger: ILoggerAdapter, 
     cacheService: ICacheService,
-    createResponseAdapter: ResponseAdapterFactory
+    createResponseAdapter: ResponseAdapterFactory,
+    decisionService: IDecisionService
   ) {
     this.logger = logger;
     this.urlMatcher = new URLMatcher(logger);
     this.cacheService = cacheService;
     this.createResponseAdapter = createResponseAdapter;
+    this.decisionService = decisionService;
+  }
+  
+  /**
+   * Parses cdnVariationSettings from a decision's variables
+   * @param decision - The optimizely decision
+   * @returns Parsed CDNVariationSettings or null if not found or invalid
+   */
+  private parseCdnVariationSettings(decision: OptimizelyDecision): CDNVariationSettings | null {
+    try {
+      if (!decision.variables || !decision.variables.cdnVariationSettings) {
+        return null;
+      }
+      
+      const cdnVariationSettingsRaw = decision.variables.cdnVariationSettings;
+      
+      // If cdnVariationSettings is a string (JSON), parse it
+      if (typeof cdnVariationSettingsRaw === 'string') {
+        try {
+          return JSON.parse(cdnVariationSettingsRaw);
+        } catch (e) {
+          this.logger.error(
+            `${this.logPrefix} Invalid JSON in cdnVariationSettings for flag ${decision.flagKey}`,
+            e
+          );
+          return null;
+        }
+      } else {
+        // Otherwise assume it's already an object
+        return cdnVariationSettingsRaw as CDNVariationSettings;
+      }
+    } catch (e) {
+      this.logger.error(`${this.logPrefix} Error parsing cdnVariationSettings`, e);
+      return null;
+    }
+  }
+
+  /**
+   * Extracts valid cdnVariationSettings from all decisions
+   * @param decisions - Map of flag keys to decisions
+   * @returns Array of valid CDNVariationSettings objects
+   */
+  private extractAllCdnVariationSettings(decisions: Record<string, OptimizelyDecision>): CDNVariationSettings[] {
+    const result: CDNVariationSettings[] = [];
+    
+    for (const [flagKey, decision] of Object.entries(decisions)) {
+      // Skip if not enabled
+      if (!decision.enabled) {
+        this.logger.debug(`${this.logPrefix} Skipping disabled flag: ${flagKey}`);
+        continue;
+      }
+      
+      const settings = this.parseCdnVariationSettings(decision);
+      if (settings) {
+        // Add flagKey and variationKey to the settings for traceability
+        const enhancedSettings = {
+          ...settings,
+          _flagKey: flagKey,
+          _variationKey: decision.variationKey
+        };
+        
+        result.push(enhancedSettings);
+        this.logger.debug(`${this.logPrefix} Found valid cdnVariationSettings for flag ${flagKey}, variation ${decision.variationKey}`);
+      }
+    }
+    
+    return result;
   }
   
   /**
@@ -66,7 +140,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     // Extract SDK key from request headers or query parameters
     const url = request.getUrl();
     const urlParams = new URLSearchParams(url.search);
-    const sdkKey = request.getHeader('X-Optimizely-SDK-Key') || urlParams.get('sdkKey') || '8mR1pGh8u2ztUP8GqjmQq'; // Use default SDK key as fallback
+    const sdkKey = request.getHeader('X-Optimizely-SDK-Key') || urlParams.get('sdkKey') || undefined;
     
     // Log SDK key being used (partially masked for security)
     if (sdkKey) {
@@ -75,86 +149,70 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     
     this.logger.debug(`${this.logPrefix} Checking if request should be handled: ${url.toString()}`);
     
-    // In a real implementation, we would fetch CDN variation settings from a datafile or API
-    // For this implementation, we'll create mock settings for testing
-    // These settings should match what's configured in the Optimizely project
-    
-    // Create example CDN variation settings for testing
-    const mockVariationSettings: CDNVariationSettings[] = [
-      {
-        cdnExperimentURL: '/experiment-1',
-        cdnResponseURL: 'https://cdn.example.com/variations/experiment-1-var-a.html',
-        forwardRequestToOrigin: true,
-        cacheRequestToOrigin: true
-      },
-      {
-        cdnExperimentURL: '/api/product',
-        cdnResponseURL: 'https://cdn.example.com/api/product',
-        pathRegex: '\\/api\\/product(\\/?|\\/.+)',
-        forwardRequestToOrigin: true,
-        cacheRequestToOrigin: false
+    try {
+      // Get all decisions for the user
+      let decisions: Record<string, OptimizelyDecision> = {};
+      
+      try {
+        // If sdkKey is provided, use it when getting decisions
+        const options = sdkKey ? { sdkKey } : undefined;
+        decisions = await this.decisionService.getAllDecisions(userContext.userId, userContext.attributes, options);
+        this.logger.debug(`${this.logPrefix} Retrieved ${Object.keys(decisions).length} decisions`);
+      } catch (error) {
+        this.logger.error(`${this.logPrefix} Error getting decisions from decision service:`, error);
+        return {
+          handle: false,
+          reason: "Failed to retrieve decisions",
+          variationSettings: []
+        };
       }
-    ];
-    
-    // For the specific SDK key mentioned in the handover document, add real test settings
-    if (sdkKey === '8mR1pGh8u2ztUP8GqjmQq') {
-      mockVariationSettings.push({
-        cdnExperimentURL: '/test-path',
-        cdnResponseURL: 'https://cdn-example.optimizely.com/content/test-path-variation.html',
-        forwardRequestToOrigin: true,
-        cacheRequestToOrigin: true
-      });
       
-      // Add specific settings for API endpoints
-      mockVariationSettings.push({
-        cdnExperimentURL: '/api/decide',
-        cdnResponseURL: 'https://api.optimizely.com/v2/decide',
-        pathRegex: '\\/api\\/decide(\\/?|\\/.+)',
-        forwardRequestToOrigin: true,
-        cacheRequestToOrigin: false
-      });
+      // Extract all cdnVariationSettings from decisions
+      const variationSettings = this.extractAllCdnVariationSettings(decisions);
       
-      mockVariationSettings.push({
-        cdnExperimentURL: '/api/decide-all',
-        cdnResponseURL: 'https://api.optimizely.com/v2/decide-all',
-        pathRegex: '\\/api\\/decide-all(\\/?|\\/.+)',
-        forwardRequestToOrigin: true,
-        cacheRequestToOrigin: false
-      });
-      
-      mockVariationSettings.push({
-        cdnExperimentURL: '/api/decide-for-keys',
-        cdnResponseURL: 'https://api.optimizely.com/v2/decide-for-keys',
-        pathRegex: '\\/api\\/decide-for-keys(\\/?|\\/.+)',
-        forwardRequestToOrigin: true,
-        cacheRequestToOrigin: false
-      });
+      if (variationSettings.length === 0) {
+        this.logger.debug(`${this.logPrefix} No valid cdnVariationSettings found in any decisions`);
+        return {
+          handle: false,
+          reason: "No valid cdnVariationSettings found",
+          variationSettings: []
+        };
     }
     
-    this.logger.debug(`${this.logPrefix} Generated ${mockVariationSettings.length} mock variation settings`);
+      this.logger.debug(`${this.logPrefix} Found ${variationSettings.length} valid variation settings`);
     
     // Find if there's a matching config for this URL
-    const matchingConfig = this.findMatchingConfig(url.toString(), mockVariationSettings);
+      const matchingConfig = this.findMatchingConfig(url.toString(), variationSettings);
     
     if (matchingConfig) {
       this.logger.debug(`${this.logPrefix} Found matching configuration, request should be handled by Edge Mode`, JSON.stringify({ 
         url: url.toString(),
-        matchingPattern: matchingConfig.pathRegex || matchingConfig.cdnExperimentURL
+          matchingPattern: matchingConfig.pathRegex || matchingConfig.cdnExperimentURL,
+          flagKey: matchingConfig._flagKey,
+          variationKey: matchingConfig._variationKey
       }));
       
       return { 
         handle: true, 
         reason: "Matching configuration found",
-        variationSettings: mockVariationSettings
+          variationSettings: variationSettings
       };
     }
     
     // Return with handle=false if no matching config found
     return { 
       handle: false, 
-      reason: "No matching CDN variation settings found",
+        reason: "No matching URL pattern found in cdnVariationSettings",
+        variationSettings: variationSettings
+      };
+    } catch (error) {
+      this.logger.error(`${this.logPrefix} Error in shouldHandleRequest:`, error);
+      return {
+        handle: false,
+        reason: `Error determining if request should be handled: ${error instanceof Error ? error.message : String(error)}`,
       variationSettings: []
     };
+    }
   }
 
   /**

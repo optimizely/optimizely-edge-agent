@@ -7,7 +7,7 @@ import { IRequestForwarder, RequestForwardOptions } from '../interfaces/IRequest
 import { ILoggerAdapter } from '../../adapters/interfaces/ILoggerAdapter';
 import { IRequestAdapter } from '../../adapters/interfaces/IRequestAdapter';
 import { IMetricsAdapter } from '../../adapters/interfaces/IMetricsAdapter';
-import { OptimizelyUserContext } from '../interfaces/IDecisionService';
+import { OptimizelyUserContext, IDecisionService } from '../interfaces/IDecisionService';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -42,6 +42,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
   private logger: ILoggerAdapter;
   private metrics: IMetricsAdapter | null;
   private readonly logPrefix = '[v2][EdgeModeIntegration]';
+  private decisionService: IDecisionService;
 
   /**
    * Creates a new EdgeModeIntegration instance.
@@ -52,6 +53,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
    * @param contentTransformer - Service for transforming content.
    * @param requestForwarder - Service for forwarding requests to origins.
    * @param logger - Logger adapter.
+   * @param decisionService - Service for making Optimizely decisions.
    * @param metrics - Optional metrics adapter for performance tracking.
    */
   constructor(
@@ -62,11 +64,12 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
     contentTransformer: IContentTransformer,
     requestForwarder: IRequestForwarder,
     logger: ILoggerAdapter,
+    decisionService: IDecisionService,
     metrics?: IMetricsAdapter
   ) {
     // Validate required dependencies
     if (!urlMatcher || !edgeModeHandler || !contentFetcher || 
-        !cacheManager || !contentTransformer || !requestForwarder || !logger) {
+        !cacheManager || !contentTransformer || !requestForwarder || !logger || !decisionService) {
       throw new Error("EdgeModeIntegration requires all components to be provided");
     }
 
@@ -77,6 +80,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
     this.contentTransformer = contentTransformer;
     this.requestForwarder = requestForwarder;
     this.logger = logger;
+    this.decisionService = decisionService;
     this.metrics = metrics || null;
 
     this.logger.info(`${this.logPrefix} Initialized with all required components`);

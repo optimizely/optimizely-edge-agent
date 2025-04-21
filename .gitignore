@@ -139,5 +139,10 @@ dist
 docs/
 .cursor/
 rex-tracker/
-ai-workflow-workspace/
+ai-workflow/
 ai-prompts/
+ai-workflow-workspace/plans/
+ai-workflow-workspace/checklists/
+ai-workflow-workspace/extensions/
+*/.ai-workflow-state.json
+ai-workflow-workspace/readme.md

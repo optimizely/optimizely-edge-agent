@@ -144,7 +144,8 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
   const edgeModeHandler = new EdgeModeHandler(
     logger,
     cacheService,
-    createResponseAdapter
+    createResponseAdapter,
+    decisionService
   );
   
   // Create Content Fetcher
@@ -183,6 +184,7 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     contentTransformer,
     requestForwarder,
     logger,
+    decisionService,
     metricsAdapter
   );
   

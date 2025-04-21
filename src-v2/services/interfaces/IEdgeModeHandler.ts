@@ -7,41 +7,75 @@ import { OptimizelyUserContext } from './IDecisionService';
  * This is a critical component for Edge Mode functionality.
  */
 export interface CDNVariationSettings {
-  /** URL pattern to match for this variation */
-  cdnExperimentURL: string;
+  /**
+   * URL pattern to match against incoming requests
+   */
+  cdnExperimentURL?: string;
   
-  /** URL to fetch content from for this variation */
-  cdnResponseURL: string;
+  /**
+   * URL from which to fetch variation content
+   */
+  cdnResponseURL?: string;
   
-  /** Optional regex pattern for path matching */
-  pathRegex?: string;
+  /**
+   * Controls whether to forward requests to origin
+   */
+  forwardRequestToOrigin?: string | boolean;
   
-  /** Flag indicating if this is the control variation */
-  isControlVariation?: boolean;
+  /**
+   * Controls whether to cache responses
+   */
+  cacheRequestToOrigin?: string | boolean;
   
-  /** Key to use for caching (e.g., VARIATION_KEY) */
+  /**
+   * Identifier for caching (special value "VARIATION_KEY" or custom string)
+   */
   cacheKey?: string;
   
-  /** Whether to forward the request to origin */
-  forwardRequestToOrigin?: boolean;
+  /**
+   * Cache time-to-live in seconds
+   */
+  cacheTTL?: string;
   
-  /** Whether to cache the request to origin */
-  cacheRequestToOrigin?: boolean;
+  /**
+   * Optional regex pattern for more complex URL matching
+   */
+  pathRegex?: string;
   
-  /** Time-to-live for cache in seconds */
-  cacheTTL?: number;
+  /**
+   * Whether to ignore query parameters in URL matching
+   */
+  ignoreQueryParams?: string;
   
-  /** Query parameters to ignore when matching URLs */
-  ignoreQueryParams?: string[];
+  /**
+   * Comma-separated list of required query parameters
+   */
+  requiredQueryParams?: string;
   
-  /** Query parameters required to be present when matching URLs */
-  requiredQueryParams?: string[];
+  /**
+   * JSON string of additional headers to add to the response
+   */
+  responseHeaders?: string;
   
-  /** Headers to add to the response */
-  responseHeaders?: Record<string, string>;
-  
-  /** Function to transform content (encoded as string) */
+  /**
+   * JavaScript function (as string) to transform the content
+   */
   transformContent?: string;
+  
+  /**
+   * Flag key that this variation setting is associated with (for traceability)
+   */
+  _flagKey?: string;
+  
+  /**
+   * Variation key that this setting is associated with (for traceability)
+   */
+  _variationKey?: string;
+  
+  /**
+   * Allow additional properties
+   */
+  [key: string]: any;
 }
 
 /**
