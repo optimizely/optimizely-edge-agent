@@ -9,6 +9,7 @@ import { IRequestForwarder, RequestForwardOptions, RequestForwardResult } from '
 export class RequestForwarder implements IRequestForwarder {
   private logger: ILoggerAdapter;
   private fetch: typeof fetch;
+  private readonly logPrefix = '[RequestForwarder]';
   
   /**
    * Creates a new instance of RequestForwarder
@@ -18,7 +19,7 @@ export class RequestForwarder implements IRequestForwarder {
    */
   constructor(logger: ILoggerAdapter, fetch?: typeof global.fetch) {
     this.logger = logger;
-    this.fetch = fetch || global.fetch;
+    this.fetch = fetch ? fetch.bind(globalThis) : global.fetch.bind(globalThis);
   }
   
   /**
@@ -35,9 +36,34 @@ export class RequestForwarder implements IRequestForwarder {
     const startTime = Date.now();
     const originalUrl = request.getUrl().toString();
     
+    // ----- Loop‑Prevention Guard (option 2) -----
+    // If the incoming request already contains our marker header, we are seeing
+    // a request that has been forwarded by this same worker once. Forwarding it
+    // again would create a recursive loop. Abort early with a 508‑style result.
+    const inboundForwardHeader = request.getHeaders().get('x-forwarded-by');
+    if (inboundForwardHeader && inboundForwardHeader.toLowerCase() === 'edgeagent') {
+      this.logger.error(`${this.logPrefix} Loop detected – request already forwarded by EdgeAgent. Aborting to prevent recursion.`, {
+        originalUrl
+      });
+
+      return {
+        originalRequest: request,
+        targetUrl: originalUrl,
+        success: false,
+        error: new Error('Loop detected – request already forwarded by EdgeAgent'),
+        timeTaken: Date.now() - startTime,
+        redirectChain: undefined,
+        body: '',
+        status: 508, // 508 Loop Detected (WebDAV) – suitable for recursion issues
+        headers: {
+          'X-Loop-Detected': 'true'
+        }
+      };
+    }
+    
     // Ensure targetUrl exists - use originalUrl as fallback if it doesn't
     if (options.targetUrl === null || options.targetUrl === undefined) {
-      this.logger.warn('RequestForwarder: options.targetUrl is null or undefined, using originalUrl as fallback', {
+      this.logger.warn(`${this.logPrefix} options.targetUrl is null or undefined, using originalUrl as fallback`, {
         originalUrl
       });
       options.targetUrl = originalUrl;
@@ -49,7 +75,7 @@ export class RequestForwarder implements IRequestForwarder {
       preserveOriginalQueryParams: true
     });
     
-    this.logger.debug('RequestForwarder: Forwarding request', {
+    this.logger.debug(`${this.logPrefix} Forwarding request to: ${targetUrl} (${options.method || request.getMethod()})`, {
       originalUrl,
       targetUrl,
       method: options.method || request.getMethod()
@@ -58,8 +84,22 @@ export class RequestForwarder implements IRequestForwarder {
     const redirectChain: string[] = [];
     
     try {
+      // Detailed header logging for debugging
+      this.logger.debug(`${this.logPrefix} DETAILED REQUEST HEADERS:`);
+      const reqHeadersDebug: Record<string, string> = {};
+      const requestHeaders = this.prepareHeaders(request, options);
+      Object.entries(requestHeaders).forEach(([key, value]) => {
+        reqHeadersDebug[key] = value;
+      });
+      this.logger.debug(JSON.stringify(reqHeadersDebug, null, 2));
+      
       // Prepare headers for the forwarded request
       const headers = this.prepareHeaders(request, options);
+      
+      // Respect the caller's header decisions; do **not** auto‑inject
+      // X‑Forwarded‑By here. EdgeModeIntegration is the single source of truth
+      // for that header. This avoids divergent hostname comparisons that could
+      // incorrectly mark same‑host requests and cause 508 loop responses.
       
       // Prepare request body
       let body: any = null;
@@ -68,7 +108,7 @@ export class RequestForwarder implements IRequestForwarder {
         
         if (options.compressBody && body) {
           // In a real implementation, we would compress the body here
-          this.logger.debug('RequestForwarder: Compressing request body');
+          this.logger.debug(`${this.logPrefix} Compressing request body`);
         }
       }
       
@@ -86,7 +126,7 @@ export class RequestForwarder implements IRequestForwarder {
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
       fetchOptions.signal = controller.signal;
       
-      this.logger.debug('RequestForwarder: Executing fetch request', {
+      this.logger.debug(`${this.logPrefix} Executing fetch request`, {
         url: targetUrl,
         options: {
           ...fetchOptions,
@@ -106,7 +146,27 @@ export class RequestForwarder implements IRequestForwarder {
         redirectChain.push(fetchResponse.url);
       }
       
-      this.logger.debug('RequestForwarder: Request forwarded successfully', {
+      // Detailed logging of response headers
+      this.logger.debug(`${this.logPrefix} DETAILED RESPONSE HEADERS FROM ORIGIN:`);
+      const respHeadersDebug: Record<string, string | string[]> = {};
+      const hasSetCookieHeader = responseAdapter.getHeaders().has('set-cookie');
+      responseAdapter.getHeaders().forEach((value, name) => {
+        if (name.toLowerCase() === 'set-cookie') {
+          // Get all set-cookie headers
+          const cookieHeaders = this.extractSetCookieHeaders(responseAdapter.getHeaders());
+          respHeadersDebug[name] = cookieHeaders;
+          this.logger.debug(`${this.logPrefix} Found ${cookieHeaders.length} Set-Cookie headers: ${JSON.stringify(cookieHeaders)}`);
+        } else {
+          respHeadersDebug[name] = value;
+        }
+      });
+      this.logger.debug(JSON.stringify(respHeadersDebug, null, 2));
+      
+      if (!hasSetCookieHeader) {
+        this.logger.warn(`${this.logPrefix} No Set-Cookie header found in origin response`);
+      }
+      
+      this.logger.debug(`${this.logPrefix} Request forwarded successfully`, {
         status: responseAdapter.getStatus(),
         headers: responseAdapter.getHeaders(),
         redirected: fetchResponse.redirected,
@@ -127,7 +187,7 @@ export class RequestForwarder implements IRequestForwarder {
         headers: this.headersToRecord(responseAdapter.getHeaders())
       };
     } catch (error) {
-      this.logger.error('RequestForwarder: Error forwarding request', {
+      this.logger.error(`${this.logPrefix} Error forwarding request`, {
         error: error instanceof Error ? error.message : String(error),
         originalUrl,
         targetUrl
@@ -179,12 +239,12 @@ export class RequestForwarder implements IRequestForwarder {
           response.send(body);
         }
         
-        this.logger.debug('RequestForwarder: Applied forwarded response', {
+        this.logger.debug(`${this.logPrefix} Applied forwarded response`, {
           status: response.getStatus(),
           headers: response.getHeaders()
         });
       } catch (error) {
-        this.logger.error('RequestForwarder: Error applying forwarded response', {
+        this.logger.error(`${this.logPrefix} Error applying forwarded response`, {
           error: error instanceof Error ? error.message : String(error)
         });
         
@@ -216,7 +276,7 @@ export class RequestForwarder implements IRequestForwarder {
   ): string {
     // If targetUrl is null or undefined, use originalUrl as fallback
     if (targetUrl === null || targetUrl === undefined) {
-      this.logger.warn('RequestForwarder: targetUrl is null or undefined, using originalUrl as fallback', {
+      this.logger.warn(`${this.logPrefix} targetUrl is null or undefined, using originalUrl as fallback`, {
         originalUrl
       });
       targetUrl = originalUrl;
@@ -243,7 +303,7 @@ export class RequestForwarder implements IRequestForwarder {
         parsedTargetUrl = new URL(targetUrl);
       }
     } catch (error) {
-      this.logger.error('RequestForwarder: Error parsing URLs', {
+      this.logger.error(`${this.logPrefix} Error parsing URLs`, {
         error: error instanceof Error ? error.message : String(error),
         originalUrl,
         targetUrl
@@ -340,6 +400,9 @@ export class RequestForwarder implements IRequestForwarder {
       });
     }
     
+    // Do NOT add X-Forwarded-By header here - it should only be in options.headers when needed
+    // Removed hardcoded: forwardHeaders['X-Forwarded-By'] = 'EdgeAgent';
+    
     return forwardHeaders;
   }
   
@@ -362,32 +425,57 @@ export class RequestForwarder implements IRequestForwarder {
       getHeaders: () => fetchResponse.headers,
       setHeader: (name: string, value: string) => {
         // This is a read-only adapter, so setting headers is a no-op
-        this.logger.warn('RequestForwarder: Attempted to set header on read-only adapter', {
+        this.logger.warn(`${this.logPrefix} Attempted to set header on read-only adapter`, {
           name,
           value
         });
       },
       status: (code: number) => {
         // This is a read-only adapter, so setting status is a no-op
-        this.logger.warn('RequestForwarder: Attempted to set status on read-only adapter', {
+        this.logger.warn(`${this.logPrefix} Attempted to set status on read-only adapter`, {
           code
         });
       },
       getBody: () => responseText,
       send: (content: string) => {
         // This is a read-only adapter, so setting body is a no-op
-        this.logger.warn('RequestForwarder: Attempted to send content on read-only adapter', {
+        this.logger.warn(`${this.logPrefix} Attempted to send content on read-only adapter`, {
           contentLength: content.length
         });
       },
       json: (data: any) => {
         // This is a read-only adapter, so sending JSON is a no-op
-        this.logger.warn('RequestForwarder: Attempted to send JSON on read-only adapter', {
+        this.logger.warn(`${this.logPrefix} Attempted to send JSON on read-only adapter`, {
           data
         });
       }
     };
     
     return adapter;
+  }
+  
+  /**
+   * Helper method to extract all Set-Cookie headers from a Headers object
+   * This is necessary because Headers.getAll() is not available in all environments
+   */
+  private extractSetCookieHeaders(headers: Headers): string[] {
+    // Custom implementation to extract all cookie headers
+    // Note: Headers.getAll() is not standard in all environments
+    
+    // Custom implementation to extract all cookie headers
+    const cookies: string[] = [];
+    
+    // Method 1: Use forEach (more universally supported)
+    try {
+      headers.forEach((value, key) => {
+        if (key.toLowerCase() === 'set-cookie') {
+          cookies.push(value);
+        }
+      });
+    } catch (e) {
+      this.logger.warn(`${this.logPrefix} Error iterating headers with forEach: ${String(e)}`);
+    }
+    
+    return cookies;
   }
 } 

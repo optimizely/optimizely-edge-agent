@@ -54,4 +54,38 @@ export interface IConfigService {
    * @returns The admin token or null if not configured.
    */
   getAdminToken(): string | null;
+
+  // === v1 Compatibility Getters ===
+  /**
+   * Gets the configured header name for user attributes (v1 compatibility).
+   */
+  getAttributesHeaderName(): string | undefined;
+  /**
+   * Gets the configured header name for event tags (v1 compatibility).
+   */
+  getEventTagsHeaderName(): string | undefined;
+  /**
+   * Gets the configured header name for event key (v1 compatibility).
+   */
+  getEventKeyHeaderName(): string | undefined;
+  /**
+   * Returns true if Feature Experimentation (FEX) is enabled (v1 compatibility).
+   */
+  getEnableFex(): boolean;
+  /**
+   * Returns true if cache override is enabled (v1 compatibility).
+   */
+  getOverrideCache(): boolean;
+  /**
+   * Returns true if response metadata should be included (v1 compatibility).
+   */
+  getEnableResponseMetadata(): boolean;
+  /**
+   * Returns true if flags should be loaded from KV storage (v1 compatibility).
+   */
+  getEnableFlagsFromKV(): boolean;
+  /**
+   * Returns true if datafile should be loaded from KV storage (v1 compatibility).
+   */
+  getEnableDatafileFromKV(): boolean;
 } 

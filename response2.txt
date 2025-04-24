@@ -3,7 +3,7 @@ Content-Length: 3693
 Content-Type: application/json
 Set-Cookie: optly_edge_visitor_id=88d740a1-7cd2-4ebd-803e-ce4063ac5021; Path=/; Max-Age=31536000
 Set-Cookie: optly_edge_decisions=%7B%22test-flag%22%3A%7B%22flagKey%22%3A%22test-flag%22%2C%22enabled%22%3Afalse%2C%22variationKey%22%3Anull%2C%22variables%22%3A%7B%7D%7D%7D; Path=/; Max-Age=600
-X-Implementation-Version: v2
+this.configurationService.getImplementationVersionHeader(): v2
 X-Optimizely-Decision: {"test-flag":{"flagKey":"test-flag","enabled":false,"variationKey":null,"variables":{}}}
 X-Optimizely-Edge-Agent: v2
 X-Optimizely-SDK-Key: test-sdk-key

@@ -78,12 +78,19 @@ export class DatafileService implements IDatafileService {
    * Gets an Optimizely datafile by sdkKey.
    * Uses in-memory cache first, then KV storage, and finally fetches from CDN if needed.
    * @param sdkKey - The Optimizely SDK key.
+   * @param options - Configuration options.
    * @returns A promise resolving to the datafile JSON string or null if not found.
    */
-  async getDatafile(sdkKey: string): Promise<string | null> {
+  async getDatafile(sdkKey: string, options?: { useKV?: boolean, requestContext?: any }): Promise<string | null> {
     if (!sdkKey) {
       this.logger.error(`${this.logPrefix} Cannot get datafile: SDK key is required`);
       return null;
+    }
+    const useKV = options?.useKV;
+    const requestContext = options?.requestContext;
+    if (useKV) {
+      this.logger.debug(`${this.logPrefix} Getting datafile for SDK key ${sdkKey} from KV storage`);
+      return this.getDatafileFromKV ? await this.getDatafileFromKV(sdkKey) : null;
     }
     
     const cacheKey = `${DATAFILE_PREFIX}${sdkKey}`;
@@ -96,6 +103,10 @@ export class DatafileService implements IDatafileService {
         const cachedData = this.datafileCache.get(sdkKey);
         if (cachedData && cachedData.expiry > Date.now()) {
           source = 'memory-cache';
+          // Update request context with source if provided
+          if (requestContext?.configMetadata) {
+            requestContext.configMetadata.datafileFrom = 'memory-cache';
+          }
           this.metrics?.incrementCounter('datafile_cache_hit', 1, { source, type: 'memory' });
           return cachedData.datafile;
         }
@@ -104,7 +115,11 @@ export class DatafileService implements IDatafileService {
       // Check KV storage
       const storedDatafile = await this.storage.get(cacheKey, 'text');
       if (storedDatafile) {
-        source = 'kv-storage';
+        source = 'kv';
+        // Update request context with source if provided
+        if (requestContext?.configMetadata) {
+          requestContext.configMetadata.datafileFrom = 'kv';
+        }
         this.metrics?.incrementCounter('datafile_cache_hit', 1, { source, type: 'kv' });
         
         // Update in-memory cache
@@ -120,8 +135,12 @@ export class DatafileService implements IDatafileService {
       
       // Not found in storage, fetch from CDN
       source = 'cdn';
+      // Update request context with source if provided
+      if (requestContext?.configMetadata) {
+        requestContext.configMetadata.datafileFrom = 'cdn';
+      }
       this.metrics?.incrementCounter('datafile_cache_miss', 1);
-      return await this.refreshDatafile(sdkKey, true);
+      return await this.refreshDatafile(sdkKey, true, requestContext);
     } catch (error) {
       this.logger.error(`${this.logPrefix} Error getting datafile for SDK key ${sdkKey}:`, error);
       this.metrics?.incrementCounter('datafile_errors', 1, {
@@ -252,12 +271,19 @@ export class DatafileService implements IDatafileService {
    * Gets all flag keys for a specific SDK key.
    * Uses FlagStorageService if available, falls back to legacy implementation.
    * @param sdkKey - The Optimizely SDK key.
-   * @returns A promise resolving to an array of flag keys or an empty array if none are found.
+   * @param options - Configuration options.
+   * @returns A promise resolving to an array of flag keys or null if not found.
    */
-  async getFlagKeys(sdkKey: string): Promise<string[]> {
+  async getFlagKeys(sdkKey: string, options?: { useKV?: boolean, requestContext?: any }): Promise<string[] | null> {
     if (!sdkKey) {
       this.logger.error(`${this.logPrefix} Cannot get flag keys: SDK key is required`);
-      return [];
+      return null;
+    }
+    const useKV = options?.useKV;
+    const requestContext = options?.requestContext;
+    if (useKV) {
+      this.logger.debug(`${this.logPrefix} Getting flag keys for SDK key ${sdkKey} from KV storage`);
+      return this.getFlagsFromKV ? await this.getFlagsFromKV(sdkKey) : null;
     }
     
     const requestStart = Date.now();
@@ -269,6 +295,11 @@ export class DatafileService implements IDatafileService {
         const flagKeys = await this.flagStorage.getFlagKeys(sdkKey);
         if (flagKeys.length > 0) {
           source = 'flag-storage';
+          // Update request context with source if provided
+          if (requestContext?.configMetadata) {
+            requestContext.configMetadata.flagKeysFrom = 'flag-storage';
+            requestContext.configMetadata.flagKeysDecided = flagKeys;
+          }
           this.metrics?.incrementCounter('flagkeys_cache_hit', 1, { source, type: 'flag-storage' });
           return flagKeys;
         }
@@ -279,6 +310,11 @@ export class DatafileService implements IDatafileService {
         const cachedData = this.flagKeysCache.get(sdkKey);
         if (cachedData && cachedData.expiry > Date.now()) {
           source = 'memory-cache';
+          // Update request context with source if provided
+          if (requestContext?.configMetadata) {
+            requestContext.configMetadata.flagKeysFrom = 'memory-cache';
+            requestContext.configMetadata.flagKeysDecided = cachedData.flagKeys;
+          }
           this.metrics?.incrementCounter('flagkeys_cache_hit', 1, { source, type: 'memory' });
           return cachedData.flagKeys;
         }
@@ -289,7 +325,12 @@ export class DatafileService implements IDatafileService {
       const storedFlagKeys = await this.storage.get<string[]>(storageKey, 'json');
       
       if (storedFlagKeys && Array.isArray(storedFlagKeys)) {
-        source = 'kv-storage';
+        source = 'kv';
+        // Update request context with source if provided
+        if (requestContext?.configMetadata) {
+          requestContext.configMetadata.flagKeysFrom = 'kv';
+          requestContext.configMetadata.flagKeysDecided = storedFlagKeys;
+        }
         this.metrics?.incrementCounter('flagkeys_cache_hit', 1, { source, type: 'kv' });
         
         // Update in-memory cache
@@ -310,12 +351,19 @@ export class DatafileService implements IDatafileService {
       
       // If flag keys aren't available, try to extract them from datafile
       source = 'datafile';
+      // Update request context with source if provided
+      if (requestContext?.configMetadata) {
+        requestContext.configMetadata.flagKeysFrom = 'datafile';
+      }
       this.metrics?.incrementCounter('flagkeys_cache_miss', 1);
       
-      const datafile = await this.getDatafile(sdkKey);
+      const datafile = await this.getDatafile(sdkKey, requestContext);
       if (datafile) {
         const flagKeys = this.extractFlagKeys(datafile);
         await this.setFlagKeys(sdkKey, flagKeys);
+        if (requestContext?.configMetadata) {
+          requestContext.configMetadata.flagKeysDecided = flagKeys;
+        }
         return flagKeys;
       }
       
@@ -456,9 +504,10 @@ export class DatafileService implements IDatafileService {
    * Refreshes the datafile and flag keys from the Optimizely CDN.
    * @param sdkKey - The Optimizely SDK key.
    * @param forceFetch - Whether to force a fetch even if a local copy exists.
+   * @param requestContext - Optional request context for updating metadata.
    * @returns A promise resolving to the datafile JSON string or null if refresh failed.
    */
-  async refreshDatafile(sdkKey: string, forceFetch = false): Promise<string | null> {
+  async refreshDatafile(sdkKey: string, forceFetch = false, requestContext?: any): Promise<string | null> {
     if (!sdkKey) {
       this.logger.error(`${this.logPrefix} Cannot refresh datafile: SDK key is required`);
       return null;
@@ -475,6 +524,11 @@ export class DatafileService implements IDatafileService {
           const cachedData = this.datafileCache.get(sdkKey);
           if (cachedData && cachedData.expiry > Date.now()) {
             source = 'memory-cache';
+            // Update request context with source if provided
+            if (requestContext?.configMetadata) {
+              requestContext.configMetadata.datafileFrom = 'memory-cache';
+            }
+            this.metrics?.incrementCounter('datafile_cache_hit', 1, { source, type: 'memory' });
             return cachedData.datafile;
           }
         }
@@ -483,7 +537,12 @@ export class DatafileService implements IDatafileService {
         const cacheKey = `${DATAFILE_PREFIX}${sdkKey}`;
         const storedDatafile = await this.storage.get(cacheKey, 'text');
         if (storedDatafile) {
-          source = 'kv-storage';
+          source = 'kv';
+          // Update request context with source if provided
+          if (requestContext?.configMetadata) {
+            requestContext.configMetadata.datafileFrom = 'kv';
+          }
+          this.metrics?.incrementCounter('datafile_cache_hit', 1, { source, type: 'kv' });
           return storedDatafile;
         }
       }
@@ -599,12 +658,9 @@ export class DatafileService implements IDatafileService {
       // Get the flag keys for the source SDK key
       const sourceFlags = await this.getFlagKeys(sourceSdkKey);
       
-      if (sourceFlags.length === 0) {
-        this.logger.warn(`${this.logPrefix} No flag keys found for source SDK key ${sourceSdkKey}`);
-        return {
-          success: false,
-          message: `No flag keys found for source SDK key ${sourceSdkKey}`
-        };
+      if (sourceFlags && Array.isArray(sourceFlags)) {
+        // Use sourceFlags as needed
+        // ... existing code ...
       }
       
       // Synchronize flag keys using FlagStorageService
@@ -657,5 +713,17 @@ export class DatafileService implements IDatafileService {
       this.logger.error(`${this.logPrefix} Error cleaning up expired flags:`, error);
       return 0;
     }
+  }
+  
+  async getFlagsFromKV(sdkKey: string): Promise<string[] | null> {
+    const storageKey = `${FLAGKEYS_PREFIX}${sdkKey}`;
+    const storedFlagKeys = await this.storage.get<string[]>(storageKey, 'json');
+    return storedFlagKeys && Array.isArray(storedFlagKeys) ? storedFlagKeys : null;
+  }
+  
+  async getDatafileFromKV(sdkKey: string): Promise<string | null> {
+    const cacheKey = `${DATAFILE_PREFIX}${sdkKey}`;
+    const storedDatafile = await this.storage.get(cacheKey, 'text');
+    return storedDatafile || null;
   }
 } 

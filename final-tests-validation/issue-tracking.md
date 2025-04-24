@@ -135,7 +135,7 @@ Based on the identified issues, the following updates have been made to the test
 
 ### Implementation Status
 
-The tests confirm that while the Edge Agent is deployed on Cloudflare infrastructure and responding to requests (as evidenced by the `cf-ray` headers in responses), most of the API functionality has not been implemented. The worker identifies itself correctly as version v2 (via the `x-implementation-version` header), but responds with implementation-specific error messages rather than properly handling the API requests.
+The tests confirm that while the Edge Agent is deployed on Cloudflare infrastructure and responding to requests (as evidenced by the `cf-ray` headers in responses), most of the API functionality has not been implemented. The worker identifies itself correctly as version v2 (via the `this.configurationService.getImplementationVersionHeader()` header), but responds with implementation-specific error messages rather than properly handling the API requests.
 
 ### Connectivity Confirmation
 

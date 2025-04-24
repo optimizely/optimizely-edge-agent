@@ -58,8 +58,8 @@ export class URLMatcher implements IURLMatcher {
       // Check if URL matches the pattern with the given options
       const matches = this.matches(url, pattern, {
         isRegex,
-        requiredQueryParams: settings.requiredQueryParams,
-        ignoreQueryParams: settings.ignoreQueryParams
+        requiredQueryParams: settings.requiredQueryParams ? settings.requiredQueryParams.split(',').map(p => p.trim()) : undefined,
+        ignoreQueryParams: settings.ignoreQueryParams ? settings.ignoreQueryParams.split(',').map(p => p.trim()) : undefined
       });
       
       if (matches) {

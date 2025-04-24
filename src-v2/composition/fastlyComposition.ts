@@ -8,7 +8,8 @@ import {
   FastlyExecutionContext
 } from "../adapters/implementations/fastly/FastlyEnvironmentAdapter";
 
-import { ConfigService } from "../services/implementations/ConfigService";
+import { ConfigurationService } from "../services/implementations/ConfigurationService";
+import { IConfigurationService } from "../services/interfaces/IConfigurationService";
 import { DecisionService } from "../services/implementations/DecisionService";
 import { EventDispatcher } from "../services/implementations/EventDispatcher";
 import { RequestHandler } from "../services/implementations/RequestHandler";
@@ -63,7 +64,7 @@ function composeFastlyApplication(factoryInputs: FastlyAdapterFactoryInputs): Fa
   // Create Services (inject dependencies)
   const cacheService = new CacheService(storageAdapter, logger);
   const datafileService = new DatafileService(storageAdapter, environmentAdapter, logger);
-  const configService = new ConfigService(datafileService, logger);
+  const configService: IConfigurationService = new ConfigurationService(datafileService, logger);
   const decisionService = new DecisionService(configService, logger);
   
   // Create RequestHandler

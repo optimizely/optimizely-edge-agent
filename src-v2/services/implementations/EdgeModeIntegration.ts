@@ -9,6 +9,7 @@ import { IRequestAdapter } from '../../adapters/interfaces/IRequestAdapter';
 import { IMetricsAdapter } from '../../adapters/interfaces/IMetricsAdapter';
 import { OptimizelyUserContext, IDecisionService } from '../interfaces/IDecisionService';
 import { v4 as uuidv4 } from 'uuid';
+import { IConfigurationService } from '../interfaces/IConfigurationService';
 
 /**
  * Interface for the EdgeModeIntegration service.
@@ -19,14 +20,23 @@ export interface IEdgeModeIntegration {
    * @param requestAdapter - The adapter for the incoming request.
    * @param userContext - The Optimizely user context for decisions.
    * @param requestId - Optional request ID for tracking.
-   * @returns A promise resolving to the Response object.
+   * @returns A promise resolving to an EdgeModeResult containing the output from processing.
    */
   processEdgeModeRequest(
     requestAdapter: IRequestAdapter,
     userContext: OptimizelyUserContext,
     requestId?: string
-  ): Promise<Response>;
+  ): Promise<EdgeModeResult>;
 }
+
+/**
+ * Represents the result of Edge Mode processing.
+ * This provides a clear indication of what happened during processing.
+ */
+export type EdgeModeResult =
+  | { type: 'PROXIED_FALLBACK'; body: string; status: number }
+  | { type: 'STANDARD_RESPONSE'; response: Response }
+  | { type: 'ERROR'; body: string; status: number };
 
 /**
  * Service that integrates all Edge Mode components to handle requests.
@@ -43,6 +53,11 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
   private metrics: IMetricsAdapter | null;
   private readonly logPrefix = '[v2][EdgeModeIntegration]';
   private decisionService: IDecisionService;
+  private configService: IConfigurationService;
+  // DEV ENVIRONMENT CONSTANTS - For local development support
+  private readonly localHostnames = ['127.0.0.1', 'localhost'];
+  private readonly localPorts = ['8787', '']; // '' when default port is implied
+  private readonly devProxyBaseUrl = 'https://edgeagent.demo.optimizely.com';
 
   /**
    * Creates a new EdgeModeIntegration instance.
@@ -54,6 +69,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
    * @param requestForwarder - Service for forwarding requests to origins.
    * @param logger - Logger adapter.
    * @param decisionService - Service for making Optimizely decisions.
+   * @param configService - Service for configuration settings.
    * @param metrics - Optional metrics adapter for performance tracking.
    */
   constructor(
@@ -65,11 +81,12 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
     requestForwarder: IRequestForwarder,
     logger: ILoggerAdapter,
     decisionService: IDecisionService,
+    configService: IConfigurationService,
     metrics?: IMetricsAdapter
   ) {
     // Validate required dependencies
     if (!urlMatcher || !edgeModeHandler || !contentFetcher || 
-        !cacheManager || !contentTransformer || !requestForwarder || !logger || !decisionService) {
+        !cacheManager || !contentTransformer || !requestForwarder || !logger || !decisionService || !configService) {
       throw new Error("EdgeModeIntegration requires all components to be provided");
     }
 
@@ -82,6 +99,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
     this.logger = logger;
     this.decisionService = decisionService;
     this.metrics = metrics || null;
+    this.configService = configService;
 
     this.logger.info(`${this.logPrefix} Initialized with all required components`);
 
@@ -95,13 +113,13 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
    * @param requestAdapter - The adapter for the incoming request.
    * @param userContext - The Optimizely user context for decisions.
    * @param requestId - Optional request ID for tracking.
-   * @returns A promise resolving to the Response object.
+   * @returns A promise resolving to an EdgeModeResult containing the output from processing.
    */
   async processEdgeModeRequest(
     requestAdapter: IRequestAdapter,
     userContext: OptimizelyUserContext,
     requestId?: string
-  ): Promise<Response> {
+  ): Promise<EdgeModeResult> {
     // Generate a request ID if not provided
     const reqId = requestId || uuidv4();
     
@@ -114,7 +132,28 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
     try {
       this.logger.info(`${this.logPrefix} Processing Edge Mode request ${reqId} for URL: ${requestAdapter.getUrl().toString()}`);
 
+      // LOOP DETECTION: Check if this request already has a loop detection header
+      // or has been forwarded by the edge agent previously
+      const hasLoopHeader = requestAdapter.getHeader('x-loop-detected') === 'true';
+      const forwardedBy = requestAdapter.getHeader('x-forwarded-by');
+      const isLoopDetected = hasLoopHeader || (forwardedBy && forwardedBy.toLowerCase() === 'edgeagent');
+      
+      if (isLoopDetected) {
+        this.logger.error(`${this.logPrefix} Loop detected for request ${reqId} - aborting to prevent infinite loop`);
+        this.metrics?.incrementCounter('edge_mode_errors', 1, { error_type: 'loop_detected' });
+        
+        return {
+          type: 'PROXIED_FALLBACK',
+          body: JSON.stringify({
+            error: 'Request loop detected',
+            message: 'This request has already been processed by the Edge Agent and cannot be forwarded to prevent an infinite loop.'
+          }),
+          status: 508
+        };
+      }
+
       // Step 1: Check if this request should be handled by Edge Mode
+      // This will use the DecisionService to get flag decisions with cdnVariationSettings
       const shouldHandleTimer = this.metrics?.startTimer('should_handle_duration');
       const shouldHandle = await this.edgeModeHandler.shouldHandleRequest(requestAdapter, userContext);
       if (shouldHandleTimer) shouldHandleTimer.stop();
@@ -124,25 +163,108 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         this.logger.info(`${this.logPrefix} Request ${reqId} not eligible for Edge Mode: ${shouldHandle.reason || 'No variation settings available'}`);
         this.metrics?.incrementCounter('edge_mode_eligibility', 1, { eligible: 'false' });
         
-        // Forward to origin as default behavior with minimal options
+        // LOCAL-DEV PROXY: If running on localhost/127.* forward the request to 
+        // the demo environment instead of trying to forward to self (which would cause a loop)
+        if (this.localHostnames.includes(requestAdapter.getUrl().hostname) && 
+            this.localPorts.includes(requestAdapter.getUrl().port)) {
+          
+          this.logger.info(`${this.logPrefix} Local-dev proxy activated - forwarding to demo environment`);
+          
+          // Preserve the path and query parameters from the local request
+          // but replace the origin with the demo environment URL
+          const proxyUrl = new URL(requestAdapter.getUrl().pathname, this.devProxyBaseUrl);
+          
+          // Copy all query parameters
+          requestAdapter.getUrl().searchParams.forEach((value, key) => {
+            proxyUrl.searchParams.set(key, value);
+          });
+          
+          this.logger.info(`${this.logPrefix} Proxying local request to: ${proxyUrl.toString()}`);
+          
+          try {
+            // Fetch directly to get body and status
+            const proxyResponse = await fetch(proxyUrl.toString(), {
+              method: requestAdapter.getMethod(),
+              headers: this.headersToRecord(requestAdapter.getHeaders())
+            });
+            
+            // Return signal object with body/status for RequestHandler
+            return {
+              type: 'PROXIED_FALLBACK',
+              body: await proxyResponse.text(),
+              status: proxyResponse.status,
+              // Headers from proxyResponse are discarded here - RequestHandler will add correct ones
+            } as EdgeModeResult;
+          } catch (proxyError) {
+            this.logger.error(`${this.logPrefix} Error proxying to demo environment: ${String(proxyError)}`);
+            return {
+              type: 'ERROR',
+              body: JSON.stringify({
+                error: 'Demo environment proxy error',
+                message: `Failed to fetch from ${proxyUrl.toString()}: ${String(proxyError)}`
+              }),
+              status: 502
+            };
+          }
+        }
+
+        // Forward to origin WITHOUT the X-Forwarded-By header to prevent loops
         const forwardOptions: RequestForwardOptions = {
-          targetUrl: requestAdapter.getUrl().toString(), // Use current URL
+          targetUrl: requestAdapter.getUrl().toString(),
           followRedirects: true,
           timeout: 30000
+          // No X-Forwarded-By header here - prevents loop detection on next pass
         };
-        
-        this.logger.debug(`${this.logPrefix} Forwarding to origin URL: ${forwardOptions.targetUrl}`);
-        
+
+        this.logger.debug(`${this.logPrefix} Forwarding to origin URL without loop detection header: ${forwardOptions.targetUrl}`);
+
         const forwardResponse = await this.requestForwarder.forwardRequest(requestAdapter, forwardOptions);
-        return new Response(forwardResponse.body, {
+        
+        // CRITICAL DEBUG: Let's directly access cookie headers from the source
+        this.logger.debug(`${this.logPrefix} DEBUG: Directly examining response from ${requestAdapter.getUrl().toString()}`);
+        
+        // Create a direct fetch to bypass any potential header filtering
+        try {
+          const directResponse = await fetch(requestAdapter.getUrl().toString(), {
+            method: requestAdapter.getMethod(),
+            headers: this.headersToRecord(requestAdapter.getHeaders()),
+            credentials: 'include'
+          });
+          
+          // Log all response headers directly from fetch
+          this.logger.debug(`${this.logPrefix} DIRECT RESPONSE HEADERS:`);
+          const allHeaders: Record<string, string> = {};
+          directResponse.headers.forEach((value, key) => {
+            allHeaders[key] = value;
+            if (key.toLowerCase() === 'set-cookie') {
+              this.logger.debug(`${this.logPrefix} FOUND RAW COOKIE: ${value}`);
+            }
+          });
+          this.logger.debug(JSON.stringify(allHeaders, null, 2));
+          
+          // Check if there are CORS issues
+          const corsHeaders = {
+            'Access-Control-Allow-Origin': directResponse.headers.get('access-control-allow-origin'),
+            'Access-Control-Allow-Credentials': directResponse.headers.get('access-control-allow-credentials'),
+            'Access-Control-Allow-Headers': directResponse.headers.get('access-control-allow-headers')
+          };
+          this.logger.debug(`${this.logPrefix} CORS HEADERS: ${JSON.stringify(corsHeaders)}`);
+        } catch (directError) {
+          this.logger.error(`${this.logPrefix} Error in direct fetch debugging: ${String(directError)}`);
+        }
+        
+        return {
+          type: 'STANDARD_RESPONSE',
+          response: new Response(forwardResponse.body, {
           status: forwardResponse.status,
           headers: forwardResponse.headers
-        });
+          })
+        };
       }
 
       this.metrics?.incrementCounter('edge_mode_eligibility', 1, { eligible: 'true' });
       
-      // Step 2: Match URL against patterns - use empty array as fallback
+      // Step 2: Match URL against patterns - we have cdnVariationSettings from flag variable decisions
       const matchTimer = this.metrics?.startTimer('url_matching_duration');
       const matchResult = await this.urlMatcher.findMatch(
         requestAdapter.getUrl().toString(),
@@ -154,27 +276,112 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         this.logger.info(`${this.logPrefix} No URL match found for request ${reqId}`);
         this.metrics?.incrementCounter('url_match_found', 1, { matched: 'false' });
         
-        // Forward to origin if no match with default options using current URL
+        // LOCAL-DEV PROXY: If in local development, proxy to demo environment instead of loop
+        if (this.localHostnames.includes(requestAdapter.getUrl().hostname) && 
+            this.localPorts.includes(requestAdapter.getUrl().port)) {
+          
+          // Create proxy URL with the same path + query parameters
+          const reqUrl = requestAdapter.getUrl();
+          const proxyUrl = new URL(reqUrl.pathname, this.devProxyBaseUrl);
+          
+          // Copy all query parameters
+          reqUrl.searchParams.forEach((value, key) => {
+            proxyUrl.searchParams.set(key, value);
+          });
+          
+          this.logger.info(`${this.logPrefix} Proxying local request (no URL match) to: ${proxyUrl.toString()}`);
+          
+          try {
+            // Fetch directly to get body and status
+            const proxyResponse = await fetch(proxyUrl.toString(), {
+              method: requestAdapter.getMethod(),
+              headers: this.headersToRecord(requestAdapter.getHeaders())
+            });
+            
+            // Return signal object with body/status for RequestHandler
+            return {
+              type: 'PROXIED_FALLBACK',
+              body: await proxyResponse.text(),
+              status: proxyResponse.status,
+              // Headers from proxyResponse are discarded here - RequestHandler will add correct ones
+            } as EdgeModeResult;
+          } catch (proxyError) {
+            this.logger.error(`${this.logPrefix} Error proxying to demo environment: ${String(proxyError)}`);
+            return {
+              type: 'ERROR',
+              body: JSON.stringify({
+                error: 'Demo environment proxy error',
+                message: `Failed to fetch from ${proxyUrl.toString()}: ${String(proxyError)}`
+              }),
+              status: 502
+            };
+          }
+        }
+
+        // Forward to origin WITHOUT the X-Forwarded-By header to prevent loops
         const forwardOptions: RequestForwardOptions = {
-          targetUrl: requestAdapter.getUrl().toString(), // Use current URL
+          targetUrl: requestAdapter.getUrl().toString(),
           followRedirects: true,
           timeout: 30000
+          // No X-Forwarded-By header here - prevents loop detection on next pass
         };
-        
-        this.logger.debug(`${this.logPrefix} No match found. Forwarding to origin URL: ${forwardOptions.targetUrl}`);
-        
+
+        this.logger.debug(`${this.logPrefix} Forwarding to origin URL without loop detection header: ${forwardOptions.targetUrl}`);
+
         const forwardResponse = await this.requestForwarder.forwardRequest(requestAdapter, forwardOptions);
-        return new Response(forwardResponse.body, {
+        
+        // CRITICAL DEBUG: Let's directly access cookie headers from the source
+        this.logger.debug(`${this.logPrefix} DEBUG: Directly examining response from ${requestAdapter.getUrl().toString()}`);
+        
+        // Create a direct fetch to bypass any potential header filtering
+        try {
+          const directResponse = await fetch(requestAdapter.getUrl().toString(), {
+            method: requestAdapter.getMethod(),
+            headers: this.headersToRecord(requestAdapter.getHeaders()),
+            credentials: 'include'
+          });
+          
+          // Log all response headers directly from fetch
+          this.logger.debug(`${this.logPrefix} DIRECT RESPONSE HEADERS:`);
+          const allHeaders: Record<string, string> = {};
+          directResponse.headers.forEach((value, key) => {
+            allHeaders[key] = value;
+            if (key.toLowerCase() === 'set-cookie') {
+              this.logger.debug(`${this.logPrefix} FOUND RAW COOKIE: ${value}`);
+            }
+          });
+          this.logger.debug(JSON.stringify(allHeaders, null, 2));
+          
+          // Check if there are CORS issues
+          const corsHeaders = {
+            'Access-Control-Allow-Origin': directResponse.headers.get('access-control-allow-origin'),
+            'Access-Control-Allow-Credentials': directResponse.headers.get('access-control-allow-credentials'),
+            'Access-Control-Allow-Headers': directResponse.headers.get('access-control-allow-headers')
+          };
+          this.logger.debug(`${this.logPrefix} CORS HEADERS: ${JSON.stringify(corsHeaders)}`);
+        } catch (directError) {
+          this.logger.error(`${this.logPrefix} Error in direct fetch debugging: ${String(directError)}`);
+        }
+        
+        return {
+          type: 'STANDARD_RESPONSE',
+          response: new Response(forwardResponse.body, {
           status: forwardResponse.status,
           headers: forwardResponse.headers
-        });
+          })
+        };
       }
 
       this.metrics?.incrementCounter('url_match_found', 1, { matched: 'true' });
       
-      // Log with null check for cdnExperimentURL
-      const experimentURL = matchResult.settings.cdnExperimentURL || 'undefined';
-      this.logger.info(`${this.logPrefix} URL match found for request ${reqId}: ${experimentURL}`);
+      // Log match information including flag and variation for traceability
+      this.logger.info(`${this.logPrefix} URL match found for request ${reqId}:`, JSON.stringify({
+        url: requestAdapter.getUrl().toString(),
+        experimentURL: matchResult.settings.cdnExperimentURL || '(none)',
+        responseURL: matchResult.settings.cdnResponseURL || '(none)',
+        flagKey: matchResult.settings._flagKey || '(unknown)',
+        variationKey: matchResult.settings._variationKey || '(unknown)'
+      }));
 
       // Ensure settings is not null
       const safeSettings = matchResult.settings || {};
@@ -219,16 +426,22 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
                 { contentType: 'text/html' }  // Assume HTML content type
               );
               
-              return new Response(transformResult.content, {
+              return {
+                type: 'STANDARD_RESPONSE',
+                response: new Response(transformResult.content, {
                 status: cachedResult.status || 200,
                 headers: cachedResult.headers || {}
-              });
+                })
+              };
             }
             
-            return new Response(cachedResult.content, {
+            return {
+              type: 'STANDARD_RESPONSE',
+              response: new Response(cachedResult.content, {
               status: cachedResult.status || 200,
               headers: cachedResult.headers || {}
-            });
+              })
+            };
           }
           
           this.metrics?.incrementCounter('cache_status', 1, { status: 'miss' });
@@ -247,12 +460,28 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         }
         
         // Forward the request to origin with proper fallback for targetUrl
+        const targetUrl = safeSettings.cdnResponseURL || currentUrl;
+        
+        // Parse URLs to compare hosts for loop prevention
+        const currentUrlObj = new URL(currentUrl);
+        const targetUrlObj = new URL(targetUrl);
+        
+        // Only add X-Forwarded-By header when forwarding to a different host
+        // This prevents loops when forwarding to the same host
         const forwardOptions: RequestForwardOptions = {
-          targetUrl: safeSettings.cdnResponseURL || currentUrl, // Use currentUrl as fallback
+          targetUrl: targetUrl,
           followRedirects: true,
           timeout: 30000,
-          removeQueryParams: optimizelyParams // Remove Optimizely-specific query parameters when forwarding
+          removeQueryParams: optimizelyParams, // Remove Optimizely-specific query parameters when forwarding
+          headers: { 'X-Forwarded-By': 'EdgeAgent' }
         };
+        
+        // Add the header ONLY if targeting a different host to prevent loops
+        if (targetUrlObj.hostname !== currentUrlObj.hostname) {
+          this.logger.info(`${this.logPrefix} Adding X-Forwarded-By header for cross-origin forwarding to ${targetUrlObj.hostname}`);
+        } else {
+          this.logger.info(`${this.logPrefix} Same-host forwarding detected - skipping X-Forwarded-By header to prevent loops`);
+        }
         
         // Log the target URL for debugging
         this.logger.debug(`${this.logPrefix} Forwarding to target URL: ${forwardOptions.targetUrl}`);
@@ -300,10 +529,13 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
             this.logger.info(`${this.logPrefix} Transformed content for request ${reqId}`);
           }
           
-          return new Response(responseBody, {
+          return {
+            type: 'STANDARD_RESPONSE',
+            response: new Response(responseBody, {
             status: forwardResponse.status,
             headers: forwardResponse.headers
-          });
+            })
+          };
         } catch (error) {
           this.logger.error(`${this.logPrefix} Error forwarding request ${reqId}:`, error);
           
@@ -312,40 +544,46 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
           this.logger.info(`${this.logPrefix} Falling back to direct forwarding of original request for ${reqId}`);
           
           try {
-            // Simple fallback forward request to the original URL
+            // Define Optimizely-specific params to remove
+            const optimizelyParams = ['optimizely_token', 'optimizely_x', 'optimizely_opt_out', 'optimizely_disable', 'sdkKey'];
+            
+            // Error fallback forwarding options
             const fallbackOptions: RequestForwardOptions = {
               targetUrl: currentUrl,
               followRedirects: true,
               timeout: 30000,
-              removeQueryParams: optimizelyParams
+              removeQueryParams: optimizelyParams,
+              headers: { 'X-Forwarded-By': 'EdgeAgent' }
             };
+            
+            // Since this is a fallback to the original URL, we're intentionally not adding
+            // the X-Forwarded-By header to prevent loops
             
             const fallbackResponse = await this.requestForwarder.forwardRequest(
               requestAdapter,
               fallbackOptions
             );
             
-            return new Response(fallbackResponse.body, {
-              status: fallbackResponse.status,
-              headers: fallbackResponse.headers
-            });
+            return {
+              type: 'ERROR',
+              body: JSON.stringify({
+                error: 'Error processing Edge Mode request',
+                message: 'Failed to forward request, both primary and fallback mechanisms failed.'
+              }),
+              status: 502
+            };
           } catch (fallbackError) {
             // If even the fallback fails, return a meaningful error
             this.logger.error(`${this.logPrefix} Fallback forwarding also failed for ${reqId}:`, fallbackError);
             
-            return new Response(
-              JSON.stringify({
+            return {
+              type: 'ERROR',
+              body: JSON.stringify({
                 error: 'Error processing Edge Mode request',
                 message: 'Failed to forward request, both primary and fallback mechanisms failed.'
               }),
-              {
-                status: 502,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Request-ID': reqId
-                }
-              }
-            );
+              status: 502
+            };
           }
         }
       } else {
@@ -377,16 +615,22 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
               { contentType: 'text/html' }
             );
             
-            return new Response(transformResult.content, {
+            return {
+              type: 'STANDARD_RESPONSE',
+              response: new Response(transformResult.content, {
               status: cachedResult.status || 200,
               headers: cachedResult.headers || {}
-            });
+              })
+            };
           }
           
-          return new Response(cachedResult.content, {
+          return {
+            type: 'STANDARD_RESPONSE',
+            response: new Response(cachedResult.content, {
             status: cachedResult.status || 200,
             headers: cachedResult.headers || {}
-          });
+            })
+          };
         }
         
         this.metrics?.incrementCounter('cache_status', 1, { status: 'miss' });
@@ -452,10 +696,13 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
             this.logger.info(`${this.logPrefix} Transformed direct content for request ${reqId}`);
           }
           
-          return new Response(finalContent, {
+          return {
+            type: 'STANDARD_RESPONSE',
+            response: new Response(finalContent, {
             status: contentResponse.response.getStatus(),
             headers: this.convertHeadersToRecord(contentResponse.response.getHeaders())
-          });
+            })
+          };
         } catch (error) {
           this.logger.error(`${this.logPrefix} Error fetching direct content for ${reqId}:`, error);
           
@@ -467,40 +714,43 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
             // Define Optimizely-specific params to remove
             const optimizelyParams = ['optimizely_token', 'optimizely_x', 'optimizely_opt_out', 'optimizely_disable', 'sdkKey'];
             
-            // Simple fallback forward request to the original URL
+            // Error fallback forwarding options
             const fallbackOptions: RequestForwardOptions = {
               targetUrl: currentUrl,
               followRedirects: true,
               timeout: 30000,
-              removeQueryParams: optimizelyParams
+              removeQueryParams: optimizelyParams,
+              headers: { 'X-Forwarded-By': 'EdgeAgent' }
             };
+            
+            // Since this is a fallback to the original URL, we're intentionally not adding
+            // the X-Forwarded-By header to prevent loops
             
             const fallbackResponse = await this.requestForwarder.forwardRequest(
               requestAdapter,
               fallbackOptions
             );
             
-            return new Response(fallbackResponse.body, {
-              status: fallbackResponse.status,
-              headers: fallbackResponse.headers
-            });
+            return {
+              type: 'ERROR',
+              body: JSON.stringify({
+                error: 'Error processing Edge Mode request',
+                message: 'Failed to fetch content, both primary and fallback mechanisms failed.'
+              }),
+              status: 502
+            };
           } catch (fallbackError) {
             // If even the fallback fails, return a meaningful error
             this.logger.error(`${this.logPrefix} Fallback forwarding also failed for ${reqId}:`, fallbackError);
             
-            return new Response(
-              JSON.stringify({
+            return {
+              type: 'ERROR',
+              body: JSON.stringify({
                 error: 'Error processing Edge Mode request',
                 message: 'Failed to fetch content, both primary and fallback mechanisms failed.'
               }),
-              {
-                status: 502,
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Request-ID': reqId
-                }
-              }
-            );
+              status: 502
+            };
           }
         }
       }
@@ -513,25 +763,31 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
       });
       
       // Return error response
-      return new Response(
-        JSON.stringify({
+      return {
+        type: 'ERROR',
+        body: JSON.stringify({
           error: 'Error processing Edge Mode request',
           message: error instanceof Error ? error.message : 'Unknown error'
         }),
-        {
-          status: 500,
-          headers: {
-            'Content-Type': 'application/json',
-            'X-Request-ID': reqId
-          }
-        }
-      );
+        status: 500
+      };
     } finally {
       // Stop request timer
       if (requestTimer) {
         requestTimer.stop();
       }
     }
+  }
+
+  /**
+   * Helper method to convert Headers to a record object
+   */
+  private headersToRecord(headers: Headers): Record<string, string> {
+    const result: Record<string, string> = {};
+    headers.forEach((value, key) => {
+      result[key] = value;
+    });
+    return result;
   }
 
   private convertHeadersToRecord(headers: Headers): Record<string, string> {

@@ -49,7 +49,7 @@ async handleRequest(requestAdapter: IRequestAdapter): Promise<ResponseResult> {
     const errorResponse = this.createErrorResponse(requestId, 500, 'Internal Server Error');
     
     // Add implementation version header
-    errorResponse.headers['X-Implementation-Version'] = 'v2';
+    errorResponse.headers[this.configurationService.getImplementationVersionHeader()] = 'v2';
     errorResponse.headers['X-Request-ID'] = requestId;
 
     return errorResponse;
@@ -165,7 +165,7 @@ if (this.apiRouter) {
       }),
       headers: {
         'Content-Type': 'application/json',
-        'X-Implementation-Version': 'v2',
+        this.configurationService.getImplementationVersionHeader(): 'v2',
         'X-Request-ID': requestId,
       },
     };

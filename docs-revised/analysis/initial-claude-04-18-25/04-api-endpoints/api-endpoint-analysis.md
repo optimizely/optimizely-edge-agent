@@ -86,7 +86,7 @@ This document analyzes the implementation of management API endpoints in the Opt
 | **Logging**             | `logger` object, basic error messages                               | `ILoggerAdapter` with context (`requestId`), structured logging                                                               |
 | **Client Error Response** | 4xx plain text, 500 plain text (sometimes with error details)         | 4xx/500 structured JSON (`{error: msg}`), generic 500 messages (details logged internally)                                       |
 | **Success Response**    | Varies (plain text, JSON string)                                    | Structured JSON (`{success: true}` or data payload)                                                                           |
-| **Headers**             | `Content-Type` sometimes inconsistent/missing                       | Consistent `Content-Type: application/json`, `X-Request-ID`, `X-Implementation-Version`, `Cache-Control: no-store` (for JSON) |
+| **Headers**             | `Content-Type` sometimes inconsistent/missing                       | Consistent `Content-Type: application/json`, `X-Request-ID`, `this.configurationService.getImplementationVersionHeader()`, `Cache-Control: no-store` (for JSON) |
 | **Metrics**             | None                                                                | Integrated error/request/response counts & timers via `IMetricsAdapter`                                                     |
 
 ## 6. Enhancements in v2

@@ -148,4 +148,108 @@ export class ConfigService implements IConfigService {
   }
 
   // TODO: Implement onUpdate if needed, possibly using a polling mechanism
+
+  /**
+   * v1/v2 compatibility: Gets the configured header name for user attributes
+   * @returns The header name or a default value
+   */
+  getAttributesHeaderName(): string | undefined {
+    return 'X-Optimizely-Attributes-Header';
+  }
+
+  /**
+   * v1/v2 compatibility: Gets the configured header name for event tags
+   * @returns The header name or a default value
+   */
+  getEventTagsHeaderName(): string | undefined {
+    return 'X-Optimizely-Event-Tags-Header';
+  }
+
+  /**
+   * v1/v2 compatibility: Gets the configured header name for event key
+   * @returns The header name or a default value
+   */
+  getEventKeyHeaderName(): string | undefined {
+    return 'X-Optimizely-Event-Key';
+  }
+
+  /**
+   * v1/v2 compatibility: Checks if FEX (Feature Experimentation) is enabled
+   * @returns true if enabled, false otherwise
+   */
+  getEnableFex(): boolean {
+    return true; // Default to enabled
+  }
+
+  /**
+   * v1/v2 compatibility: Gets the configured decisions cookie name
+   * @returns The cookie name or a default value
+   */
+  getDecisionsCookieName(): string {
+    return 'optly_edge_decisions';
+  }
+
+  /**
+   * v1/v2 compatibility: Gets the configured visitor ID cookie name
+   * @returns The cookie name or a default value
+   */
+  getVisitorIdCookieName(): string {
+    return 'optly_edge_visitor_id';
+  }
+
+  /**
+   * v1/v2 compatibility: Gets the configured decisions header name
+   * @returns The header name or a default value
+   */
+  getDecisionsHeaderName(): string {
+    return 'X-OPTIMIZELY-EDGE-DECISIONS';
+  }
+
+  /**
+   * v1/v2 compatibility: Gets the configured visitor ID header name
+   * @returns The header name or a default value
+   */
+  getVisitorIdHeaderName(): string {
+    return 'X-Optimizely-Edge-Visitor-Id';
+  }
+
+  /**
+   * v1/v2 compatibility: Checks if datafile should be fetched from KV
+   * @returns true if enabled, false otherwise
+   */
+  getEnableDatafileFromKV(): boolean {
+    return false; // Default to disabled
+  }
+
+  /**
+   * v1/v2 compatibility: Checks if flags should be fetched from KV
+   * @returns true if enabled, false otherwise
+   */
+  getEnableFlagsFromKV(): boolean {
+    return false; // Default to disabled
+  }
+
+  /**
+   * v1/v2 compatibility: Checks if response metadata should be included
+   * @returns true if enabled, false otherwise
+   */
+  getEnableResponseMetadata(): boolean {
+    return true; // Default to enabled
+  }
+
+  /**
+   * v1/v2 compatibility: Checks if cache override is enabled
+   * @returns true if enabled, false otherwise
+   */
+  getOverrideCache(): boolean {
+    return false; // Default to disabled
+  }
+
+  /**
+   * v1/v2 compatibility: Gets default decide options
+   * @returns Array of default decide options
+   */
+  getDefaultDecideOptions(): string[] {
+    return []; // Default to empty array (no options)
+  }
 } 

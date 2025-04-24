@@ -56,7 +56,12 @@ export class FastlyRequestAdapter implements IRequestAdapter {
     try {
       // Clone the request to avoid consuming the body stream
       const clonedRequest = this.request.clone();
-      return await clonedRequest.json() as T;
+      const text = await clonedRequest.text();
+      if (!text || text.trim() === '') {
+        // No body present, return empty object
+        return {} as T;
+      }
+      return JSON.parse(text) as T;
     } catch (error) {
       console.error('Error getting request body as JSON:', error);
       throw error;

@@ -8,7 +8,6 @@ import {
   CloudflareExecutionContext
 } from "../adapters/implementations/cloudflare/CloudflareEnvironmentAdapter";
 
-import { ConfigService } from "../services/implementations/ConfigService";
 import { DecisionService } from "../services/implementations/DecisionService";
 import { RequestHandler } from "../services/implementations/RequestHandler";
 import { IRequestHandler, ResponseResult } from "../services/interfaces/IRequestHandler";
@@ -40,13 +39,13 @@ import { IContentTransformer } from "../services/interfaces/IContentTransformer"
 import { IRequestForwarder } from "../services/interfaces/IRequestForwarder";
 import { IResponseAdapter } from "../adapters/interfaces/IResponseAdapter";
 import { ApiRouter } from "../services/implementations/ApiRouter";
-import { IConfigService } from "../services/interfaces/IConfigService";
 import { IDecisionService } from "../services/interfaces/IDecisionService";
 import { CacheStrategyOptions } from "../services/interfaces/ICacheManager";
 import { CloudflareMetricsAdapter } from "../adapters/implementations/cloudflare/CloudflareMetricsAdapter";
 import { CookieService } from "../services/implementations/CookieService";
 import { FlagStorageService } from "../services/implementations/FlagStorageService";
 import { ConfigurationService } from "../services/implementations/ConfigurationService";
+import { IConfigurationService } from "../services/interfaces/IConfigurationService";
 
 function getConfigKvBindingName(env: any): string {
   return env?.ENVIRONMENT === 'test' ? 'TEST_OPTIMIZELY_DATAFILES' : 'OPTLY_HYBRID_AGENT_KV';
@@ -113,7 +112,7 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
   // Create Services (inject dependencies)
   const cacheService = new CacheService(storageAdapter, logger);
   const datafileService = new DatafileService(storageAdapter, environmentAdapter, logger, metricsAdapter);
-  const configService = new ConfigService(datafileService, logger);
+  const configService: IConfigurationService = new ConfigurationService(datafileService, logger);
   const decisionService = new DecisionService(configService, logger);
   
   // Create FlagStorageService for managing feature flags
@@ -125,9 +124,6 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
       cleanupIntervalMs: 3600000 // 1 hour
     }
   );
-  
-  // Create ConfigurationService
-  const configurationService = new ConfigurationService(logger);
   
   // Create Edge Mode Components
   logger.debug("Cloudflare Composition: Creating Edge Mode components.");
@@ -145,7 +141,8 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     logger,
     cacheService,
     createResponseAdapter,
-    decisionService
+    decisionService,
+    configService
   );
   
   // Create Content Fetcher
@@ -185,6 +182,7 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     requestForwarder,
     logger,
     decisionService,
+    configService,
     metricsAdapter
   );
   
@@ -210,7 +208,7 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     metricsAdapter,
     new CookieService(logger),
     flagStorageService,
-    configurationService,
+    configService,
     {
       triggerIntervalMs: 3600000, // 1 hour
       triggerProbability: 0.1,    // 10%
@@ -233,10 +231,9 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
 }
 
 /**
- * Main entry point function to handle a Cloudflare Worker request.
- * It sets up the application via the Cloudflare-specific composition root and calls the request handler.
- * @param request - The incoming Request object.
- * @param env - The environment bindings and variables.
+ * Handles a request in the Cloudflare worker environment.
+ * @param request - The incoming request.
+ * @param env - The Cloudflare environment.
  * @param ctx - The execution context.
  * @returns A Promise resolving to the Response object.
  */
@@ -246,6 +243,68 @@ export async function handleCloudflareWorkerRequest(
   ctx: CloudflareExecutionContext
 ): Promise<Response> {
   try {
+    // Global FEX (Feature Experimentation) bypass check
+    // If X-Optimizely-Enable-FEX header is NOT present or not set to true, bypass all Optimizely logic
+    const fexHeaderValue = request.headers.get('X-Optimizely-Enable-FEX');
+    const fexEnabled = fexHeaderValue === 'true' || fexHeaderValue === '1';
+    
+    // If FEX is NOT enabled (header missing or not true), bypass Optimizely
+    if (!fexEnabled) {
+      console.log("[Cloudflare Composition] FEX not enabled. Bypassing Optimizely Edge Agent.");
+      
+      // For POST requests: Return disabled message
+      if (request.method === 'POST') {
+        return new Response(
+          JSON.stringify({ error: "The Optimizely Edge Agent is disabled." }),
+          { 
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      // For GET requests: Check for loop detection using existing header
+      const forwardedBy = request.headers.get('x-forwarded-by');
+      const isLoopDetected = forwardedBy && forwardedBy.toLowerCase() === 'edgeagent';
+      
+      // If we detect a loop, return a static response instead of continuing the loop
+      if (isLoopDetected) {
+        console.log("[Cloudflare Composition] Loop detected in FEX bypass (X-Forwarded-By). Returning static response.");
+        return new Response(
+          "Optimizely Edge Agent bypassed. Loop detected and broken.",
+          { 
+            status: 200,
+            headers: { 
+              'Content-Type': 'text/plain',
+              'X-Optimizely-Bypass': 'true'
+            }
+          }
+        );
+      }
+      
+      // No loop detected - continue with pass-through but add EdgeAgent header
+      console.log("[Cloudflare Composition] Passing request to origin with EdgeAgent header.");
+      
+      // Clone the request and modify headers
+      const newHeaders = new Headers(request.headers);
+      
+      // 1. Add X-Forwarded-By header to utilize existing loop detection
+      newHeaders.set('X-Forwarded-By', 'EdgeAgent');
+      
+      // 2. Remove the FEX header to prevent the origin from also doing a bypass
+      newHeaders.delete('X-Optimizely-Enable-FEX');
+      
+      // Create a new request with the modified headers
+      const cleanRequest = new Request(request, {
+        headers: newHeaders
+      });
+      
+      return fetch(cleanRequest);
+    }
+
+    // FEX is enabled - proceed with normal Optimizely processing
+    console.log("[Cloudflare Composition] FEX enabled. Proceeding with normal Optimizely processing.");
+
     // 1. Compose the application
     const factoryInputs: CloudflareAdapterFactoryInputs = { request, env, ctx };
     const app = composeCloudflareApplication(factoryInputs);
@@ -371,7 +430,7 @@ export async function handleWorkerRequest(
 function createApiRouter(
   datafileService: IDatafileService,
   cacheService: ICacheService,
-  configService: IConfigService,
+  configService: IConfigurationService,
   logger: ILoggerAdapter,
   metricsAdapter?: IMetricsAdapter,
   decisionService?: IDecisionService
@@ -399,7 +458,7 @@ export async function createServices(
   request: Request
 ): Promise<{
   environmentAdapter: IEnvironmentAdapter;
-  configService: IConfigService;
+  configService: IConfigurationService;
   cacheService: ICacheService;
   datafileService: IDatafileService;
   decisionService: IDecisionService;
@@ -416,23 +475,30 @@ export async function createServices(
   const logger = cloudflareFactory.createLoggerAdapter();
   const environmentAdapter = cloudflareFactory.createEnvironmentAdapter();
   
+  // Create the config service
+  const configService: IConfigurationService = new ConfigurationService(app.datafileService, logger);
+  
+  // Create an ApiRouter with the correct services
+  const apiRouter = createApiRouter(
+    app.datafileService,
+    app.cacheService,
+    configService,
+    logger,
+    app.metrics,
+    new DecisionService(configService, logger)
+  );
+  
   return {
     environmentAdapter,
-    configService: new ConfigService(app.datafileService, logger),
+    configService,
     cacheService: app.cacheService,
     datafileService: app.datafileService,
     decisionService: new DecisionService(
-      new ConfigService(app.datafileService, logger), 
+      configService, 
       logger
     ),
     eventService: app.eventService,
-    apiRouter: createApiRouter(
-      app.datafileService,
-      app.cacheService,
-      new ConfigService(app.datafileService, logger),
-      logger,
-      app.metrics
-    ),
+    apiRouter,
     requestHandler: app.requestHandler,
     metricsAdapter: app.metrics
   };

@@ -74,7 +74,7 @@ This pattern allows for clear separation of concerns and facilitates testing by 
    - Edge Mode: Delegate to `handleEdgeModeRequest`
 
 5. **Response Creation**
-   - Add standard headers (X-Implementation-Version, X-Request-ID)
+   - Add standard headers (this.configurationService.getImplementationVersionHeader(), X-Request-ID)
    - Stop metrics timer
    - Trigger cleanup if needed
 

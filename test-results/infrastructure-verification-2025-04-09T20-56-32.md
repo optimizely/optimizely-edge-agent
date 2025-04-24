@@ -50,7 +50,7 @@ Verify that the Edge Agent endpoint is accessible and running on Cloudflare
     "server-timing": "cfL4;desc=\"?proto=TCP&rtt=26995&min_rtt=26414&rtt_var=11067&sent=4&recv=5&lost=0&retrans=0&sent_bytes=2848&recv_bytes=744&delivery_rate=136368&cwnd=48&unsent_bytes=0&cid=3cefad456c72a459&ts=73&x=0\"",
     "transfer-encoding": "chunked",
     "vary": "Accept-Encoding",
-    "x-implementation-version": "v2",
+    "this.configurationService.getImplementationVersionHeader()": "v2",
     "x-request-id": "e8d4d4c9-f26b-4cad-af93-f49601ef0ce4"
   },
   "isCloudflare": true,
@@ -82,7 +82,7 @@ Verify that the Edge Agent accepts valid SDK keys and rejects invalid ones
       "server": "cloudflare",
       "server-timing": "cfL4;desc=\"?proto=TCP&rtt=26987&min_rtt=24235&rtt_var=7417&sent=7&recv=7&lost=0&retrans=0&sent_bytes=4377&recv_bytes=1020&delivery_rate=144145&cwnd=51&unsent_bytes=0&cid=3cefad456c72a459&ts=109&x=0\"",
       "vary": "Accept-Encoding",
-      "x-implementation-version": "v2",
+      "this.configurationService.getImplementationVersionHeader()": "v2",
       "x-request-id": "4c2528b6-927c-4c9a-87f4-86dd39412494"
     },
     "bodyLength": 89
@@ -103,7 +103,7 @@ Verify that the Edge Agent accepts valid SDK keys and rejects invalid ones
       "server": "cloudflare",
       "server-timing": "cfL4;desc=\"?proto=TCP&rtt=26843&min_rtt=24235&rtt_var=5850&sent=8&recv=8&lost=0&retrans=0&sent_bytes=5384&recv_bytes=1290&delivery_rate=144145&cwnd=52&unsent_bytes=0&cid=3cefad456c72a459&ts=143&x=0\"",
       "vary": "Accept-Encoding",
-      "x-implementation-version": "v2",
+      "this.configurationService.getImplementationVersionHeader()": "v2",
       "x-request-id": "ee8aa51a-bf83-4446-a9fa-c0c2b6f3339d"
     },
     "bodyLength": 89

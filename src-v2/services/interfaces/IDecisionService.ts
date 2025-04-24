@@ -2,15 +2,21 @@ import * as optimizely from '@optimizely/optimizely-sdk';
 
 // Our internal user context matches our domain model
 export type OptimizelyUserContext = {
-  userId: string;
+  userId: string; // Mandatory field
   attributes?: optimizely.UserAttributes;
 };
 
-// Re-export the SDK's decision type to ensure compatibility
+// Re-export the SDK's decision type to ensure compatibility (add experimentKey only)
 export type OptimizelyDecision = optimizely.OptimizelyDecision & {
   experimentKey?: string; // Add experimentKey property needed for headers
 };
 export type OptimizelyDecideOption = optimizely.OptimizelyDecideOption;
+
+// Define the context type for forced decisions
+export type OptimizelyDecisionContext = {
+  flagKey: string;
+  ruleKey?: string;
+};
 
 /**
  * @interface IDecisionService
@@ -98,4 +104,67 @@ export interface IDecisionService {
     userId: string,
     options?: { sdkKey?: string }
   ): Promise<string | null>;
+
+  /**
+   * Creates a user context object for use with newer SDK methods.
+   * @param userId - The user ID.
+   * @param attributes - User attributes for targeting and segmentation.
+   * @param options - Optional: { sdkKey?: string } to specify which client to use.
+   * @returns A promise resolving to an OptimizelyUserContext object.
+   */
+  createUserContext?(
+    userId: string,
+    attributes: Record<string, any>,
+    options?: { sdkKey?: string }
+  ): Promise<OptimizelyUserContext>;
+
+  /**
+   * Sets a forced decision for a specific user context and decision context.
+   * @param userContext - The user context object.
+   * @param context - The decision context containing flagKey and optional ruleKey.
+   * @param decision - The decision to force, containing the variationKey.
+   * @returns A promise resolving to a boolean indicating success or failure.
+   */
+  setForcedDecision?(
+    userContext: OptimizelyUserContext,
+    context: { flagKey: string; ruleKey?: string },
+    decision: { variationKey: string }
+  ): Promise<boolean>;
+
+  /**
+   * Removes a forced decision for a specific context.
+   * @param context - The decision context containing flagKey and optional ruleKey.
+   * @param userId - The user ID.
+   * @param options - Optional: { sdkKey?: string }.
+   * @returns A promise resolving to a boolean indicating success or failure.
+   */
+  removeForcedDecision?(
+    context: OptimizelyDecisionContext,
+    userId: string,
+    options?: { sdkKey?: string }
+  ): Promise<boolean>;
+
+  /**
+   * Removes a forced variation for a specific flag and user.
+   * @param flagKey - The flag or experiment key.
+   * @param userId - The user ID.
+   * @param options - Optional: { sdkKey?: string }.
+   * @returns A promise resolving to a boolean indicating success or failure.
+   */
+  removeForcedVariation?(
+    flagKey: string,
+    userId: string,
+    options?: { sdkKey?: string }
+  ): Promise<boolean>;
+
+  /**
+   * Removes all forced decisions for a specific user.
+   * @param userId - The user ID.
+   * @param options - Optional: { sdkKey?: string }.
+   * @returns A promise resolving to a boolean indicating success or failure.
+   */
+  removeAllForcedDecisions?(
+    userId: string,
+    options?: { sdkKey?: string }
+  ): Promise<boolean>;
 } 

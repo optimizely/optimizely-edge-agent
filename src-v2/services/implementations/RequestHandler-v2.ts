@@ -30,6 +30,7 @@ export class RequestHandlerV2 implements IRequestHandler {
   private cleanupTriggerInterval: number = 3600000; // Default: trigger possibility every hour
   private cleanupTriggerProbability: number = 0.1; // Default: 10% probability
   private requestTriggeringEnabled: boolean = true; // Default: true
+  private implementationVersionHeader: string = 'X-Implementation-Version'; // Default implementation version header
 
   /**
    * Creates an instance of the RequestHandler.
@@ -63,6 +64,11 @@ export class RequestHandlerV2 implements IRequestHandler {
     this.cookieService = cookieService || null;
     this.flagStorage = flagStorage || null;
     this.configurationService = configurationService || null;
+    
+    // Initialize implementationVersionHeader from configService if available
+    if (this.configurationService && typeof this.configurationService.getImplementationVersionHeader === 'function') {
+      this.implementationVersionHeader = this.configurationService.getImplementationVersionHeader();
+    }
     
     // Setup cleanup configuration
     if (cleanupConfig) {
@@ -173,7 +179,7 @@ export class RequestHandlerV2 implements IRequestHandler {
         body: JSON.stringify({ success: true }),
         headers: {
           'Content-Type': 'application/json',
-          'X-Implementation-Version': 'v2',
+          [this.implementationVersionHeader]: 'v2',
           'X-Request-ID': requestId
         }
       };
@@ -245,7 +251,7 @@ export class RequestHandlerV2 implements IRequestHandler {
         body: JSON.stringify({ error: "Internal Server Error" }),
         headers: {
           'Content-Type': 'application/json',
-          'X-Implementation-Version': 'v2',
+          [this.implementationVersionHeader]: 'v2',
           'X-Request-ID': requestId
         }
       };

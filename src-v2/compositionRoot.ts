@@ -28,7 +28,6 @@ import {
   FastlyExecutionContext
 } from "./adapters/implementations/fastly/FastlyEnvironmentAdapter";
 
-import { ConfigService } from "./services/implementations/ConfigService";
 import { DecisionService } from "./services/implementations/DecisionService";
 import { EventDispatcher } from "./services/implementations/EventDispatcher";
 import { RequestHandler } from "./services/implementations/RequestHandler";
@@ -51,6 +50,8 @@ import { FlagStorageService } from "./services/implementations/FlagStorageServic
 import { IFlagStorageService } from "./services/interfaces/IFlagStorageService";
 import { ConfigurationService } from "./services/implementations/ConfigurationService";
 import { IConfigurationService } from "./services/interfaces/IConfigurationService";
+import { KVUserProfileService } from "./services/storage/KVUserProfileService";
+import { OptimizelyUserProfileServiceAdapter } from "./services/storage/OptimizelyUserProfileServiceAdapter";
 
 // Define the binding name for the primary KV namespace used by ConfigService
 const CONFIG_KV_BINDING_NAME = 'OPTLY_HYBRID_AGENT_KV';
@@ -158,10 +159,54 @@ function composeApplication(factoryInputs: AnyCDNAdapterFactoryInputs, cdnType: 
     metricsAdapter || undefined,
     flagStorageService
   );
-  const configService = new ConfigService(datafileService, logger);
-  const decisionService = new DecisionService(configService, logger);
+  const configService: IConfigurationService = new ConfigurationService(datafileService, logger);
+  
+  // Get default SDK key from environment if available
+  const defaultSdkKey = (environmentAdapter.getVariable('OPTIMIZELY_SDK_KEY') || undefined);
+  
+  // Initialize User Profile Service for sticky bucketing
+  const userProfileServiceEnabled = process.env.OPTIMIZELY_ENABLE_USER_PROFILE_SERVICE === 'true';
+  let userProfileServiceAdapter: OptimizelyUserProfileServiceAdapter | undefined = undefined;
+  
+  if (userProfileServiceEnabled && defaultSdkKey) {
+    logger.info("[Composition Root] User Profile Service is enabled for sticky bucketing");
+    try {
+      // Create the KV User Profile Service with the storage adapter
+      const kvUserProfileService = new KVUserProfileService(
+        storageAdapter,
+        logger,
+        {
+          sdkKey: defaultSdkKey,
+          keyPrefix: 'optly-ups',
+          ttl: process.env.OPTIMIZELY_UPS_TTL ? parseInt(process.env.OPTIMIZELY_UPS_TTL, 10) : undefined,
+          maxCacheSize: process.env.OPTIMIZELY_UPS_CACHE_SIZE ? parseInt(process.env.OPTIMIZELY_UPS_CACHE_SIZE, 10) : 100
+        }
+      );
+      
+      // Create the adapter that bridges our User Profile Service with the Optimizely SDK
+      userProfileServiceAdapter = new OptimizelyUserProfileServiceAdapter(kvUserProfileService, logger);
+      logger.info("[Composition Root] User Profile Service successfully initialized");
+    } catch (error) {
+      logger.error("[Composition Root] Failed to initialize User Profile Service", error);
+    }
+  } else {
+    if (!userProfileServiceEnabled) {
+      logger.info("[Composition Root] User Profile Service is disabled (set OPTIMIZELY_ENABLE_USER_PROFILE_SERVICE=true to enable)");
+    } else if (!defaultSdkKey) {
+      logger.warn("[Composition Root] User Profile Service requires a default SDK key (OPTIMIZELY_SDK_KEY) to be set");
+    }
+  }
+  
+  // Create Decision Service with optional User Profile Service
+  const decisionService = new DecisionService(
+    configService, 
+    logger, 
+    defaultSdkKey,
+    userProfileServiceAdapter
+  );
+  
   const cookieService = new CookieService(logger);
-  const configurationService = new ConfigurationService(logger);
+  const configurationService = configService;
   
   // Create API Router for handling API endpoints
   const apiRouter = new ApiRouter(

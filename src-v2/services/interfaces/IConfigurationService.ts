@@ -21,6 +21,7 @@ export interface OptimizelyConfigOptions {
   // Decision options
   decideOptions?: string[];               // Options to pass to decide calls
   decideAll?: boolean;                    // Whether to decide all flags
+  
   enabledFlagsOnly?: boolean;             // Whether to only include enabled flags in response
   includeReasons?: boolean;               // Whether to include decision reasons
   excludeVariables?: boolean;             // Whether to exclude variables from decisions
@@ -49,6 +50,9 @@ export interface OptimizelyConfigOptions {
 
   // Variation settings (for Edge Mode)
   cdnVariationSettings?: Record<string, any>; // CDN variation settings
+
+  // New fields from the code block
+  enableDebugHeaders?: boolean;
 }
 
 /**
@@ -58,6 +62,7 @@ export interface ServiceConfigSettings {
   // Core settings
   cdnProvider: string;                  // CDN provider (cloudflare, fastly, etc.)
   responseJsonKeyName: string;          // Key name for decisions in JSON response
+  apiPathPrefix: string;                // Path prefix for API endpoints (default: '/api/')
   
   // Feature flags
   enableResponseMetadata: boolean;      // Whether to include metadata in response
@@ -101,8 +106,10 @@ export interface ServiceConfigSettings {
   enableFlagsFromKVHeader: string;      // Header for enabling flags from KV
   enableDatafileFromKVHeader: string;   // Header for enabling datafile from KV
   enableRespMetadataHeader: string;     // Header for enabling response metadata
+  enableDebugHeadersHeader: string;     // Header for enabling debug headers
   overrideCacheHeader: string;          // Header for overriding cache
   eventKeyHeader: string;               // Header for event key
+  implementationVersionHeader: string;  // Header for implementation version
   
   // Storage keys
   kvFlagKeyName: string;                // KV key name for flags
@@ -231,6 +238,12 @@ export interface IConfigurationService {
   getSettings(): ServiceConfigSettings;
   
   /**
+   * Gets the API path prefix configuration.
+   * @returns The API path prefix (e.g., '/api/')
+   */
+  getApiPathPrefix(): string;
+  
+  /**
    * Gets configuration metadata (useful for debugging and analytics).
    * @returns The configuration metadata.
    */
@@ -296,4 +309,97 @@ export interface IConfigurationService {
    * @returns The number of issues fixed.
    */
   fixValidationIssues(issues: ValidationIssue[]): number;
+
+  /**
+   * Gets the edge agent version, if any.
+   * @returns The edge agent version string or null.
+   */
+  getEdgeAgentVersion(): string | null;
+
+  /**
+   * Gets the configured admin token, if any.
+   * @returns The admin token string or null.
+   */
+  getAdminToken(): string | null;
+
+  /**
+   * Checks if the global cache override setting is enabled.
+   * @returns True if cache should be overridden (no-store), false otherwise.
+   */
+  getOverrideCache(): boolean;
+
+  /**
+   * Gets the default decide options to apply at the SDK level.
+   * Used to configure SDK initialization with consistent options.
+   * @returns Array of decide option string literals.
+   */
+  getDefaultDecideOptions(): string[];
+
+  /**
+   * Gets the configured decisions cookie name (for header/cookie parity).
+   */
+  getDecisionsCookieName(): string;
+
+  /**
+   * Gets the configured visitor ID cookie name (for header/cookie parity).
+   */
+  getVisitorIdCookieName(): string;
+
+  /**
+   * Gets the configured decisions header name (for header/cookie parity).
+   */
+  getDecisionsHeaderName(): string;
+
+  /**
+   * Gets the configured visitor ID header name (for header/cookie parity).
+   */
+  getVisitorIdHeaderName(): string;
+
+  /**
+   * Returns true if the FEX (Feature Experimentation) bypass is enabled.
+   */
+  getEnableFex(): boolean;
+
+  /**
+   * Returns true if datafile should be loaded from KV storage.
+   */
+  getEnableDatafileFromKV(): boolean;
+
+  /**
+   * Returns true if flags should be loaded from KV storage.
+   */
+  getEnableFlagsFromKV(): boolean;
+
+  /**
+   * Returns true if response metadata should be included in responses.
+   */
+  getEnableResponseMetadata(): boolean;
+
+  /**
+   * Returns the current environment string (e.g., 'production', 'staging').
+   */
+  getEnvironment(): string | null;
+
+  /**
+   * Returns the current CDN provider string (e.g., 'cloudflare', 'fastly').
+   */
+  getCdnProvider(): string | null;
+
+  /**
+   * Fetches the Optimizely configuration datafile for a given SDK key.
+   * @param sdkKey - The SDK key.
+   * @returns A promise resolving to the OptimizelyDatafile or null.
+   */
+  getDatafile(sdkKey?: string): Promise<any>;
+
+  /**
+   * Returns true if debug headers should be included in responses.
+   */
+  getEnableDebugHeaders(): boolean;
+
+  /**
+   * Gets the implementation version header name.
+   * @returns The implementation version header name.
+   */
+  getImplementationVersionHeader(): string;
 } 

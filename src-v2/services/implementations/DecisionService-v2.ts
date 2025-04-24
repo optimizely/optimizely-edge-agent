@@ -4,7 +4,7 @@ import {
   OptimizelyDecision,
   OptimizelyDecideOption
 } from "../interfaces/IDecisionService";
-import { IConfigService } from "../interfaces/IConfigService";
+import { IConfigurationService } from "../interfaces/IConfigurationService";
 import { ILoggerAdapter, LogLevel, LogContext } from "../../adapters/interfaces/ILoggerAdapter";
 import { IMetricsAdapter, MetricTags } from "../../adapters/interfaces/IMetricsAdapter";
 import * as optimizely from '@optimizely/optimizely-sdk';
@@ -71,7 +71,7 @@ interface OptimizelyLogger {
  * Integrates with the Optimizely Full Stack SDK.
  */
 export class DecisionServiceV2 implements IDecisionService {
-  private configService: IConfigService;
+  private configService: IConfigurationService;
   private logger: ILoggerAdapter;
   private metrics: IMetricsAdapter | null;
   private clientCache: OptimizelyClientCache = {};
@@ -92,7 +92,7 @@ export class DecisionServiceV2 implements IDecisionService {
    * @param options - Optional configuration options.
    */
   constructor(
-    configService: IConfigService, 
+    configService: IConfigurationService, 
     logger: ILoggerAdapter, 
     metrics?: IMetricsAdapter,
     defaultSdkKey?: string,

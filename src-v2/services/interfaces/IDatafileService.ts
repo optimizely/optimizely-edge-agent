@@ -9,9 +9,10 @@ export interface IDatafileService {
   /**
    * Gets an Optimizely datafile by sdkKey.
    * @param sdkKey - The Optimizely SDK key.
+   * @param options - Optional configuration options.
    * @returns A promise resolving to the datafile JSON string or null if not found.
    */
-  getDatafile(sdkKey: string): Promise<string | null>;
+  getDatafile(sdkKey: string, options?: { useKV?: boolean }): Promise<string | null>;
 
   /**
    * Updates or stores an Optimizely datafile.
@@ -41,9 +42,10 @@ export interface IDatafileService {
   /**
    * Gets all flag keys for a specific SDK key.
    * @param sdkKey - The Optimizely SDK key.
-   * @returns A promise resolving to an array of flag keys or an empty array if none are found.
+   * @param options - Optional configuration options.
+   * @returns A promise resolving to an array of flag keys or null if none are found.
    */
-  getFlagKeys(sdkKey: string): Promise<string[]>;
+  getFlagKeys(sdkKey: string, options?: { useKV?: boolean, requestContext?: any }): Promise<string[] | null>;
 
   /**
    * Updates the list of flag keys for a specific SDK key.
@@ -128,4 +130,18 @@ export interface IDatafileService {
    * @returns A promise resolving to the number of items cleaned up.
    */
   cleanupExpiredFlags(sdkKey?: string): Promise<number>;
+
+  /**
+   * Gets flag keys from KV store.
+   * @param sdkKey - The Optimizely SDK key.
+   * @returns A promise resolving to an array of flag keys or null if none are found.
+   */
+  getFlagsFromKV?(sdkKey: string): Promise<string[] | null>;
+
+  /**
+   * Gets datafile from KV store.
+   * @param sdkKey - The Optimizely SDK key.
+   * @returns A promise resolving to the datafile JSON string or null if not found.
+   */
+  getDatafileFromKV?(sdkKey: string): Promise<string | null>;
 } 

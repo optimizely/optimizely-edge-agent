@@ -47,10 +47,14 @@ export class CloudflareRequestAdapter implements IRequestAdapter {
   async getBodyJson<T>(): Promise<T> {
     // Similar cloning consideration as getBodyText
     try {
-      return await this.request.clone().json<T>();
+      const text = await this.request.clone().text();
+      if (!text || text.trim() === '') {
+        // No body present, return empty object
+        return {} as T;
+      }
+      return JSON.parse(text) as T;
     } catch (error) {
       console.error("Error reading request body as JSON:", error);
-      // Rethrow or return a default/error object depending on requirements
       throw new Error(`Failed to parse request body as JSON: ${error instanceof Error ? error.message : String(error)}`);
     }
   }

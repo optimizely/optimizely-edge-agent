@@ -326,7 +326,7 @@ export class CloudflareEventService implements IEventService {
   private formatEventForOptimizely(event: OptimizelyEventData): OptimizelyVisitor {
     // Convert internal event format to Optimizely Events API format
     const visitor: OptimizelyVisitor = {
-      visitor_id: event.userContext.userId,
+      visitor_id: this.getUsedId(event.userContext),
       snapshots: []
     };
     
@@ -416,5 +416,32 @@ export class CloudflareEventService implements IEventService {
    */
   private getLastFlushKey(sdkKey: string): string {
     return `${this.EVENTS_LAST_FLUSH_KEY_PREFIX}${sdkKey}`;
+  }
+
+  /**
+   * Safely extracts the user ID from the user context.
+   * Handles different ways it might be stored.
+   * @param userContext - The user context object.
+   * @returns The user ID as a string.
+   * @private
+   */
+  private getUsedId(userContext: any): string {
+    // First try proper method access if available
+    if (userContext && typeof userContext.getUserId === 'function') {
+      return userContext.getUserId();
+    }
+    
+    // Then try direct property access
+    if (userContext && typeof userContext.userId === 'string') {
+      return userContext.userId;
+    }
+    
+    // Try alternative property names
+    if (userContext && typeof userContext.visitorId === 'string') {
+      return userContext.visitorId;
+    }
+    
+    // Last resort, return a placeholder
+    return 'unknown-user';
   }
 } 

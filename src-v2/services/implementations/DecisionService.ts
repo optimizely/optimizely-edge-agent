@@ -4,11 +4,13 @@ import {
   // DecisionResult // Replace with OptimizelyDecision
   OptimizelyUserContext,
   OptimizelyDecision,
-  OptimizelyDecideOption
+  OptimizelyDecideOption,
+  OptimizelyDecisionContext
 } from "../interfaces/IDecisionService";
-import { IConfigService } from "../interfaces/IConfigService";
+import { IConfigurationService } from "../interfaces/IConfigurationService";
 import { ILoggerAdapter, LogLevel } from "../../adapters/interfaces/ILoggerAdapter";
 import * as optimizely from '@optimizely/optimizely-sdk';
+import { OptimizelyUserProfileServiceAdapter } from '../storage/OptimizelyUserProfileServiceAdapter';
 
 // Configure Optimizely SDK to use Node.js environment
 // This needs to happen before any other SDK operations
@@ -66,12 +68,39 @@ interface OptimizelyLogger {
   log(level: any, message: string): void;
 }
 
+// Add RequestContext interface at the top with the other interfaces
+interface RequestContext {
+  configMetadata?: {
+    datafileFrom?: string;
+    flagKeysFrom?: string;
+    [key: string]: any;
+  };
+}
+
+// Define extended OptimizelyUserContext with metadata for our implementation
+interface ExtendedOptimizelyUserContext extends OptimizelyUserContext {
+  metadata?: {
+    requestContext?: RequestContext;
+  };
+  forcedDecisions?: Record<string, { variationKey: string }>;
+}
+
+// Interface for Optimizely decision results with our format
+interface OptimizelyDecisionResult {
+  variationKey: string;
+  enabled: boolean;
+  variables: Record<string, unknown>;
+  ruleKey: string;
+  flagKey: string;
+  reasons?: string[];
+}
+
 /**
  * Service responsible for making Optimizely decisions (feature flags, experiments).
  * Integrates with the Optimizely Full Stack SDK.
  */
 export class DecisionService implements IDecisionService {
-  private configService: IConfigService;
+  private configService: IConfigurationService;
   private logger: ILoggerAdapter;
   private clientCache: OptimizelyClientCache = {};
   private userContextCache: Map<string, any> = new Map(); // Cache for user contexts
@@ -79,23 +108,70 @@ export class DecisionService implements IDecisionService {
   private readonly USER_CONTEXT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
   private readonly LOG_PREFIX = '[v2]';
   private defaultSdkKey: string | null = null; // Default SDK key for operations
+  private userProfileServiceAdapter: OptimizelyUserProfileServiceAdapter | null = null; // Add this field
+  private optimizelyLoggerAdapter: OptimizelyLogger;
 
   /**
    * Creates an instance of the DecisionService.
    * @param configService - Service to fetch Optimizely configuration.
    * @param logger - Logger adapter.
    * @param defaultSdkKey - Optional default SDK key to use when none is provided.
+   * @param userProfileServiceAdapter - Optional user profile service adapter for sticky bucketing.
    */
-  constructor(configService: IConfigService, logger: ILoggerAdapter, defaultSdkKey?: string) {
+  constructor(
+    configService: IConfigurationService, 
+    logger: ILoggerAdapter, 
+    defaultSdkKey?: string,
+    userProfileServiceAdapter?: OptimizelyUserProfileServiceAdapter
+  ) {
     if (!configService || !logger) {
       throw new Error("DecisionService requires configService and logger.");
     }
     this.configService = configService;
     this.logger = logger;
     this.defaultSdkKey = defaultSdkKey || null;
+    this.userProfileServiceAdapter = userProfileServiceAdapter || null;
 
-    // Log that we're using Node.js SDK configuration
+    // Initialize the Optimizely logger adapter
+    this.optimizelyLoggerAdapter = {
+      log: (level: any, message: string) => {
+        // Convert Optimizely log level to our log level
+        let mappedLevel: LogLevel;
+        switch (level) {
+          case 0: // ERROR
+            mappedLevel = LogLevel.ERROR;
+            break;
+          case 1: // WARNING
+            mappedLevel = LogLevel.WARN;
+            break;
+          case 2: // INFO
+            mappedLevel = LogLevel.INFO;
+            break;
+          case 3: // DEBUG
+            mappedLevel = LogLevel.DEBUG;
+            break;
+          default:
+            mappedLevel = LogLevel.INFO;
+        }
+        
+        // Log using the appropriate method based on the level
+        if (mappedLevel === LogLevel.ERROR) {
+          this.logger.error(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
+        } else if (mappedLevel === LogLevel.WARN) {
+          this.logger.warn(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
+        } else if (mappedLevel === LogLevel.INFO) {
+          this.logger.info(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
+        } else {
+          this.logger.debug(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
+        }
+      }
+    };
+
+    // Log initialization state
     this.logger.info(`${this.LOG_PREFIX} DecisionService: Initialized with Node.js SDK configuration`);
+    if (this.userProfileServiceAdapter) {
+      this.logger.info(`${this.LOG_PREFIX} DecisionService: User Profile Service enabled for sticky bucketing`);
+    }
 
     // Start periodic cache cleanup
     setInterval(() => this.cleanupCaches(), 10 * 60 * 1000); // Run every 10 minutes
@@ -130,100 +206,86 @@ export class DecisionService implements IDecisionService {
   }
 
   /**
-   * Gets or creates an Optimizely client instance for a given SDK key.
-   * Caches the client based on datafile revision.
-   * @param sdkKey - The SDK key.
-   * @returns A promise resolving to the Optimizely client instance or null.
+   * Gets the appropriate log level for the Optimizely SDK
+   * @returns The Optimizely SDK log level
    */
-  private async getOptimizelyClient(sdkKey: string): Promise<optimizely.Client | null> {
-    const datafile = await this.configService.getDatafile(sdkKey);
-    if (!datafile || typeof datafile !== 'object' || !('revision' in datafile)) {
-      this.logger.error(`${this.LOG_PREFIX} DecisionService: Failed to fetch valid datafile for SDK key '${sdkKey}'.`);
-      return null;
-    }
+  private getLogLevel(): any {
+    return optimizely.enums.LOG_LEVEL.ERROR; // Default to ERROR level
+  }
 
-    const revision = String((datafile as any).revision);
+  /**
+   * Gets (or initializes) an Optimizely client for a given SDK key
+   * @param sdkKey The SDK key
+   * @param requestContext Optional request context for tracking metadata sources
+   * @returns The Optimizely client or null if error
+   */
+  private async getOptimizelyClient(
+    sdkKey: string,
+    requestContext?: RequestContext
+  ): Promise<optimizely.Client | null> {
+    try {
+      // First check if client already exists in cache
     const cached = this.clientCache[sdkKey];
 
-    if (cached && cached.revision === revision) {
-      this.logger.debug(`${this.LOG_PREFIX} DecisionService: Using cached Optimizely client for SDK key '${sdkKey}', revision '${revision}'.`);
+      if (cached) {
       // Update last used timestamp
       this.clientCache[sdkKey].lastUsed = Date.now();
       return cached.client;
     }
 
-    this.logger.info(`${this.LOG_PREFIX} DecisionService: Creating new Optimizely client instance for SDK key '${sdkKey}', revision '${revision}'.`);
-    try {
-      // Create a wrapper for the logger that converts between our log levels and Optimizely's
-      const loggerAdapter: OptimizelyLogger = {
-        log: (optimizelyLogLevel: any, message: string) => {
-          // Convert Optimizely log level to our log level
-          let mappedLevel: LogLevel;
-          switch (optimizelyLogLevel) {
-            case optimizely.enums.LOG_LEVEL.ERROR:
-              mappedLevel = LogLevel.ERROR;
-              break;
-            case optimizely.enums.LOG_LEVEL.WARNING:
-              mappedLevel = LogLevel.WARN;
-              break;
-            case optimizely.enums.LOG_LEVEL.INFO:
-              mappedLevel = LogLevel.INFO;
-              break;
-            case optimizely.enums.LOG_LEVEL.DEBUG:
-              mappedLevel = LogLevel.DEBUG;
-              break;
-            default:
-              mappedLevel = LogLevel.INFO;
-          }
-          
-          // Log using the appropriate method based on the level
-          if (mappedLevel === LogLevel.ERROR) {
-            this.logger.error(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
-          } else if (mappedLevel === LogLevel.WARN) {
-            this.logger.warn(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
-          } else if (mappedLevel === LogLevel.INFO) {
-            this.logger.info(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
-          } else {
-            this.logger.debug(`${this.LOG_PREFIX} OptimizelySDK: ${message}`);
-          }
-        }
-      };
-
-      // Following pattern from optimizelyProvider.js in the original codebase
-      const params = {
-        datafile: datafile,
-        logger: loggerAdapter,
-        clientEngine: 'javascript-sdk/cloudflare-agent', // From defaultSettings.js
-        clientVersion: '1.0.0',                          // From defaultSettings.js
-        eventBatchSize: 10,                              // Default batch size to avoid warnings
-        eventFlushInterval: 1000,                        // Default flush interval to avoid warnings
-        errorHandler: {
-          handleError: (error: Error) => {
-            this.logger.error(`${this.LOG_PREFIX} OptimizelySDK Error: ${error.message}`, error);
-          }
-        }
-      };
+      // If client not in cache, try to get datafile and create new client
+      const datafile = await this.configService.getDatafile(sdkKey);
       
-      // Create enhanced client with datafile and error handling
-      const client = optimizely.createInstance(params);
+      if (!datafile || typeof datafile !== 'object' || !('revision' in datafile)) {
+        this.logger.error(`${this.LOG_PREFIX} No valid datafile available for SDK key: ${sdkKey}`);
+        return null;
+          }
+      
+      const revision = String((datafile as any).revision);
 
-      if (!client) {
-        throw new Error('optimizely.createInstance returned null or undefined.');
+      // Fetch default decide options (array of strings) from config if available
+      let defaultDecideOptionStrings: string[] = [];
+      if (this.configService && typeof (this.configService as any).getDefaultDecideOptions === 'function') {
+        try {
+          const opts = (this.configService as any).getDefaultDecideOptions();
+          if (Array.isArray(opts)) {
+            defaultDecideOptionStrings = opts;
+          }
+        } catch (e) {
+          // Ignore errors – fall back to empty list
+          this.logger.debug(`${this.LOG_PREFIX} getDefaultDecideOptions threw`, e);
+        }
       }
 
-      // Store client in cache with timestamp
+      // Map string literals -> actual OptimizelyDecideOption enum members
+      const defaultDecideOptions: optimizely.OptimizelyDecideOption[] = defaultDecideOptionStrings
+        .map(s => s && typeof s === 'string' ? s.toUpperCase().trim() : '')
+        .map(s => (optimizely.OptimizelyDecideOption as any)[s])
+        .filter(Boolean);
+
+      // Create and configure new client with default decide options
+      const client = optimizely.createInstance({
+        datafile,
+        logger: this.optimizelyLoggerAdapter,
+        logLevel: this.getLogLevel(),
+        defaultDecideOptions,
+      });
+
+      if (!client) {
+        this.logger.error(`${this.LOG_PREFIX} Failed to create Optimizely client for SDK key: ${sdkKey}`);
+        return null;
+      }
+
+      // Cache client for future use
       this.clientCache[sdkKey] = { 
         revision, 
         client,
         lastUsed: Date.now()
       };
       
-      // Clear any related user contexts from cache when client changes
-      this.clearUserContextsForSdkKey(sdkKey);
-      
       return client;
     } catch (error) {
-      this.logger.error(`${this.LOG_PREFIX} DecisionService: Failed to create Optimizely client for SDK key '${sdkKey}'.`, error);
+      this.logger.error(`${this.LOG_PREFIX} Error getting Optimizely client:`, error);
       return null;
     }
   }
@@ -233,7 +295,7 @@ export class DecisionService implements IDecisionService {
    * @param userContext - Our internal user context.
    * @returns SDK compliant user context.
    */
-  private convertToSdkUserContext(userContext: OptimizelyUserContext): { id: string, attributes: optimizely.UserAttributes } {
+  private convertToSdkUserContext(userContext: ExtendedOptimizelyUserContext): { id: string, attributes: optimizely.UserAttributes } {
     return {
       id: userContext.userId,
       attributes: userContext.attributes || {},
@@ -343,7 +405,7 @@ export class DecisionService implements IDecisionService {
    */
   private createFallbackDecision(
     flagKey: string, 
-    userContext: OptimizelyUserContext, 
+    userContext: ExtendedOptimizelyUserContext, 
     reason: string
   ): OptimizelyDecision {
     try {
@@ -471,263 +533,162 @@ export class DecisionService implements IDecisionService {
    */
   async decide(
     flagKey: string,
-    userContext: OptimizelyUserContext,
+    userContext: ExtendedOptimizelyUserContext,
     options?: { sdkKey?: string; decideOptions?: OptimizelyDecideOption[] }
   ): Promise<OptimizelyDecision> {
-    const sdkKey = options?.sdkKey || this.defaultSdkKey;
-    if (!sdkKey) {
-      this.logger.warn(`${this.LOG_PREFIX} DecisionService: No SDK key provided and no default set. Returning default decision.`);
-      return this.createFallbackDecision(flagKey, userContext, 'no_sdk_key');
-    }
-
-    const client = await this.getOptimizelyClient(sdkKey);
-    if (!client) {
-      this.logger.warn(`${this.LOG_PREFIX} DecisionService: Optimizely client not available for SDK key '${sdkKey}'. Returning default decision.`);
-      return this.createFallbackDecision(flagKey, userContext, 'client_unavailable');
-    }
-
     try {
-      // Process attributes for enhanced audience targeting
-      const processedAttributes = this.processAttributes(userContext.attributes);
-      
-      // Add debug logging to check forcedDecisions
-      console.log('[DECISION_DEBUG] userContext:', JSON.stringify(userContext));
-      
-      // Check for forcedDecisions safely
-      let forcedDecisions: any = undefined;
-      if (userContext && userContext.attributes) {
-        const attributes = userContext.attributes;
-        if (typeof attributes === 'object' && attributes !== null && 'forcedDecisions' in attributes) {
-          forcedDecisions = attributes.forcedDecisions;
-        }
-      }
+      const selectedSdkKey = options?.sdkKey || this.defaultSdkKey;
+      if (!selectedSdkKey) {
+        throw new Error("SDK key is required. Provide it in options or set a default.");
+    }
 
-      if (forcedDecisions) {
-        console.log('[DECISION_DEBUG] forcedDecisions found in attributes:', JSON.stringify(forcedDecisions));
-        
-        // Apply forced variation directly via SDK client if relevant
-        if (forcedDecisions[flagKey] && typeof forcedDecisions[flagKey] === 'object' &&
-            forcedDecisions[flagKey].variationKey) {
-          
-          // Ensure variation key is preserved exactly as provided (e.g., lowercase "on")
-          const variationKey = forcedDecisions[flagKey].variationKey;
-          
-          console.log(`[DECISION_DEBUG] Applying forced variation for ${flagKey}: ${variationKey}`);
-          
-          // Apply forced variation directly through the client for this specific flag
-          await this.applyForcedVariations(
-            client, 
+      // Get/initialize Optimizely client - extract requestContext if available
+      const requestContext = userContext.metadata?.requestContext;
+      const client = await this.getOptimizelyClient(selectedSdkKey, requestContext);
+      
+      if (!client) {
+        return this.createFallbackDecision(
             flagKey, 
-            userContext.userId, 
-            variationKey
+          userContext,
+          "Failed to initialize Optimizely client"
           );
         }
-      } else {
-        console.log('[DECISION_DEBUG] No forcedDecisions in userContext');
+      
+      // Get internal user context from SDK
+      const processedAttributes = this.processAttributes(userContext.attributes || {});
+      const sdkUserContext = client.createUserContext(userContext.userId, processedAttributes);
+      
+      if (!sdkUserContext) {
+        return this.createFallbackDecision(
+          flagKey, 
+          userContext,
+          "Failed to create user context"
+        );
       }
       
-      // Get or create an SDK UserContext object
-      const optimizelyUserContext = this.getUserContext(
-        client, 
-        userContext.userId, 
-        processedAttributes
-      );
-      
-      if (!optimizelyUserContext) {
-        throw new Error('Failed to create Optimizely user context');
+      // Apply any forced variations if specified in the user context
+      if (userContext.forcedDecisions && userContext.forcedDecisions[flagKey]) {
+        const forcedVariation = userContext.forcedDecisions[flagKey].variationKey;
+        await this.applyForcedVariations(client, flagKey, userContext.userId, forcedVariation);
       }
       
-      // Important: Directly apply forced decisions to the SDK UserContext object if needed
-      // This is the most reliable way to apply forced decisions
-      if (forcedDecisions && typeof forcedDecisions === 'object') {
-        // If we have forcedDecisions and the UserContext has setForcedDecision method
-        if (typeof optimizelyUserContext.setForcedDecision === 'function') {
-          console.log('[DECISION_DEBUG] Applying forced decisions directly via SDK setForcedDecision');
-          
-          // Apply the specific forced decision for this flag if it exists
-          if (flagKey in forcedDecisions) {
-            const decision = forcedDecisions[flagKey];
-            if (typeof decision === 'object' && decision !== null && 'variationKey' in decision) {
-              const context = { flagKey }; // flagKey context
-              const decisionToApply = { variationKey: decision.variationKey }; // variationKey to force
-              
-              // Set the forced decision
-              const result = optimizelyUserContext.setForcedDecision(context, decisionToApply);
-              console.log(`[DECISION_DEBUG] Applied forced decision for ${flagKey}, result:`, result);
-            }
-          }
-        } else {
-          console.log('[DECISION_DEBUG] SDK UserContext does not have setForcedDecision method');
-        }
+      // Convert options array to Optimizely SDK format if needed
+      let sdkOptions: OptimizelyDecideOption[] = [];
+      if (options?.decideOptions && options.decideOptions.length > 0) {
+        sdkOptions = options.decideOptions;
       }
       
-      // Add debugging to check if forced decisions are in the SDK userContext
-      console.log('[DECISION_DEBUG] optimizelyUserContext created:', optimizelyUserContext);
-      if (optimizelyUserContext && typeof optimizelyUserContext.getForcedDecision === 'function') {
-        const forcedDecision = optimizelyUserContext.getForcedDecision({ flagKey });
-        console.log(`[DECISION_DEBUG] getForcedDecision(${flagKey}) result:`, forcedDecision);
-      } else {
-        console.log('[DECISION_DEBUG] getForcedDecision not available on userContext');
+      // Call SDK decide method
+      try {
+        const decision = sdkUserContext.decide(flagKey, sdkOptions);
+        
+        // Convert SDK decision to our interface format
+        return {
+          variationKey: decision.variationKey,
+          enabled: decision.enabled,
+          variables: decision.variables,
+          ruleKey: decision.ruleKey,
+          flagKey: decision.flagKey,
+          reasons: decision.reasons
+        } as OptimizelyDecision;
+      } catch (decideError) {
+        this.logger.error(`${this.LOG_PREFIX} Error in decide call for flag "${flagKey}":`, decideError);
+        return this.createFallbackDecision(
+          flagKey,
+          userContext,
+          `Error during decide: ${decideError}`
+        );
       }
-      
-      // Also check for forced variation directly in the client
-      if (typeof client.getForcedVariation === 'function') {
-        const forcedVariation = client.getForcedVariation(flagKey, userContext.userId);
-        console.log(`[DECISION_DEBUG] Direct client.getForcedVariation result:`, forcedVariation);
-      }
-      
-      // Call decide on the user context object with specified options
-      const decision = optimizelyUserContext.decide(flagKey, options?.decideOptions);
-      
-      console.log(`[DECISION_DEBUG] Final decision for flag '${flagKey}':`, JSON.stringify(decision));
-      
-      this.logger.debug(`${this.LOG_PREFIX} DecisionService: Decision made for flag '${flagKey}', user '${userContext.userId}'`, decision);
-      return decision;
     } catch (error) {
-      this.logger.error(`${this.LOG_PREFIX} DecisionService: Error making decision for flag '${flagKey}', user '${userContext.userId}'`, error);
-      return this.createFallbackDecision(flagKey, userContext, 'error_in_decision_process');
+      this.logger.error(`${this.LOG_PREFIX} Failed to get decision for flag "${flagKey}":`, error);
+      return this.createFallbackDecision(
+        flagKey,
+        userContext,
+        `Failed to get decision: ${error}`
+      );
     }
   }
 
   /**
-   * Gets values for all flags for a given user.
-   * @param userContext - The context for the user.
-   * @param flagKeys - Optional list of specific flag keys to decide for.
-   * @param options - Optional: { sdkKey: string, decideOptions: OptimizelyDecideOption[] }.
-   * @returns A promise resolving to a map of flag keys to OptimizelyDecision.
+   * Gets decisions for all flags or a subset of flags.
+   * @param userContext - The user context for decision-making.
+   * @param flagKeys - Optional array of specific flag keys to decide. If not provided, all flags are decided.
+   * @param options - Optional configuration options.
+   * @returns A promise resolving to a map of flag keys to decisions.
    */
   async decideAll(
-    userContext: OptimizelyUserContext,
+    userContext: ExtendedOptimizelyUserContext,
     flagKeys?: string[],
     options?: { sdkKey?: string; decideOptions?: OptimizelyDecideOption[] }
   ): Promise<Record<string, OptimizelyDecision>> {
-    const sdkKey = options?.sdkKey || this.defaultSdkKey;
-    if (!sdkKey) {
-      this.logger.warn(`${this.LOG_PREFIX} DecisionService: No SDK key provided and no default set. Returning empty decisions.`);
-      return {};
-    }
-
-    const client = await this.getOptimizelyClient(sdkKey);
-    if (!client) {
-      this.logger.warn(`${this.LOG_PREFIX} DecisionService: Optimizely client not available for SDK key '${sdkKey}'. Returning empty decisions.`);
-      return {};
-    }
-
     try {
-      // Process attributes for enhanced audience targeting
-      const processedAttributes = this.processAttributes(userContext.attributes);
-      
-      // Add debug logging for decideAll
-      console.log('[DECIDEALL_DEBUG] userContext:', JSON.stringify(userContext));
-      
-      // Check for forcedDecisions safely
-      let forcedDecisions: any = undefined;
-      if (userContext && userContext.attributes) {
-        const attributes = userContext.attributes;
-        if (typeof attributes === 'object' && attributes !== null && 'forcedDecisions' in attributes) {
-          forcedDecisions = attributes.forcedDecisions;
-        }
+      const selectedSdkKey = options?.sdkKey || this.defaultSdkKey;
+      if (!selectedSdkKey) {
+        throw new Error("SDK key is required. Provide it in options or set a default.");
       }
+      
+      // Get/initialize Optimizely client - extract requestContext if available
+      const requestContext = userContext.metadata?.requestContext;
+      const client = await this.getOptimizelyClient(selectedSdkKey, requestContext);
+      
+    if (!client) {
+        this.logger.error(`${this.LOG_PREFIX} Failed to initialize Optimizely client for decideAll`);
+      return {};
+    }
 
-      if (forcedDecisions) {
-        console.log('[DECIDEALL_DEBUG] forcedDecisions found in attributes:', JSON.stringify(forcedDecisions));
-        
-        // Apply all forced decisions directly to the client for each flag
-        if (typeof forcedDecisions === 'object') {
-          for (const [fKey, decision] of Object.entries(forcedDecisions)) {
-            if (typeof decision === 'object' && decision !== null && 'variationKey' in decision) {
-              // Make sure we have the exact variation key value as provided (e.g., lowercase "on")
-              // Cast to string or null to satisfy the type requirement
-              const variationKey = typeof decision.variationKey === 'string' 
-                ? decision.variationKey   // Keep original string value (e.g. lowercase "on")
-                : decision.variationKey === null 
-                  ? null 
-                  : String(decision.variationKey); // Fallback to string conversion
-              
-              console.log(`[DECIDEALL_DEBUG] Applying forced variation for ${fKey}: ${variationKey}`);
-              
-              // Apply forced variation directly through the client 
-              await this.applyForcedVariations(
-                client, 
-                fKey, 
-                userContext.userId, 
-                variationKey
-              );
-            }
-          }
-        }
-      } else {
-        console.log('[DECIDEALL_DEBUG] No forcedDecisions in userContext');
+      // Get internal user context from SDK
+      const processedAttributes = this.processAttributes(userContext.attributes || {});
+      const sdkUserContext = client.createUserContext(userContext.userId, processedAttributes);
+      
+      if (!sdkUserContext) {
+        this.logger.error(`${this.LOG_PREFIX} Failed to create user context for decideAll`);
+        return {};
       }
       
-      // Get or create an SDK UserContext object
-      const optimizelyUserContext = this.getUserContext(
-        client, 
-        userContext.userId, 
-        processedAttributes
-      );
-      
-      if (!optimizelyUserContext) {
-        throw new Error('Failed to create Optimizely user context');
-      }
-      
-      // Important: Directly apply forced decisions to the SDK UserContext object if needed
-      if (forcedDecisions && typeof forcedDecisions === 'object') {
-        // If we have forcedDecisions and the UserContext has setForcedDecision method
-        if (typeof optimizelyUserContext.setForcedDecision === 'function') {
-          console.log('[DECIDEALL_DEBUG] Applying forced decisions directly via SDK setForcedDecision');
-          
-          // Apply all forced decisions
-          for (const [fKey, decision] of Object.entries(forcedDecisions)) {
-            if (typeof decision === 'object' && decision !== null && 'variationKey' in decision) {
-              const context = { flagKey: fKey }; // flagKey context
-              const decisionToApply = { variationKey: decision.variationKey }; // variationKey to force
-              
-              // Set the forced decision
-              const result = optimizelyUserContext.setForcedDecision(context, decisionToApply);
-              console.log(`[DECIDEALL_DEBUG] Applied forced decision for ${fKey}, result:`, result);
+      // Apply any forced variations if specified in the user context
+      if (userContext.forcedDecisions) {
+        for (const [flagKey, decision] of Object.entries(userContext.forcedDecisions)) {
+          await this.applyForcedVariations(client, flagKey, userContext.userId, decision.variationKey);
             }
           }
+      
+      // Convert options array to Optimizely SDK format if needed
+      let sdkOptions: OptimizelyDecideOption[] = [];
+      if (options?.decideOptions && options.decideOptions.length > 0) {
+        sdkOptions = options.decideOptions;
+      }
+      
+      // Call appropriate SDK method based on whether specific flag keys were provided
+      let sdkDecisions: Record<string, any>;
+      try {
+        if (flagKeys && flagKeys.length > 0) {
+          // Use decideForKeys when specific flag keys are provided
+          sdkDecisions = sdkUserContext.decideForKeys(flagKeys, sdkOptions);
         } else {
-          console.log('[DECIDEALL_DEBUG] SDK UserContext does not have setForcedDecision method');
+          // Use decideAll when no specific flag keys are provided
+          sdkDecisions = sdkUserContext.decideAll(sdkOptions);
         }
+      } catch (decideError) {
+        this.logger.error(`${this.LOG_PREFIX} Error in decideAll/decideForKeys call:`, decideError);
+        return {};
       }
       
-      // Log all current forced variations directly from client
-      if (typeof client.getForcedVariation === 'function') {
-        console.log(`[DECIDEALL_DEBUG] Checking all forced variations directly in client...`);
-        
-        // Check forced variations for requested flagKeys or all flags
-        const keysToCheck = flagKeys && flagKeys.length > 0 ? flagKeys : (
-          // If we have forcedDecisions, check all keys there, otherwise we don't have a way to know all flags
-          forcedDecisions ? Object.keys(forcedDecisions) : []
-        );
-        
-        for (const key of keysToCheck) {
-          const forcedVariation = client.getForcedVariation(key, userContext.userId);
-          console.log(`[DECIDEALL_DEBUG] Direct client.getForcedVariation(${key}) result:`, forcedVariation);
-        }
+      // Convert SDK decisions to our interface format
+      const decisions: Record<string, OptimizelyDecision> = {};
+      for (const [key, decision] of Object.entries(sdkDecisions)) {
+        decisions[key] = {
+          variationKey: decision.variationKey,
+          enabled: decision.enabled,
+          variables: decision.variables,
+          ruleKey: decision.ruleKey,
+          flagKey: decision.flagKey,
+          reasons: decision.reasons
+        } as OptimizelyDecision;
       }
       
-      // Call appropriate decide method based on flagKeys
-      let decisions: Record<string, OptimizelyDecision>;
-      
-      if (flagKeys && flagKeys.length > 0) {
-        // Use decideForKeys for specific flags
-        console.log('[DECIDEALL_DEBUG] Calling decideForKeys with flagKeys:', flagKeys);
-        decisions = optimizelyUserContext.decideForKeys(flagKeys, options?.decideOptions);
-      } else {
-        // Use decideAll for all flags
-        console.log('[DECIDEALL_DEBUG] Calling decideAll for all flags');
-        decisions = optimizelyUserContext.decideAll(options?.decideOptions);
-      }
-      
-      console.log('[DECIDEALL_DEBUG] Final decisions:', Object.keys(decisions));
-      
-      this.logger.debug(`${this.LOG_PREFIX} DecisionService: Decisions made for user '${userContext.userId}'`, decisions);
       return decisions;
     } catch (error) {
-      this.logger.error(`${this.LOG_PREFIX} DecisionService: Error making decisions for user '${userContext.userId}'`, error);
+      this.logger.error(`${this.LOG_PREFIX} Failed to get decisions:`, error);
       return {};
     }
   }
@@ -737,7 +698,7 @@ export class DecisionService implements IDecisionService {
    * @param flagKey - The flag or experiment key.
    * @param userId - The user ID.
    * @param variationKey - The variation key to force.
-   * @param options - Optional: { sdkKey: string }.
+   * @param options - Optional: { sdkKey?: string }.
    * @returns A promise resolving on completion.
    */
   async setForcedVariation(
@@ -807,6 +768,131 @@ export class DecisionService implements IDecisionService {
   }
 
   /**
+   * Removes a forced decision for a specific context.
+   * @param context - The decision context containing flagKey and optional ruleKey.
+   * @param userId - The user ID.
+   * @param options - Optional: { sdkKey?: string }.
+   * @returns A promise resolving to a boolean indicating success or failure.
+   */
+  async removeForcedDecision(
+    context: OptimizelyDecisionContext,
+    userId: string,
+    options?: { sdkKey?: string }
+  ): Promise<boolean> {
+    const sdkKey = options?.sdkKey;
+    if (!sdkKey) {
+      throw new Error("DecisionService.removeForcedDecision requires an sdkKey in options (implementation detail)");
+    }
+
+    const client = await this.getOptimizelyClient(sdkKey);
+    if (!client) {
+      this.logger.warn(`${this.LOG_PREFIX} DecisionService: Optimizely client not available for SDK key '${sdkKey}'. Cannot remove forced decision.`);
+      return false;
+    }
+
+    try {
+      // First, try to get or create a user context
+      const optimizelyUserContext = this.getUserContext(client, userId, {});
+      if (!optimizelyUserContext) {
+        this.logger.error(`${this.LOG_PREFIX} DecisionService: Failed to create user context for removing forced decision.`);
+        return false;
+      }
+
+      // If the user context has the removeForcedDecision method, use it
+      if (typeof optimizelyUserContext.removeForcedDecision === 'function') {
+        const result = optimizelyUserContext.removeForcedDecision(context);
+        
+        if (result) {
+          this.logger.info(`${this.LOG_PREFIX} DecisionService: Successfully removed forced decision for flag '${context.flagKey}', user '${userId}'${context.ruleKey ? `, rule '${context.ruleKey}'` : ''}`);
+          
+          // Clear user context cache to ensure that the next decide call doesn't use the cached forced variation
+          this.clearUserContextsForSdkKey(sdkKey);
+        } else {
+          this.logger.warn(`${this.LOG_PREFIX} DecisionService: Failed to remove forced decision for flag '${context.flagKey}', user '${userId}'${context.ruleKey ? `, rule '${context.ruleKey}'` : ''}`);
+        }
+        
+        return result;
+      }
+      
+      // Fallback: If the SDK's userContext doesn't have removeForcedDecision, 
+      // try to use setForcedVariation with null (only works for flagKey without ruleKey)
+      if (!context.ruleKey) {
+        const result = client.setForcedVariation(context.flagKey, userId, null);
+        
+        if (result) {
+          this.logger.info(`${this.LOG_PREFIX} DecisionService: Successfully removed forced variation for flag '${context.flagKey}', user '${userId}' using setForcedVariation(null)`);
+          
+          // Clear user context cache to ensure that the next decide call doesn't use the cached forced variation
+          this.clearUserContextsForSdkKey(sdkKey);
+        } else {
+          this.logger.warn(`${this.LOG_PREFIX} DecisionService: Failed to remove forced variation for flag '${context.flagKey}', user '${userId}' using setForcedVariation(null)`);
+        }
+        
+        return result;
+      }
+      
+      this.logger.warn(`${this.LOG_PREFIX} DecisionService: Cannot remove forced decision for flag '${context.flagKey}', rule '${context.ruleKey}', user '${userId}' - SDK doesn't support the operation.`);
+      return false;
+    } catch (error) {
+      this.logger.error(`${this.LOG_PREFIX} DecisionService: Error removing forced decision for flag '${context.flagKey}', user '${userId}'`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Removes all forced decisions for a user.
+   * @param userId - The user ID.
+   * @param options - Optional: { sdkKey?: string }.
+   * @returns A promise resolving to a boolean indicating success or failure.
+   */
+  async removeAllForcedDecisions(
+    userId: string,
+    options?: { sdkKey?: string }
+  ): Promise<boolean> {
+    const sdkKey = options?.sdkKey;
+    if (!sdkKey) {
+      throw new Error("DecisionService.removeAllForcedDecisions requires an sdkKey in options (implementation detail)");
+    }
+
+    const client = await this.getOptimizelyClient(sdkKey);
+    if (!client) {
+      this.logger.warn(`${this.LOG_PREFIX} DecisionService: Optimizely client not available for SDK key '${sdkKey}'. Cannot remove all forced decisions.`);
+      return false;
+    }
+
+    try {
+      // First, try to get or create a user context
+      const optimizelyUserContext = this.getUserContext(client, userId, {});
+      if (!optimizelyUserContext) {
+        this.logger.error(`${this.LOG_PREFIX} DecisionService: Failed to create user context for removing all forced decisions.`);
+        return false;
+      }
+
+      // If the user context has the removeAllForcedDecisions method, use it
+      if (typeof optimizelyUserContext.removeAllForcedDecisions === 'function') {
+        const result = optimizelyUserContext.removeAllForcedDecisions();
+        
+        if (result) {
+          this.logger.info(`${this.LOG_PREFIX} DecisionService: Successfully removed all forced decisions for user '${userId}'`);
+          
+          // Clear user context cache to ensure that the next decide call doesn't use any cached forced variations
+          this.clearUserContextsForSdkKey(sdkKey);
+        } else {
+          this.logger.warn(`${this.LOG_PREFIX} DecisionService: Failed to remove all forced decisions for user '${userId}'`);
+        }
+        
+        return result;
+      }
+      
+      this.logger.warn(`${this.LOG_PREFIX} DecisionService: Cannot remove all forced decisions for user '${userId}' - SDK doesn't support the operation.`);
+      return false;
+    } catch (error) {
+      this.logger.error(`${this.LOG_PREFIX} DecisionService: Error removing all forced decisions for user '${userId}'`, error);
+      return false;
+    }
+  }
+
+  /**
    * Gets a decision for a specific user and flag key.
    * @param userId - The user ID.
    * @param flagKey - The flag key.
@@ -820,14 +906,23 @@ export class DecisionService implements IDecisionService {
     attributes?: optimizely.UserAttributes,
     options?: { sdkKey?: string; decideOptions?: OptimizelyDecideOption[] }
   ): Promise<OptimizelyDecision> {
+    const sdkKey = options?.sdkKey || this.defaultSdkKey;
+    if (!sdkKey) {
+      this.logger.warn(`${this.LOG_PREFIX} DecisionService: No SDK key provided and no default set for getDecision. Returning default decision.`);
+      return this.createFallbackDecision(flagKey, { userId, attributes }, 'no_sdk_key');
+    }
+    
     // Create a user context from the parameters
-    const userContext: OptimizelyUserContext = {
+    const userContext: ExtendedOptimizelyUserContext = {
       userId,
       attributes
     };
     
-    // Use the existing decide method with the constructed context
-    return this.decide(flagKey, userContext, options);
+    // Use the existing decide method with the constructed context and ensure we pass the sdkKey
+    return this.decide(flagKey, userContext, { 
+      sdkKey,
+      decideOptions: options?.decideOptions 
+    });
   }
   
   /**
@@ -842,26 +937,28 @@ export class DecisionService implements IDecisionService {
     attributes?: optimizely.UserAttributes,
     options?: { sdkKey?: string; decideOptions?: OptimizelyDecideOption[] }
   ): Promise<Record<string, OptimizelyDecision>> {
+    const sdkKey = options?.sdkKey || this.defaultSdkKey;
+    if (!sdkKey) {
+      this.logger.warn(`${this.LOG_PREFIX} DecisionService: No SDK key provided and no default set for getAllDecisions. Returning empty decisions.`);
+      return {};
+    }
+    
     // Construct user context
-    const userContext: OptimizelyUserContext = {
+    const userContext: ExtendedOptimizelyUserContext = {
       userId,
       attributes
     };
     
     try {
-      // If decideAll is available, use it
+      // If decideAll is available, use it with the proper sdkKey
       if (this.decideAll) {
-        return await this.decideAll(userContext, undefined, options);
+        return await this.decideAll(userContext, undefined, {
+          sdkKey,
+          decideOptions: options?.decideOptions
+        });
       }
       
       // If we don't have decideAll, we need to use a different approach
-      // First, get the datafile to extract all flag keys
-      const sdkKey = options?.sdkKey || this.defaultSdkKey;
-      if (!sdkKey) {
-        this.logger.error(`${this.LOG_PREFIX} getAllDecisions: No SDK key provided and no default set.`);
-        return {};
-      }
-      
       // Get or initialize the optimizely client
       const client = await this.getOptimizelyClient(sdkKey);
       if (!client) {
@@ -890,11 +987,14 @@ export class DecisionService implements IDecisionService {
         return {};
       }
       
-      // Decide each flag individually
+      // Decide each flag individually, ensuring we consistently pass the same sdkKey
       const decisions: Record<string, OptimizelyDecision> = {};
       for (const flagKey of allFlagKeys) {
         try {
-          decisions[flagKey] = await this.decide(flagKey, userContext, options);
+          decisions[flagKey] = await this.decide(flagKey, userContext, {
+            sdkKey,
+            decideOptions: options?.decideOptions
+          });
         } catch (error) {
           this.logger.error(`${this.LOG_PREFIX} getAllDecisions: Error deciding flag ${flagKey}`, error);
         }
@@ -906,4 +1006,4 @@ export class DecisionService implements IDecisionService {
       return {};
     }
   }
-} 
+}

@@ -163,6 +163,31 @@ analytics_engine_datasets = [
 
 For detailed information about available metrics and how to use them, see the [Metrics Documentation](src-v2/docs/metrics.md).
 
+## Debug Headers
+
+Debug headers provide detailed information about decisions, configurations, and other internal state that can help with troubleshooting. By default, debug headers are **disabled** in production environments for security and performance reasons.
+
+### Enabling Debug Headers
+
+You can enable debug headers in several ways:
+
+1. **HTTP Header**: Add `X-Optimizely-Enable-Debug-Headers: true` to your request
+2. **Query Parameter**: Add `?enableDebugHeaders=true` to your request URL
+3. **Request Body**: Include `"enableDebugHeaders": true` in your JSON request body
+4. **Environment Variable**: Set `OPTIMIZELY_ENABLE_DEBUG_HEADERS=true` in your environment
+
+### Available Debug Headers
+
+When enabled, the following debug headers are included in responses:
+
+- `X-Optimizely-Debug-Config`: Information about configuration settings and flags
+- `X-Optimizely-Debug-Decision-Format`: Details about decision structure and format
+- `X-{Decisions-Header-Name}`: Sample decisions content (when debug headers are enabled but no production headers are set)
+
+### Security Considerations
+
+Debug headers may expose sensitive implementation details. Only enable them in development and testing environments, not in production.
+
 ## Conclusion
 
 The Hybrid Edge Serverless Agent merges advanced A/B testing capabilities with the efficiency of edge computing, providing businesses with a powerful tool to optimize user experiences in real-time. This innovative approach accelerates experimentation, enhances performance, and simplifies infrastructure requirements, making it an indispensable solution for modern digital enterprises.

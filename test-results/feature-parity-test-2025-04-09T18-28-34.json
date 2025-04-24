@@ -90,7 +90,7 @@
               "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25810&min_rtt=24563&rtt_var=4939&sent=7&recv=8&lost=0&retrans=0&sent_bytes=5315&recv_bytes=1492&delivery_rate=158325&cwnd=256&unsent_bytes=0&cid=d436df496f62b187&ts=134&x=0\"",
               "transfer-encoding": "chunked",
               "vary": "Accept-Encoding",
-              "x-implementation-version": "v2",
+              "this.configurationService.getImplementationVersionHeader()": "v2",
               "x-request-id": "7190108c-57b1-4ae7-b5a6-3c718ebeb9f4"
             },
             "expectedHeaders": [
@@ -115,7 +115,7 @@
               "server": "cloudflare",
               "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25656&min_rtt=24528&rtt_var=4013&sent=9&recv=10&lost=0&retrans=0&sent_bytes=6394&recv_bytes=1768&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=169&x=0\"",
               "vary": "Accept-Encoding",
-              "x-implementation-version": "v2",
+              "this.configurationService.getImplementationVersionHeader()": "v2",
               "x-request-id": "3e02fdbc-eabd-476a-8483-061f31c38f1a"
             },
             "expectedHeaders": [
@@ -141,7 +141,7 @@
               "server": "cloudflare",
               "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25690&min_rtt=24528&rtt_var=3077&sent=10&recv=11&lost=0&retrans=0&sent_bytes=7415&recv_bytes=2142&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=204&x=0\"",
               "vary": "Accept-Encoding",
-              "x-implementation-version": "v2",
+              "this.configurationService.getImplementationVersionHeader()": "v2",
               "x-request-id": "4fe539fd-1e7e-4175-ac0f-82bd95ad4e3c"
             },
             "expectedHeaders": [
@@ -166,7 +166,7 @@
               "server": "cloudflare",
               "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25849&min_rtt=24528&rtt_var=2626&sent=11&recv=12&lost=0&retrans=0&sent_bytes=8433&recv_bytes=2418&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=238&x=0\"",
               "vary": "Accept-Encoding",
-              "x-implementation-version": "v2",
+              "this.configurationService.getImplementationVersionHeader()": "v2",
               "x-request-id": "332c0282-7fb5-411c-b8d6-bcd6d6ebe937"
             },
             "expectedHeaders": [
@@ -201,7 +201,7 @@
             "server": "cloudflare",
             "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25832&min_rtt=24528&rtt_var=2005&sent=12&recv=13&lost=0&retrans=0&sent_bytes=9451&recv_bytes=2694&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=270&x=0\"",
             "vary": "Accept-Encoding",
-            "x-implementation-version": "v2",
+            "this.configurationService.getImplementationVersionHeader()": "v2",
             "x-request-id": "aee9924f-b2c8-437d-bdf1-24805d1ae37e"
           },
           "bodyLength": null
@@ -221,7 +221,7 @@
             "server": "cloudflare",
             "server-timing": "cfL4;desc=\"?proto=TCP&rtt=25770&min_rtt=24528&rtt_var=1626&sent=13&recv=14&lost=0&retrans=0&sent_bytes=10469&recv_bytes=2970&delivery_rate=158325&cwnd=258&unsent_bytes=0&cid=d436df496f62b187&ts=302&x=0\"",
             "vary": "Accept-Encoding",
-            "x-implementation-version": "v2",
+            "this.configurationService.getImplementationVersionHeader()": "v2",
             "x-request-id": "62715096-8acd-4e30-97ff-d55f7981a416"
           },
           "bodyLength": null

@@ -41,7 +41,7 @@
           "server-timing": "cfL4;desc=\"?proto=TCP&rtt=27205&min_rtt=26922&rtt_var=8066&sent=5&recv=5&lost=0&retrans=0&sent_bytes=2849&recv_bytes=744&delivery_rate=150303&cwnd=60&unsent_bytes=0&cid=5a0b8fe59086e22b&ts=91&x=0\"",
           "transfer-encoding": "chunked",
           "vary": "Accept-Encoding",
-          "x-implementation-version": "v2",
+          "this.configurationService.getImplementationVersionHeader()": "v2",
           "x-request-id": "16f22cba-6b51-43bd-8a58-da43e32b3c0f"
         },
         "isCloudflare": true,
@@ -70,7 +70,7 @@
             "server": "cloudflare",
             "server-timing": "cfL4;desc=\"?proto=TCP&rtt=27030&min_rtt=25725&rtt_var=6400&sent=9&recv=7&lost=0&retrans=0&sent_bytes=4375&recv_bytes=1020&delivery_rate=164154&cwnd=63&unsent_bytes=0&cid=5a0b8fe59086e22b&ts=168&x=0\"",
             "vary": "Accept-Encoding",
-            "x-implementation-version": "v2",
+            "this.configurationService.getImplementationVersionHeader()": "v2",
             "x-request-id": "187886fb-dd65-4af9-a5b8-d2c7b7f02511"
           },
           "bodyLength": 89
@@ -91,7 +91,7 @@
             "server": "cloudflare",
             "server-timing": "cfL4;desc=\"?proto=TCP&rtt=26991&min_rtt=25725&rtt_var=4878&sent=11&recv=8&lost=0&retrans=0&sent_bytes=5384&recv_bytes=1290&delivery_rate=164154&cwnd=64&unsent_bytes=0&cid=5a0b8fe59086e22b&ts=209&x=0\"",
             "vary": "Accept-Encoding",
-            "x-implementation-version": "v2",
+            "this.configurationService.getImplementationVersionHeader()": "v2",
             "x-request-id": "343aef36-e301-4a98-ad27-6e3ca340a408"
           },
           "bodyLength": 89

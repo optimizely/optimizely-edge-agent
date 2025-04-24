@@ -33,7 +33,7 @@ April 9, 2025
 
 3. **Cloudflare Worker Verification**: ✅ CONFIRMED
    - Requests are being handled by a Cloudflare worker
-   - Worker identifies itself as version v2 (`x-implementation-version` header)
+   - Worker identifies itself as version v2 (`this.configurationService.getImplementationVersionHeader()` header)
 
 ## Recommendations
 

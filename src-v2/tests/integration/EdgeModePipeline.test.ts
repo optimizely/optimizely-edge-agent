@@ -236,6 +236,109 @@ describe('Edge Mode Pipeline Integration Tests', () => {
     expect(response.headers.get('cache-control')).toBe('no-cache');
   });
 
+  test('should route requests based on cdnVariationSettings from feature flag variables', async () => {
+    // Set up mock decision service to return a decision with cdnVariationSettings in the variables
+    const mockUserContext: OptimizelyUserContext = {
+      userId: 'test-user-123',
+      attributes: {
+        device: 'mobile',
+        country: 'US'
+      }
+    };
+    
+    const mockUrl = 'https://www.example.com/path/to/match';
+    
+    // Create a mock request adapter
+    const mockRequest = createMockRequestAdapter({
+      url: mockUrl,
+      method: 'GET',
+      headers: {
+        'user-agent': 'test agent'
+      }
+    });
+    
+    // Set up mock decision service to return decisions with cdnVariationSettings variables
+    mockDecisionService.getAllDecisions.mockResolvedValue({
+      'edge-mode-flag': {
+        flagKey: 'edge-mode-flag',
+        variationKey: 'variation-a',
+        enabled: true,
+        variables: {
+          cdnVariationSettings: JSON.stringify({
+            cdnExperimentURL: '/path/to/match',
+            cdnResponseURL: 'https://cdn.example.com/content.html',
+            cacheKey: 'test-key',
+            forwardRequestToOrigin: 'false'
+          })
+        },
+        reasons: []
+      }
+    });
+    
+    // Mock URL matcher to match our test URL
+    mockUrlMatcher.findMatch.mockResolvedValue({
+      matched: true,
+      settings: {
+        cdnExperimentURL: '/path/to/match',
+        cdnResponseURL: 'https://cdn.example.com/content.html',
+        cacheKey: 'test-key',
+        forwardRequestToOrigin: 'false',
+        _flagKey: 'edge-mode-flag',
+        _variationKey: 'variation-a'
+      }
+    });
+    
+    // Mock content fetcher to return test content
+    mockContentFetcher.fetchContent.mockResolvedValue({
+      status: 200,
+      url: 'https://cdn.example.com/content.html',
+      response: createMockResponseAdapter({
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+        body: '<html><body>CDN Content</body></html>'
+      })
+    });
+    
+    // Call the method being tested
+    const response = await edgeModeIntegration.processEdgeModeRequest(mockRequest, mockUserContext);
+    
+    // Verify results
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe('<html><body>CDN Content</body></html>');
+    
+    // Verify the decision service was called with correct parameters
+    expect(mockDecisionService.getAllDecisions).toHaveBeenCalledWith(
+      'test-user-123',
+      mockUserContext.attributes,
+      undefined
+    );
+    
+    // Verify URL matcher was called with settings from the decision
+    expect(mockUrlMatcher.findMatch).toHaveBeenCalledWith(
+      mockUrl,
+      [expect.objectContaining({
+        cdnExperimentURL: '/path/to/match',
+        cdnResponseURL: 'https://cdn.example.com/content.html',
+        _flagKey: 'edge-mode-flag',
+        _variationKey: 'variation-a'
+      })]
+    );
+    
+    // Verify content was fetched from the correct URL
+    expect(mockContentFetcher.fetchContent).toHaveBeenCalledWith(
+      'https://cdn.example.com/content.html',
+      mockRequest,
+      expect.anything()
+    );
+    
+    // Verify metrics were recorded
+    expect(mockMetrics.incrementCounter).toHaveBeenCalledWith(
+      'edge_mode_eligibility',
+      1,
+      { eligible: 'true' }
+    );
+  });
+
   // Add more test cases for different Edge Mode scenarios:
   // - Test for non-matching URLs (should not trigger edge behavior)
   // - Test for origin forwarding
