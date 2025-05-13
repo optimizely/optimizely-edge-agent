@@ -16,7 +16,7 @@ This document compares the core architectural patterns and design philosophies o
 ## v2 Architecture (TypeScript)
 
 *   **Core Pattern:** Service-Oriented Architecture (SOA) with Dependency Injection (DI).
-*   **Structure:** Object-oriented, utilizing TypeScript classes and interfaces. Clear separation of concerns into distinct services (e.g., `DecisionService`, `DatafileService`, `RequestHandler`, `ConfigurationService`, `EdgeModeHandler`, `ApiRouter`, `EventDispatcher`).
+*   **Structure:** Object-oriented, utilizing TypeScript classes and in@builtin markdownterfaces. Clear separation of concerns into distinct services (e.g., `DecisionService`, `DatafileService`, `RequestHandler`, `ConfigurationService`, `EdgeModeHandler`, `ApiRouter`, `EventDispatcher`).
 *   **Dependency Injection:** A central `compositionRoot.ts` is responsible for instantiating services and injecting dependencies (interfaces) into constructors. This promotes loose coupling and testability.
 *   **Interfaces:** Extensive use of TypeScript interfaces (`IRequestHandler`, `IDecisionService`, `IConfigService`, `ICacheService`, `IEventService`, adapter interfaces, etc.) defines clear contracts between components.
 *   **Request Flow:** `RequestHandler.ts` acts as the primary orchestrator, receiving requests via an `IRequestAdapter` and delegating tasks to specialized services based on the request type (Edge Mode, Agent Mode, API calls).
@@ -25,7 +25,7 @@ This document compares the core architectural patterns and design philosophies o
 *   **Extensibility:** High. New services or adapters can be added by implementing the required interfaces and updating the `compositionRoot.ts`.
 *   **Typing:** TypeScript (strong static typing), improving code quality, maintainability, and reducing runtime errors.
 
-## Key Differences Summary
+## Key Differences Summary@builtin markdown
 
 | Feature             | v1 (JavaScript)                                  | v2 (TypeScript)                                                                    | Notes                                                                    |
 | :------------------ | :----------------------------------------------- | :--------------------------------------------------------------------------------- | :----------------------------------------------------------------------- |

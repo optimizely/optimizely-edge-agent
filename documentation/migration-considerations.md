@@ -17,7 +17,7 @@ This document outlines key considerations, potential breaking changes, and neces
 
 *   **Structure:** v2 uses `ApiRouter` service instead of v1's `apiRouter.js`. While many functionalities are similar, the implementation differs.
 *   **New/Changed Endpoints:** v2 introduces new endpoints (e.g., `/decide*`, `/api/admin/*`, `/api/debug`) and potentially changes or deprecates some v1 endpoints (e.g., `/sdk`, `/variationChanges`). Thoroughly review API usage and update accordingly.
-*   **Authentication:** v2 adds internal admin authentication (`x-admin-token` header) for certain endpoints (datafile/flagkey management, admin). This was absent in v1. Integrations calling these endpoints must implement the required authentication.
+*   **Authentication:** v2 adds internal admin authentication (`X-Optimizely-Admin-Token` header) for certain endpoints (datafile/flagkey management, admin). This was absent in v1. Integrations calling these endpoints must implement the required authentication.
 *   **Error Responses:** v2 returns standardized JSON error responses, whereas v1 often returned plain text. Client-side error handling logic must be updated to parse JSON errors.
 *   **Response Headers:** v2 adds standard headers like `X-Request-ID` and `X-Agent-Version`.
 

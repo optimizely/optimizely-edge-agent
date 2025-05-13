@@ -257,7 +257,11 @@ export class RequestHandler implements IRequestHandler {
 			let config = await this.getRequestConfig(requestAdapter);
 			
 			// Create result variable to allow adding headers before returning
-			let result: ResponseResult;
+			let result: ResponseResult = {
+				status: 404,
+				body: '',
+				headers: {}
+			};
 
 			// Special case for pixel tracking - handle both GET and POST
 			if (path.endsWith('/track.gif')) {
@@ -268,26 +272,32 @@ export class RequestHandler implements IRequestHandler {
 					this.configurationService.getApiPathPrefix() : '/api/';
 
 				// REVISED ROUTING LOGIC:
-				// 1. API path + GET method = Method not supported error
+				// 1. API path requests (any method) = Use ApiRouter
 				// 2. Non-API path + POST method = Unsupported route error
-				// 3. API path + POST method = Use ApiRouter (agent mode)
-				// 4. Non-API path + GET method = Use Edge Mode
+				// 3. Non-API path + GET method = Use Edge Mode
 
 				// Check if this is an API request
 				const isApiPath = path.startsWith(apiPathPrefix);
 
-				// Case 1: API path + GET method = Method not supported error
-				if (isApiPath && method === 'GET') {
-					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Rejected GET request to API path: ${path}`);
-
-					// Track rejected API GET requests
-					this.metrics?.incrementCounter('api_requests_rejected', 1, {
-						method: 'GET',
-						path,
-						reason: 'method_not_supported'
-					});
+				// Case 1: API path (any method) = Use ApiRouter
+				if (isApiPath) {
+					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Routing ${method} request to API router: ${path}`);
 					
-					result = this.createErrorResponse(requestId, 405, 'Method not supported for API endpoints. Use POST instead.');
+					if (this.apiRouter) {
+						// Use ApiRouter to handle API requests (regardless of method)
+						result = await this.apiRouter.routeApiRequest(requestAdapter);
+						
+						// Track API requests
+						this.metrics?.incrementCounter('api_requests_handled', 1, {
+							method,
+							path,
+							status: result.status.toString()
+						});
+					} else {
+						// API router not available
+						this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: API router not available for ${method} request to ${path}`);
+						result = this.createErrorResponse(requestId, 501, 'API router not available');
+					}
 				}
 				
 				// Case 2: Non-API path + POST method = Unsupported route error
@@ -301,73 +311,11 @@ export class RequestHandler implements IRequestHandler {
 						reason: 'unsupported_route'
 					});
 					
-					result = this.createErrorResponse(requestId, 404, 'Unsupported route. POST requests must use API endpoints.');
+					result = this.createErrorResponse(requestId, 404, 'Unsupported route. POST requests must use an API endpoint.');
 				}
-
-				// Case 3: API path + POST method = Use ApiRouter
-				else if (isApiPath) {
-					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Processing API request: ${path}`);
-					
-					// Handle standard API endpoints
-					if (this.apiRouter) {
-						this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Delegating to ApiRouter`);
-
-						try {
-							// Call ApiRouter and return its result
-							result = await this.apiRouter.routeApiRequest(requestAdapter);
-
-							// Ensure the request ID is included in the response headers
-							if (!result.headers) {
-								result.headers = {};
-							}
-							result.headers['X-Request-ID'] = requestId;
-						} catch (error) {
-							this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: Error calling ApiRouter`, error);
-
-							// Track API error
-							this.metrics?.incrementCounter('api_errors_total', 1, {
-								path,
-								method,
-								error_type: error instanceof Error ? error.name : 'unknown',
-							});
-
-							// Return error response
-							result = {
-								status: 500,
-								body: JSON.stringify({
-									error: 'API request handling error',
-									message: error instanceof Error ? error.message : 'Unknown error',
-									path: path,
-								}),
-								headers: {
-									'Content-Type': 'application/json',
-									[this.implementationVersionHeader]: 'v2',
-									'X-Request-ID': requestId,
-								},
-							};
-						}
-					} else {
-						// ApiRouter not available, return a more helpful message
-						this.logger.warn(`${this.logPrefix} RequestHandler [${requestId}]: ApiRouter not available for API request`);
-
-						result = {
-							status: 501,
-							body: JSON.stringify({
-								error: 'API Router not configured in RequestHandler',
-								path: path,
-								message:
-									'The server is not configured to handle API requests. ApiRouter is missing from RequestHandler initialization.',
-							}),
-							headers: {
-								'Content-Type': 'application/json',
-								[this.implementationVersionHeader]: 'v2',
-								'X-Request-ID': requestId,
-							},
-						};
-					}
-				}
-				// Case 4: Non-API path + GET method = Use Edge Mode
-				else {
+				
+				// Case 3: Non-API path + GET method = Use Edge Mode
+				else if (!isApiPath && method === 'GET') {
 					// Extract User Context for non-API requests
 					const userId = await this.getVisitorId(requestAdapter);
 					const extractResult = await extractAttributes(requestAdapter, this.logger);

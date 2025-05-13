@@ -76,7 +76,7 @@ This document analyzes the implementation of management API endpoints in the Opt
 ## 4. Authentication Comparison
 
 *   **v1:** Lacks internal authentication for its API endpoints. The `/variation_changes` endpoint uses a token from the URL path *only* for authenticating against the external Optimizely API.
-*   **v2:** Implements token-based authentication for administrative actions (updating datafiles/flagkeys, clearing cache, getting status). It uses the `isAdminRequest` helper to compare an `x-admin-token` request header against a value stored in the `IConfigService`. Non-admin endpoints remain unauthenticated.
+*   **v2:** Implements token-based authentication for administrative actions (updating datafiles/flagkeys, clearing cache, getting status). It uses the `isAdminRequest` helper to compare an `X-Optimizely-Admin-Token` request header against a value stored in the `IConfigService`. Non-admin endpoints remain unauthenticated.
 
 ## 5. Error Handling & Response Formatting Comparison
 

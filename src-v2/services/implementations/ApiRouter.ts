@@ -252,9 +252,10 @@ export class ApiRouter {
     const requestContext = method === 'POST' ? 
       await this.getRequestConfig(requestAdapter) : undefined;
     
-    // Check for SDK key in query parameters
+    // Check for SDK key in query parameters and headers
     const params = this.parseUrlParams(url.search);
-    const sdkKey = params.sdkKey || '';
+    const sdkKeyHeader = requestAdapter.getHeader('x-optimizely-sdk-key');
+    const sdkKey = sdkKeyHeader || params.sdkKey || '';
     
     if (!sdkKey) {
       this.metrics?.incrementCounter('api_errors_total', 1, {
@@ -378,9 +379,10 @@ export class ApiRouter {
     const requestContext = method === 'POST' ? 
       await this.getRequestConfig(requestAdapter) : undefined;
     
-    // Check for SDK key in query parameters
+    // Check for SDK key in query parameters and headers
     const params = this.parseUrlParams(url.search);
-    const sdkKey = params.sdkKey || '';
+    const sdkKeyHeader = requestAdapter.getHeader('x-optimizely-sdk-key');
+    const sdkKey = sdkKeyHeader || params.sdkKey || '';
     
     if (!sdkKey) {
       this.metrics?.incrementCounter('api_errors_total', 1, {
@@ -541,9 +543,10 @@ export class ApiRouter {
     const url = requestAdapter.getUrl();
     const method = requestAdapter.getMethod();
     
-    // Check for SDK key in query parameters
+    // Check for SDK key in query parameters and headers
     const params = this.parseUrlParams(url.search);
-    const sdkKey = params.sdkKey || '';
+    const sdkKeyHeader = requestAdapter.getHeader('x-optimizely-sdk-key');
+    const sdkKey = sdkKeyHeader || params.sdkKey || '';
     
     if (!sdkKey) {
       this.metrics?.incrementCounter('api_errors_total', 1, {
@@ -2678,7 +2681,7 @@ export class ApiRouter {
     try {
       // For now, just check if the admin token is present
       // In a production environment, this would be more robust
-      const adminToken = requestAdapter.getHeader('x-admin-token');
+      const adminToken = requestAdapter.getHeader('X-Optimizely-Admin-Token');
       const configToken = this.configService.getAdminToken();
       
       if (!adminToken || !configToken) {
