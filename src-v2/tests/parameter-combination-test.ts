@@ -140,7 +140,7 @@ async function testDecideParameterCombinations() {
     {
       'X-Optimizely-SDK-Key': SDK_KEY,
       'X-Optimizely-Flag-Key': FLAG_KEY,
-      'X-Optimizely-User-Id': userId
+      'X-Optimizely-Visitor-Id': userId
     },
     {},
     {}
@@ -187,7 +187,7 @@ async function testDecideParameterCombinations() {
     {
       'X-Optimizely-SDK-Key': SDK_KEY,
       'X-Optimizely-Flag-Key': FLAG_KEY,
-      'X-Optimizely-User-Id': userId
+      'X-Optimizely-Visitor-Id': userId
     },
     {
       'sdkKey': 'invalid-key',
@@ -206,7 +206,7 @@ async function testDecideParameterCombinations() {
     {
       'X-Optimizely-SDK-Key': SDK_KEY,
       'X-Optimizely-Flag-Key': FLAG_KEY,
-      'X-Optimizely-User-Id': userId
+      'X-Optimizely-Visitor-Id': userId
     },
     {},
     {
@@ -301,7 +301,7 @@ async function testDecideParameterCombinations() {
     {
       'X-Optimizely-SDK-Key': SDK_KEY,
       'X-Optimizely-Flag-Key': FLAG_KEY,
-      'X-Optimizely-User-Id': userWithAttributes,
+      'X-Optimizely-Visitor-Id': userWithAttributes,
       'X-Optimizely-Attributes': JSON.stringify({ source: 'header', device: 'mobile' })
     },
     {
@@ -332,7 +332,7 @@ async function testTrackParameterCombinations() {
     {
       'X-Optimizely-SDK-Key': SDK_KEY,
       'X-Optimizely-Event-Key': EVENT_KEY,
-      'X-Optimizely-User-Id': userId
+      'X-Optimizely-Visitor-Id': userId
     },
     {},
     {}
@@ -379,7 +379,7 @@ async function testTrackParameterCombinations() {
     {
       'X-Optimizely-SDK-Key': SDK_KEY,
       'X-Optimizely-Event-Key': EVENT_KEY,
-      'X-Optimizely-User-Id': userId
+      'X-Optimizely-Visitor-Id': userId
     },
     {
       'value': '99.99'

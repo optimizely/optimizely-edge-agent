@@ -46,9 +46,15 @@ import { CookieService } from "../services/implementations/CookieService";
 import { FlagStorageService } from "../services/implementations/FlagStorageService";
 import { ConfigurationService } from "../services/implementations/ConfigurationService";
 import { IConfigurationService } from "../services/interfaces/IConfigurationService";
+import { KVUserProfileService } from "../services/storage/KVUserProfileService";
+import { OptimizelyUserProfileServiceAdapter } from "../services/storage/OptimizelyUserProfileServiceAdapter";
 
 function getConfigKvBindingName(env: any): string {
   return env?.ENVIRONMENT === 'test' ? 'TEST_OPTIMIZELY_DATAFILES' : 'OPTLY_HYBRID_AGENT_KV';
+}
+
+function getUserProfileKvBindingName(env: any): string {
+  return env?.ENVIRONMENT === 'test' ? 'TEST_OPTLY_HYBRID_AGENT_UPS_KV' : 'OPTLY_HYBRID_AGENT_UPS_KV';
 }
 
 /**
@@ -113,7 +119,42 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
   const cacheService = new CacheService(storageAdapter, logger);
   const datafileService = new DatafileService(storageAdapter, environmentAdapter, logger, metricsAdapter);
   const configService: IConfigurationService = new ConfigurationService(datafileService, logger);
-  const decisionService = new DecisionService(configService, logger);
+  
+  // Get SDK key from config or environment
+  const sdkKey = configService.getValue('sdkKey') || environmentAdapter.getVariable('DEFAULT_SDK_KEY') || '8mR1pGh8u2ztUP8GqjmQq';
+  
+  // Get user profile KV storage adapter
+  const userProfileStorageAdapter = cloudflareFactory.createStorageAdapter(getUserProfileKvBindingName(factoryInputs.env));
+  
+  // Create KV User Profile Service
+  const kvUserProfileService = new KVUserProfileService(
+    userProfileStorageAdapter,
+    logger,
+    {
+      keyPrefix: 'optly_ups_',
+      ttl: 2592000, // 30 days in seconds
+      maxCacheSize: 100,
+      sdkKey: String(sdkKey)  // Ensure it's a string
+    }
+  );
+  
+  // Create adapter for Optimizely SDK
+  const userProfileServiceAdapter = new OptimizelyUserProfileServiceAdapter(
+    kvUserProfileService,
+    logger
+  );
+  
+  // Get the SDK-compatible user profile service
+  const sdkUserProfileService = userProfileServiceAdapter.getSDKUserProfileService();
+  
+  // Inject User Profile Service into DecisionService
+  const decisionService = new DecisionService(
+    configService, 
+    logger, 
+    metricsAdapter,
+    undefined, // defaultSdkKey (optional)
+    userProfileServiceAdapter // Pass the adapter itself, not its return value
+  );
   
   // Create FlagStorageService for managing feature flags
   const flagStorageService = new FlagStorageService(
@@ -495,7 +536,29 @@ export async function createServices(
     datafileService: app.datafileService,
     decisionService: new DecisionService(
       configService, 
-      logger
+      logger,
+      app.metrics,
+      undefined, // No default SDK key
+      // Re-create the user profile service adapter for consistency
+      (() => {
+        const sdkKey = configService.getValue('sdkKey') || environmentAdapter.getVariable('DEFAULT_SDK_KEY') || '8mR1pGh8u2ztUP8GqjmQq';
+        const userProfileStorageAdapter = cloudflareFactory.createStorageAdapter(getUserProfileKvBindingName(env));
+        const kvUserProfileService = new KVUserProfileService(
+          userProfileStorageAdapter,
+          logger,
+          {
+            keyPrefix: 'optly_ups_',
+            ttl: 2592000, // 30 days in seconds
+            maxCacheSize: 100,
+            sdkKey: String(sdkKey) // Ensure it's a string
+          }
+        );
+        // Return the adapter itself, not its return value
+        return new OptimizelyUserProfileServiceAdapter(
+          kvUserProfileService,
+          logger
+        );
+      })()
     ),
     eventService: app.eventService,
     apiRouter,

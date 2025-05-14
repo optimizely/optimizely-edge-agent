@@ -190,7 +190,7 @@ The three main decision endpoints handle different use cases:
 1. **`handleDecideRequest`**:
    - Gets decision for a single flag key
    - Requires `userId` (can be provided as `visitorId` or header)
-   - Requires `flagKey`
+   - Requires `flagKey` (can also be provided as `key` for backward compatibility)
    - Optionally takes SDK key and attributes
    - Supports auto-generating visitor IDs
    - Returns 400 if required parameters are missing

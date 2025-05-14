@@ -66,6 +66,18 @@ const CONFIG = {
       name: 'Feature Parity',
       script: 'feature-parity-test.js',
       description: 'Verifies feature parity with original implementation'
+    },
+    {
+      id: 6,
+      name: 'KV Storage & Caching',
+      script: 'kv-storage-tests.js',
+      description: 'Tests KV storage functionality and caching'
+    },
+    {
+      id: 7,
+      name: 'User Profile Service',
+      script: 'user-profile-service-tests.js',
+      description: 'Tests KV-based user profile service for sticky bucketing'
     }
   ]
 };
@@ -297,6 +309,51 @@ function updateExecutionPlan() {
         id: 5, 
         regex: /(- \[ \] \*\*7\.2 Side-by-Side Comparison\*\*) ⏳/g,
         replacement: `$1 ${getScriptResult(5) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 6, 
+        regex: /(- \[ \] \*\*4\.4 KV Storage System\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(6) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 6, 
+        regex: /(- \[ \] \*\*4\.4\.1 Test datafile caching in KV storage\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(6) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 6, 
+        regex: /(- \[ \] \*\*4\.4\.2 Test enhanced cache key functionality\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(6) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 6, 
+        regex: /(- \[ \] \*\*4\.4\.3 Validate configuration inheritance\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(6) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 7, 
+        regex: /(- \[ \] \*\*4\.5 User Profile Service\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(7) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 7, 
+        regex: /(- \[ \] \*\*4\.5\.1 Test sticky bucketing across multiple requests\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(7) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 7, 
+        regex: /(- \[ \] \*\*4\.5\.2 Test isDecisionFromStorage functionality\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(7) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 7, 
+        regex: /(- \[ \] \*\*4\.5\.3 Validate profile persistence and TTL\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(7) === 'PASS' ? '✅' : '❌'}`
+      },
+      { 
+        id: 7, 
+        regex: /(- \[ \] \*\*4\.5\.4 Test cache size limits and eviction\*\*) ⏳/g,
+        replacement: `$1 ${getScriptResult(7) === 'PASS' ? '✅' : '❌'}`
       }
     ];
     

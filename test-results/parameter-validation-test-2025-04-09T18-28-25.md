@@ -59,7 +59,7 @@ Verify that the Edge Agent correctly processes HTTP header parameters
       "isCloudflare": true,
       "headers": {
         "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-        "X-Optimizely-User-Id": "test-user-329450",
+        "X-Optimizely-Visitor-Id": "test-user-329450",
         "Content-Type": "application/json"
       },
       "body": {
@@ -73,7 +73,7 @@ Verify that the Edge Agent correctly processes HTTP header parameters
       "isCloudflare": true,
       "headers": {
         "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-        "X-Optimizely-User-Id": "test-user-329450",
+        "X-Optimizely-Visitor-Id": "test-user-329450",
         "X-Optimizely-Context-Type": "browser",
         "X-Optimizely-Skip-Activation": "true",
         "Content-Type": "application/json"
@@ -217,7 +217,7 @@ Verify that the Edge Agent correctly handles parameter precedence
       "isCloudflare": true,
       "headers": {
         "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-        "X-Optimizely-User-Id": "header-user",
+        "X-Optimizely-Visitor-Id": "header-user",
         "Content-Type": "application/json"
       },
       "queryParams": {
@@ -238,7 +238,7 @@ Verify that the Edge Agent correctly handles parameter precedence
       "isCloudflare": true,
       "headers": {
         "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-        "X-Optimizely-User-Id": "header-user",
+        "X-Optimizely-Visitor-Id": "header-user",
         "Content-Type": "application/json"
       },
       "requestBody": {

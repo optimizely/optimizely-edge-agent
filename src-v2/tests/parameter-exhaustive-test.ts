@@ -48,7 +48,7 @@ function generateHeadersOnly(params: Record<string, any>): Record<string, string
     
     // Special case for nested objects
     if (key === 'user') {
-      headers['X-Optimizely-User-Id'] = value.id;
+      headers['X-Optimizely-Visitor-Id'] = value.id;
       if (value.attributes) {
         headers['X-Optimizely-Attributes'] = JSON.stringify(value.attributes);
       }
@@ -70,7 +70,7 @@ function generateHeadersOnly(params: Record<string, any>): Record<string, string
         headerKey = 'X-Optimizely-Flag-Key';
         break;
       case 'userId':
-        headerKey = 'X-Optimizely-User-Id';
+        headerKey = 'X-Optimizely-Visitor-Id';
         break;
       case 'eventKey':
         headerKey = 'X-Optimizely-Event-Key';

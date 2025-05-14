@@ -95,6 +95,17 @@ This document serves as the master checklist for validating the Optimizely Edge 
   - [x] 4.3.1 Test `cacheTTL` configuration ❌
   - [x] 4.3.2 Test `cacheRequestToOrigin` configuration ❌
   - [x] 4.3.3 Validate cache headers in response ❌
+  
+- [x] **4.4 KV Storage System** ⏳
+  - [x] 4.4.1 Test datafile caching in KV storage ⏳
+  - [x] 4.4.2 Test enhanced cache key functionality ⏳
+  - [x] 4.4.3 Validate configuration inheritance ⏳
+
+- [x] **4.5 User Profile Service** ⏳
+  - [x] 4.5.1 Test sticky bucketing across multiple requests ⏳
+  - [x] 4.5.2 Test isDecisionFromStorage functionality ⏳
+  - [x] 4.5.3 Validate profile persistence and TTL ⏳
+  - [x] 4.5.4 Test cache size limits and eviction ⏳
 
 ### 5. API Endpoint Parity
 

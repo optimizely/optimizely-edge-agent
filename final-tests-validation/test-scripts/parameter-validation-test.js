@@ -44,7 +44,7 @@ const CONFIG = {
   // Test headers
   headers: {
     sdkKey: 'X-Optimizely-SDK-Key',
-    userId: 'X-Optimizely-User-Id',
+    userId: 'X-Optimizely-Visitor-Id',
     contextType: 'X-Optimizely-Context-Type',
     skipActivation: 'X-Optimizely-Skip-Activation'
   },

@@ -187,7 +187,7 @@ async function makeRequest(path, cached = false) {
       method: 'GET',
       headers: {
         'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-        'X-Optimizely-User-Id': CONFIG.testUser.userId,
+        'X-Optimizely-Visitor-Id': CONFIG.testUser.userId,
         'Cache-Control': cached ? 'max-age=0' : 'no-cache'
       }
     });

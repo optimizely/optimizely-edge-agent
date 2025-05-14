@@ -78,7 +78,7 @@ const CONFIG = {
   headerOptions: {
     // Basic headers
     'X-Optimizely-SDK-Key': '8mR1pGh8u2ztUP8GqjmQq',
-    'X-Optimizely-User-ID': 'header-test-user-id',
+    'X-Optimizely-Visitor-Id': 'header-test-user-id',
     'X-Optimizely-Flag-Key': 'test-flag',
     'X-Optimizely-Experiment-Key': 'test-experiment',
     
@@ -564,11 +564,11 @@ async function testAllQueryParameters() {
  */
 async function testHeaderUserId() {
   try {
-    logger.info('Testing X-Optimizely-User-ID header...');
+    logger.info('Testing X-Optimizely-Visitor-Id header...');
     
     const headers = {
       'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-      'X-Optimizely-User-ID': CONFIG.headerOptions['X-Optimizely-User-ID'],
+      'X-Optimizely-Visitor-Id': CONFIG.headerOptions['X-Optimizely-Visitor-Id'],
       'X-Optimizely-Flag-Key': CONFIG.headerOptions['X-Optimizely-Flag-Key']
     };
     
@@ -578,11 +578,11 @@ async function testHeaderUserId() {
     });
     
     // Check if the user ID was correctly applied
-    const responseContainsUserId = JSON.stringify(response.responseBody || {}).includes(headers['X-Optimizely-User-ID']);
+    const responseContainsUserId = JSON.stringify(response.responseBody || {}).includes(headers['X-Optimizely-Visitor-Id']);
     
     recordResult(
-      'Header - X-Optimizely-User-ID',
-      'Verify that the X-Optimizely-User-ID header is properly applied',
+      'Header - X-Optimizely-Visitor-Id',
+      'Verify that the X-Optimizely-Visitor-Id header is properly applied',
       response.ok && responseContainsUserId,
       {
         headers,
@@ -598,8 +598,8 @@ async function testHeaderUserId() {
     return response.ok && responseContainsUserId;
   } catch (error) {
     recordResult(
-      'Header - X-Optimizely-User-ID',
-      'Verify that the X-Optimizely-User-ID header is properly applied',
+      'Header - X-Optimizely-Visitor-Id',
+      'Verify that the X-Optimizely-Visitor-Id header is properly applied',
       false,
       null,
       error,
@@ -618,7 +618,7 @@ async function testHeaderFlagKey() {
     
     const headers = {
       'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-      'X-Optimizely-User-ID': CONFIG.headerOptions['X-Optimizely-User-ID'],
+      'X-Optimizely-Visitor-Id': CONFIG.headerOptions['X-Optimizely-Visitor-Id'],
       'X-Optimizely-Flag-Key': CONFIG.headerOptions['X-Optimizely-Flag-Key']
     };
     
@@ -669,7 +669,7 @@ async function testHeaderAttributes() {
     // Prepare headers with basic headers
     const headers = {
       'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-      'X-Optimizely-User-ID': CONFIG.headerOptions['X-Optimizely-User-ID'],
+      'X-Optimizely-Visitor-Id': CONFIG.headerOptions['X-Optimizely-Visitor-Id'],
       'X-Optimizely-Flag-Key': CONFIG.headerOptions['X-Optimizely-Flag-Key']
     };
     
@@ -737,7 +737,7 @@ async function testAllHeaderOptions() {
     });
     
     // Check if user ID and flag key were applied
-    const responseContainsUserId = JSON.stringify(response.responseBody || {}).includes(headers['X-Optimizely-User-ID']);
+    const responseContainsUserId = JSON.stringify(response.responseBody || {}).includes(headers['X-Optimizely-Visitor-Id']);
     const responseContainsFlagKey = JSON.stringify(response.responseBody || {}).includes(headers['X-Optimizely-Flag-Key']);
     
     const success = response.ok && responseContainsUserId && responseContainsFlagKey;
@@ -1003,7 +1003,7 @@ async function testParameterPrecedence() {
     
     const headers = {
       'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-      'X-Optimizely-User-ID': 'header-precedence-user-id',
+      'X-Optimizely-Visitor-Id': 'header-precedence-user-id',
       'X-Optimizely-Flag-Key': CONFIG.headerOptions['X-Optimizely-Flag-Key']
     };
     
@@ -1037,7 +1037,7 @@ async function testParameterPrecedence() {
       response.ok && correctPrecedence,
       {
         queryUserId: queryParams.visitor_id,
-        headerUserId: headers['X-Optimizely-User-ID'],
+        headerUserId: headers['X-Optimizely-Visitor-Id'],
         jsonUserId: body.userId,
         expectedUserId,
         status: response.status,
@@ -1081,7 +1081,7 @@ async function testFlagKeyPrecedence() {
     
     const headers = {
       'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-      'X-Optimizely-User-ID': CONFIG.headerOptions['X-Optimizely-User-ID'],
+      'X-Optimizely-Visitor-Id': CONFIG.headerOptions['X-Optimizely-Visitor-Id'],
       'X-Optimizely-Flag-Key': 'header-precedence-flag-key'
     };
     
@@ -1166,7 +1166,7 @@ async function testAttributesPrecedence() {
     
     const headers = {
       'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-      'X-Optimizely-User-ID': CONFIG.headerOptions['X-Optimizely-User-ID'],
+      'X-Optimizely-Visitor-Id': CONFIG.headerOptions['X-Optimizely-Visitor-Id'],
       'X-Optimizely-Flag-Key': CONFIG.headerOptions['X-Optimizely-Flag-Key'],
       [`X-Optimizely-Attribute-${attributeName.charAt(0).toUpperCase() + attributeName.slice(1)}`]: headerValue
     };
@@ -1244,7 +1244,7 @@ async function testArrayAttributeHandling() {
     
     const headers = {
       'X-Optimizely-SDK-Key': CONFIG.sdkKey,
-      'X-Optimizely-User-ID': CONFIG.headerOptions['X-Optimizely-User-ID'],
+      'X-Optimizely-Visitor-Id': CONFIG.headerOptions['X-Optimizely-Visitor-Id'],
       'X-Optimizely-Flag-Key': CONFIG.headerOptions['X-Optimizely-Flag-Key']
     };
     

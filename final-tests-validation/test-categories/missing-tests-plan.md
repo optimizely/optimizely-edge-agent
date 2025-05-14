@@ -35,7 +35,7 @@ This document outlines the specifications for tests that still need to be create
 
 #### Header Option Tests:
 - Test `X-Optimizely-SDK-Key` header for authentication
-- Test `X-Optimizely-User-ID` header for user identification
+- Test `X-Optimizely-Visitor-Id` header for user identification
 - Test `X-Optimizely-Attribute-*` headers for visitor attributes
 - Test `X-Optimizely-Flag-Key` header for feature flag specification
 - Test `X-Optimizely-Experiment-Key` header for experiment specification

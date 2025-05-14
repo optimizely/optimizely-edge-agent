@@ -16,6 +16,14 @@ export interface IUserProfileService {
    * @param userProfileData - The user profile data to save
    */
   save(userProfileData: UserProfileData): Promise<void>;
+  
+  /**
+   * Optional: Checks if a decision for a specific user and experiment came from storage
+   * @param userId - The user ID
+   * @param experimentId - The experiment ID or flag key
+   * @returns True if the decision was retrieved from storage, false otherwise
+   */
+  isDecisionFromStorage?(userId: string, experimentId: string): boolean;
 }
 
 /**

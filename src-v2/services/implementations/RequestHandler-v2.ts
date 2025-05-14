@@ -193,8 +193,8 @@ export class RequestHandlerV2 implements IRequestHandler {
         });
 
         if (result.body) {
-          const bodySize = typeof result.body === 'string' 
-            ? Buffer.from(result.body).length 
+          const bodySize = result.body
+            ? (typeof result.body === 'string' ? result.body.length : JSON.stringify(result.body).length) 
             : 0;
 
           this.metrics.recordHistogram('response_size_bytes', bodySize, { 

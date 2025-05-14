@@ -161,7 +161,7 @@ The following tests are currently missing and need to be implemented:
 
 2. **Parameter Handling Tests**:
    - Tests for query parameters (visitor_id, flag_key, attributes.*, etc.)
-   - Tests for header options (X-Optimizely-SDK-Key, X-Optimizely-User-ID, etc.)
+   - Tests for header options (X-Optimizely-SDK-Key, X-Optimizely-Visitor-Id, etc.)
    - Tests for JSON payload parameters (userId, attributes, flagKey, etc.)
    - Tests for parameter precedence rules
 

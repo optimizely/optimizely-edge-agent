@@ -28,7 +28,7 @@ We have successfully created or enhanced the following test scripts:
 ### 2. Parameter Handling
 
 - Query parameters (`visitor_id`, `flag_key`, `attributes.*`, etc.)
-- Header options (`X-Optimizely-SDK-Key`, `X-Optimizely-User-ID`, etc.)
+- Header options (`X-Optimizely-SDK-Key`, `X-Optimizely-Visitor-Id`, etc.)
 - JSON payload parameters (`userId`, `attributes`, `flagKey`, etc.)
 - Parameter precedence rules (header > JSON > query)
 - Combined parameter application across different sources

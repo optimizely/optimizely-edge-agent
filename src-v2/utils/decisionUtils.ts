@@ -45,10 +45,6 @@ export function getSerializedArray(
         decisionObject.reasons = decision.reasons;
       }
 
-      if (!trimmedDecisions) {
-        decisionObject.userContext = decision.userContext;
-      }
-
       return decisionObject;
     });
 

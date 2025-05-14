@@ -201,6 +201,7 @@ function composeApplication(factoryInputs: AnyCDNAdapterFactoryInputs, cdnType: 
   const decisionService = new DecisionService(
     configService, 
     logger, 
+    metricsAdapter || undefined,
     defaultSdkKey,
     userProfileServiceAdapter
   );

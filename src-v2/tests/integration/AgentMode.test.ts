@@ -405,7 +405,7 @@ describe('Optimizely Edge Agent - Agent Mode', () => {
           'Content-Type': 'application/json',
           'X-Optimizely-SDK-Key': headerSdkKey,
           'X-Optimizely-Flag-Key': headerFlagKey,
-          'X-Optimizely-User-Id': userId
+          'X-Optimizely-Visitor-Id': userId
         },
         body: JSON.stringify({
           sdkKey: "incorrect-sdk-key", // Should be ignored due to header

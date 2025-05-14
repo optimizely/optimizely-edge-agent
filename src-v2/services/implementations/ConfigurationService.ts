@@ -331,9 +331,9 @@ export class ConfigurationService implements IConfigurationService {
 		});
 
 		// Handle special headers with direct mapping
-		if (headers.has('X-Optimizely-User-Id') && !this.config.userId) {
-			this.setConfigValue('userId', headers.get('X-Optimizely-User-Id'), 'headers');
-			this.logger.debug(`${this.logPrefix} Extracted User-Id from header: ${headers.get('X-Optimizely-User-Id')}`);
+		if (headers.has('X-Optimizely-Visitor-Id') && !this.config.userId) {
+			this.setConfigValue('userId', headers.get('X-Optimizely-Visitor-Id'), 'headers');
+			this.logger.debug(`${this.logPrefix} Extracted User-Id from header: ${headers.get('X-Optimizely-Visitor-Id')}`);
 		}
 
 		// SDK Key header has direct mapping

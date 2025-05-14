@@ -1093,8 +1093,8 @@ export class RequestHandler implements IRequestHandler {
 		});
 
 		// Special handling for userId from headers (backwards compatibility)
-		if (headers.has('X-Optimizely-User-Id') && !config.userId) {
-			config.userId = headers.get('X-Optimizely-User-Id');
+		if (headers.has('X-Optimizely-Visitor-Id') && !config.userId) {
+			config.userId = headers.get('X-Optimizely-Visitor-Id');
 		}
 
 		this.logger.debug(`${this.logPrefix} RequestHandler: Extracted config from request:`, config);

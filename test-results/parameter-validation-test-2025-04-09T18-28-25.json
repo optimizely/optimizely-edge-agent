@@ -49,7 +49,7 @@
             "isCloudflare": true,
             "headers": {
               "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-              "X-Optimizely-User-Id": "test-user-329450",
+              "X-Optimizely-Visitor-Id": "test-user-329450",
               "Content-Type": "application/json"
             },
             "body": {
@@ -63,7 +63,7 @@
             "isCloudflare": true,
             "headers": {
               "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-              "X-Optimizely-User-Id": "test-user-329450",
+              "X-Optimizely-Visitor-Id": "test-user-329450",
               "X-Optimizely-Context-Type": "browser",
               "X-Optimizely-Skip-Activation": "true",
               "Content-Type": "application/json"
@@ -177,7 +177,7 @@
             "isCloudflare": true,
             "headers": {
               "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-              "X-Optimizely-User-Id": "header-user",
+              "X-Optimizely-Visitor-Id": "header-user",
               "Content-Type": "application/json"
             },
             "queryParams": {
@@ -198,7 +198,7 @@
             "isCloudflare": true,
             "headers": {
               "X-Optimizely-SDK-Key": "8mR1pGh8u2ztUP8GqjmQq",
-              "X-Optimizely-User-Id": "header-user",
+              "X-Optimizely-Visitor-Id": "header-user",
               "Content-Type": "application/json"
             },
             "requestBody": {

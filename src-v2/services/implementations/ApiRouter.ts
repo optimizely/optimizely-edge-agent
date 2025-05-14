@@ -1498,10 +1498,11 @@ export class ApiRouter {
       
       // Support header for single flag key
       const headerFlagKey = requestAdapter.getHeader('X-Optimizely-Flag-Key');
-      const flagKey = requestBody?.key || urlParams.key || headerFlagKey;
+      // Support both key and flagKey parameters for backward compatibility
+      const flagKey = requestBody?.flagKey || requestBody?.key || urlParams.flagKey || urlParams.key || headerFlagKey;
       
       // If flag key came from header, update metadata
-      if (!requestBody?.key && !urlParams.key && headerFlagKey && requestContext?.configMetadata) {
+      if (!requestBody?.flagKey && !requestBody?.key && !urlParams.flagKey && !urlParams.key && headerFlagKey && requestContext?.configMetadata) {
         requestContext.configMetadata.flagKeysDecided = [headerFlagKey];
         requestContext.configMetadata.flagKeysFrom = 'header';
       }
@@ -1531,8 +1532,8 @@ export class ApiRouter {
       }
       
       if (!flagKey) {
-        this.logger.warn(`${this.logPrefix} Missing key parameter`);
-        return this.createJsonResponse(requestId, 400, { error: "flag key parameter is required" }, method, requestContext);
+        this.logger.warn(`${this.logPrefix} Missing flagKey parameter`);
+        return this.createJsonResponse(requestId, 400, { error: "flagKey parameter is required (can also be provided as 'key' or X-Optimizely-Flag-Key header)" }, method, requestContext);
       }
       
       // Get decision from decision service
@@ -2155,9 +2156,9 @@ export class ApiRouter {
     let visitorIdFrom = '';
     
     // First check headers
-    if (headers['x-optimizely-user-id']) {
-      userId = headers['x-optimizely-user-id'];
-      visitorId = headers['x-optimizely-user-id'];
+    if (headers['X-Optimizely-Visitor-Id']) {
+      userId = headers['X-Optimizely-Visitor-Id'];
+      visitorId = headers['X-Optimizely-Visitor-Id'];
       visitorIdFrom = 'header';
     } else if (headers['x-optimizely-visitor-id']) {
       visitorId = headers['x-optimizely-visitor-id'];
@@ -2476,7 +2477,6 @@ export class ApiRouter {
             type: typeof requestContext.decisions,
             isArray: Array.isArray(requestContext.decisions),
             length: Array.isArray(requestContext.decisions) ? requestContext.decisions.length : null,
-            sample: sampleDecision,
             hasKeys: Array.isArray(requestContext.decisions) && requestContext.decisions.length > 0 
               ? Object.keys(requestContext.decisions[0]) 
               : (typeof requestContext.decisions === 'object' ? Object.keys(requestContext.decisions) : null)
@@ -2580,6 +2580,25 @@ export class ApiRouter {
       }
     }
 
+    // *******************************************************************
+    // ***** ADD YOUR COMPREHENSIVE HEADER LOGGING STATEMENT HERE *****
+    // *******************************************************************
+    // This point is after all conditional logic for adding/removing headers
+    // has been processed, and 'headers' contains the final set.
+
+    this.logger.warn(`${this.logPrefix} FINAL HEADERS FOR REQUEST ${requestId}: ${JSON.stringify(headers)}`);
+    // Using logger.warn for high visibility during debugging; change level as needed.
+    // You can also iterate and log them one by one if preferred:
+    // for (const [key, value] of Object.entries(headers)) {
+    //   this.logger.warn(`${this.logPrefix} FINAL HEADER: ${key}: ${value}`);
+    // }
+    // Also log the length of specific problematic headers:
+    const decisionsHeaderName = this.configService.getDecisionsHeaderName();
+    if (headers[decisionsHeaderName]) {
+       this.logger.warn(`${this.logPrefix} ${decisionsHeaderName} LENGTH: ${headers[decisionsHeaderName].length}`);
+    }
+    // *******************************************************************
+
     return {
       status,
       body: JSON.stringify(body),
@@ -2609,6 +2628,12 @@ export class ApiRouter {
     
     // Use the existing metadata from the request context if available
     const metadata = requestContext?.configMetadata || this.initializeConfigMetadata();
+    
+    // Add decisionFromStorage if it exists
+    if (body && body.metadata && body.metadata.decisionFromStorage !== undefined) {
+      metadata.decisionFromStorage = body.metadata.decisionFromStorage;
+      this.logger.debug(`${this.logPrefix} Decision from storage: ${body.metadata.decisionFromStorage}`);
+    }
     
     // If body is already an object, add metadata to it
     if (Array.isArray(body)) {

@@ -372,7 +372,8 @@ export class DecisionServiceV2 implements IDecisionService {
           if (this.metrics) {
             // Record datafile size
             if (datafile) {
-              const datafileSize = Buffer.from(JSON.stringify(datafile)).length;
+              // Use string length as an estimate of size (works in all environments)
+              const datafileSize = JSON.stringify(datafile).length;
               this.metrics.recordHistogram('datafile_size_bytes', datafileSize, {
                 sdkKey: this.maskSensitiveData(sdkKey)
               });

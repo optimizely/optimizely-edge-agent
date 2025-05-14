@@ -128,7 +128,7 @@ This plan details the specific tasks required to achieve comprehensive feature p
     *   [ ] **Test Task 3.1.6:** Verify `/track` processes `sdkKey` via Header, Query, Body, and precedence. (Expected: 200 OK)
     *   [ ] **Test Task 3.1.7:** Verify `/track` fails (400 Bad Request) if `sdkKey` is missing.
 *   **Parameter: `userId` / `visitorId`**
-    *   [ ] **Test Task 3.1.8:** Verify `/decide` processes `userId` via `X-Optimizely-User-Id` header. (Expected: 200 OK)
+    *   [ ] **Test Task 3.1.8:** Verify `/decide` processes `userId` via `X-Optimizely-Visitor-Id` header. (Expected: 200 OK)
     *   [ ] **Test Task 3.1.9:** Verify `/decide` processes `userId` via `userId` query parameter. (Expected: 200 OK)
     *   [ ] **Test Task 3.1.10:** Verify `/decide` processes `visitorId` via `visitorId` query parameter. (Expected: 200 OK)
     *   [ ] **Test Task 3.1.11:** Verify `/decide` processes `userId` via `user.id` in JSON body. (Expected: 200 OK)

@@ -12,6 +12,7 @@ import { ILoggerAdapter, LogLevel, LogContext } from "../../adapters/interfaces/
 import { IMetricsAdapter, MetricTags } from "../../adapters/interfaces/IMetricsAdapter";
 import * as optimizely from '@optimizely/optimizely-sdk';
 import { OptimizelyUserProfileServiceAdapter } from '../storage/OptimizelyUserProfileServiceAdapter';
+import { OptimizelyIdMapper } from "../../utils/sdkConfigUtils";
 
 // Configure Optimizely SDK to use Node.js environment
 // This needs to happen before any other SDK operations
@@ -115,6 +116,7 @@ export class DecisionService implements IDecisionService {
   private optimizelyLoggerAdapter: OptimizelyLogger;
   private clientCachingEnabled: boolean = true; // Controls if clients are cached (for testing)
   private datafileUpdateTimers: Map<string, number> = new Map(); // Track datafile update times
+  private idMapper: OptimizelyIdMapper; // Utility for mapping between flag keys and experiment IDs
 
   /**
    * Creates an instance of the DecisionService.
@@ -145,6 +147,7 @@ export class DecisionService implements IDecisionService {
     this.metrics = metrics || null;
     this.defaultSdkKey = defaultSdkKey || null;
     this.userProfileServiceAdapter = userProfileServiceAdapter || null;
+    this.idMapper = new OptimizelyIdMapper(logger);
 
     // Apply options if provided
     if (options) {
@@ -426,7 +429,8 @@ export class DecisionService implements IDecisionService {
           if (this.metrics) {
             // Record datafile size
             if (datafile) {
-              const datafileSize = Buffer.from(JSON.stringify(datafile)).length;
+              // Use string length as an estimate of size (works in all environments)
+              const datafileSize = JSON.stringify(datafile).length;
               this.metrics.recordHistogram('datafile_size_bytes', datafileSize, {
                 sdkKey: this.maskSensitiveData(sdkKey)
               });
@@ -792,6 +796,22 @@ export class DecisionService implements IDecisionService {
         return this.createFallbackDecision(flagKey, userContext, 'missing_sdk_key');
       }
       
+      // Check if we should ignore user profiles for this request
+      const ignoreUserProfileService = (options?.decideOptions || [])
+        .includes(optimizely.OptimizelyDecideOption.IGNORE_USER_PROFILE_SERVICE);
+      
+      // Preload user profile if enabled and not ignored for this request
+      if (this.userProfileServiceAdapter && 
+          userContext.userId && 
+          !ignoreUserProfileService) {
+        decisionLogger.debug("Preloading user profile", {
+          userId: this.maskSensitiveData(userContext.userId)
+        });
+        
+        // Preload the profile before getting the client
+        await this.userProfileServiceAdapter.preloadProfile(userContext.userId);
+      }
+      
       decisionLogger.debug("Making decision", {
         sdkKey: this.maskSensitiveData(sdkKey),
         hasDecideOptions: options?.decideOptions ? options.decideOptions.length > 0 : false
@@ -867,12 +887,82 @@ export class DecisionService implements IDecisionService {
           });
         }
         
+        // Check if this decision came from user profile storage (sticky bucketing)
+        let decisionFromStorage = false;
+        if (this.userProfileServiceAdapter && 
+            userContext.userId && 
+            flagKey) {
+          
+          // Check if this request should ignore user profiles
+          const ignoreUserProfileService = (options?.decideOptions || [])
+            .includes(optimizely.OptimizelyDecideOption.IGNORE_USER_PROFILE_SERVICE);
+          
+          // Only check profile if not explicitly ignored for this request
+          if (!ignoreUserProfileService) {
+            try {
+              // Get all experiment IDs associated with this flag key
+              // This is crucial because the SDK stores decisions in the user profile using experiment IDs
+              const experimentIds = this.idMapper.getExperimentIdsForFlag(client, flagKey);
+              
+              this.logger.info(`[DecisionService] Found ${experimentIds.length} experiment IDs for flag ${flagKey}: ${experimentIds.join(', ')}`);
+              
+              // Also include the rule key and flag key as fallbacks
+              const idsToCheck = [...experimentIds];
+              
+              if (decision?.ruleKey && !idsToCheck.includes(decision.ruleKey)) {
+                idsToCheck.push(decision.ruleKey);
+              }
+              
+              if (!idsToCheck.includes(flagKey)) {
+                idsToCheck.push(flagKey);
+              }
+              
+              // Try all possible IDs to see if any match a stored decision
+              for (const id of idsToCheck) {
+                if (!id) continue;
+                
+                this.logger.info(`[DecisionService] Checking if decision from storage using ID: ${userContext.userId}:${id}`);
+                
+                // Add a timestamp to help trace in logs
+                const checkTime = Date.now();
+                this.logger.info(`[DecisionService] [${checkTime}] Checking storage for ID: ${id}`);
+                
+                const isFromStorage = this.userProfileServiceAdapter.isDecisionFromStorage(
+                  userContext.userId, 
+                  id
+                );
+                
+                this.logger.info(`[DecisionService] [${checkTime}] Storage check result for ID ${id}: ${isFromStorage}`);
+                
+                if (isFromStorage) {
+                  decisionFromStorage = true;
+                  this.logger.info(`[DecisionService] FOUND! Decision for ${userContext.userId}:${flagKey} from storage with ID: ${id}`);
+                  break;
+                }
+              }
+              
+              // Log the final result
+              this.logger.info(`[DecisionService] Final result - Decision for ${userContext.userId}:${flagKey} from storage: ${decisionFromStorage}`);
+            } catch (error) {
+              this.logger.error(`[DecisionService] Error checking if decision came from storage`, error);
+            }
+          } else {
+            this.logger.info(`[DecisionService] User profile service ignored for this request (IGNORE_USER_PROFILE_SERVICE option)`);
+          }
+        }
+        
         decisionLogger.debug("Decision made successfully", {
           variationKey: decision.variationKey,
           enabled: decision.enabled,
           reasons: decision.reasons,
-          hasVariables: Object.keys(decision.variables || {}).length > 0
+          hasVariables: Object.keys(decision.variables || {}).length > 0,
+          fromStorage: decisionFromStorage
         });
+        
+        // Add minimal storage source information to the decision metadata
+        // Don't copy the entire decision object to reduce size
+        decision.metadata = decision.metadata || {};
+        decision.metadata.decisionFromStorage = decisionFromStorage;
         
         return decision;
       } catch (error) {
