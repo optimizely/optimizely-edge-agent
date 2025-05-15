@@ -6,8 +6,17 @@ compatibility_flags = ["nodejs_compat"]
 account_id = "YOUR ACCOUNT ID HERE"
 workers_dev = true
 # route = "YOUR ROUTE GOES HERE"
-kv_namespaces = [{ binding = "OPTLY_HYBRID_AGENT_KV", id = "KV NAMESPACE ID GOES HERE", preview_id = "KV PREVIEW NAMESPACE ID GOES HERE",
-binding = "OPTLY_HYBRID_AGENT_UPS_KV", id = "KV USER PROFILE NAMESPACE ID GOES HERE", preview_id = "KV USER PROFILE PREVIEW NAMESPACE ID GOES HERE" } ]
+
+# KV Namespaces for caching and user profiles
+kv_namespaces = [
+  { binding = "OPTLY_HYBRID_AGENT_KV", id = "KV NAMESPACE ID GOES HERE", preview_id = "KV PREVIEW NAMESPACE ID GOES HERE" },
+  { binding = "OPTLY_HYBRID_AGENT_UPS_KV", id = "KV USER PROFILE NAMESPACE ID GOES HERE", preview_id = "KV USER PROFILE PREVIEW NAMESPACE ID GOES HERE" }
+]
+
+# Analytics Engine configuration for metrics collection
+analytics_engine_datasets = [
+  { binding = "ANALYTICS_ENGINE", dataset = "optimizely_edge_agent_metrics" }
+]
 
 [vars]
  # Supported: "debug, debugExt, info, error"

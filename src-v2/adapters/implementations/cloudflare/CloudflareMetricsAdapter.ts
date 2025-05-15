@@ -163,6 +163,16 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
     // Record to Cloudflare analytics if enabled
     if (this.enabled && this.analyticsEngine) {
       try {
+        // Add detailed debugging
+        this.logger.debug(
+          `[CloudflareMetricsAdapter] Attempting to write to Analytics Engine: ${formattedName}, Type: ${type}, Value: ${value}`
+        );
+        
+        // Check if analyticsEngine has writeDataPoint method
+        if (typeof this.analyticsEngine.writeDataPoint !== 'function') {
+          throw new Error('Analytics Engine missing writeDataPoint method');
+        }
+        
         switch (type) {
           case MetricType.COUNTER:
             this.analyticsEngine.writeDataPoint({
@@ -170,6 +180,7 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'counter']
             });
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote counter metric: ${formattedName}`);
             break;
           case MetricType.GAUGE:
             this.analyticsEngine.writeDataPoint({
@@ -177,6 +188,7 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'gauge']
             });
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote gauge metric: ${formattedName}`);
             break;
           case MetricType.HISTOGRAM:
           case MetricType.TIMER:
@@ -185,6 +197,7 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, type === MetricType.HISTOGRAM ? 'histogram' : 'timer']
             });
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote ${type} metric: ${formattedName}`);
             break;
           case MetricType.SUMMARY:
             this.analyticsEngine.writeDataPoint({
@@ -192,6 +205,7 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'summary']
             });
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote summary metric: ${formattedName}`);
             break;
           case MetricType.SET:
             // For SET type, we record the cardinality of the set
@@ -200,12 +214,37 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'set']
             });
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote set metric: ${formattedName}`);
             break;
         }
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         this.logger.error(`[CloudflareMetricsAdapter] Error recording metric '${formattedName}': ${errorMessage}`);
+        
+        // Add detailed error info
+        if (error instanceof Error && error.stack) {
+          this.logger.debug(`[CloudflareMetricsAdapter] Error stack: ${error.stack}`);
+        }
+        
+        // Log analytics engine state
+        this.logger.debug(
+          `[CloudflareMetricsAdapter] Analytics Engine state:`, 
+          { 
+            engineExists: !!this.analyticsEngine,
+            engineType: this.analyticsEngine ? typeof this.analyticsEngine : 'undefined',
+            hasWriteMethod: this.analyticsEngine && typeof this.analyticsEngine.writeDataPoint === 'function',
+            metricDetails: {
+              name: formattedName,
+              type,
+              value
+            }
+          }
+        );
       }
+    } else if (!this.analyticsEngine) {
+      this.logger.debug(`[CloudflareMetricsAdapter] Analytics Engine not available, skipping metric: ${formattedName}`);
+    } else if (!this.enabled) {
+      this.logger.debug(`[CloudflareMetricsAdapter] Metrics disabled, skipping metric: ${formattedName}`);
     }
   }
 

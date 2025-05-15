@@ -27,6 +27,35 @@ import { ILoggerAdapter } from "../../adapters/interfaces/ILoggerAdapter";
 import { IEnvironmentAdapter } from "../../adapters/interfaces/IEnvironmentAdapter";
 
 /**
+ * Interface for execution contexts that support waitUntil functionality
+ */
+interface WaitUntilContext {
+  waitUntil: (promise: Promise<any>) => void;
+}
+
+/**
+ * Interface for Vercel's execution context
+ */
+interface VercelContext extends WaitUntilContext {
+  // Vercel-specific properties can be added here
+}
+
+/**
+ * Interface for Cloudflare's execution context
+ */
+interface CloudflareContext extends WaitUntilContext {
+  // Cloudflare-specific properties can be added here
+  passThroughOnException?: () => void;
+}
+
+/**
+ * Interface for Fastly's execution context
+ */
+interface FastlyContext extends Partial<WaitUntilContext> {
+  // Fastly-specific properties can be added here
+}
+
+/**
  * The Optimizely Events API endpoint.
  */
 const OPTIMIZELY_EVENTS_API = 'https://logx.optimizely.com/v1/events';
@@ -311,8 +340,10 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
 
   /**
    * Detects the type of environment we're running in based on the environment adapter.
+   * Enhanced with more reliable detection methods for each supported environment.
    */
   private detectEnvironmentType(): void {
+    // First try using adapter constructor name (legacy approach)
     const adapterConstructorName = this.envAdapter.constructor.name;
     
     if (adapterConstructorName.includes('Cloudflare')) {
@@ -322,8 +353,75 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
     } else if (adapterConstructorName.includes('Fastly')) {
       this.environmentType = EnvironmentType.FASTLY;
     } else {
-      this.environmentType = EnvironmentType.UNKNOWN;
-      this.logger.warn('Unknown environment type detected, using generic client info');
+      // If constructor name doesn't provide enough information, try environment-specific detection
+      if (this.isCloudflareEnvironment()) {
+        this.environmentType = EnvironmentType.CLOUDFLARE;
+      } else if (this.isVercelEnvironment()) {
+        this.environmentType = EnvironmentType.VERCEL;
+      } else if (this.isFastlyEnvironment()) {
+        this.environmentType = EnvironmentType.FASTLY;
+      } else {
+        this.environmentType = EnvironmentType.UNKNOWN;
+        this.logger.warn('Unknown environment type detected, using generic client info');
+      }
+    }
+    
+    this.logger.debug(`EventDispatcher: Detected environment type: ${this.environmentType}`);
+  }
+  
+  /**
+   * Checks if running in a Cloudflare environment.
+   * @returns True if in Cloudflare environment.
+   */
+  private isCloudflareEnvironment(): boolean {
+    try {
+      // Check for Cloudflare specific globals
+      return typeof globalThis.caches !== 'undefined' && 
+             // Cloudflare Workers have a global 'caches' object
+             typeof globalThis.addEventListener === 'function' &&
+             // Try to access a Cloudflare-specific property from the environment
+             (this.envAdapter.getVariable('CF_WORKER') !== undefined ||
+              this.envAdapter.getVariable('CLOUDFLARE_WORKER') !== undefined);
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  /**
+   * Checks if running in a Vercel environment.
+   * @returns True if in Vercel environment.
+   */
+  private isVercelEnvironment(): boolean {
+    try {
+      // Check for Vercel specific environment variables
+      return (this.envAdapter.getVariable('VERCEL') === '1' || 
+              this.envAdapter.getVariable('VERCEL_ENV') !== undefined ||
+              typeof process !== 'undefined' && 
+              typeof (process as any).env !== 'undefined' && 
+              ((process as any).env.VERCEL === '1' || (process as any).env.VERCEL_ENV !== undefined));
+    } catch (e) {
+      return false;
+    }
+  }
+  
+  /**
+   * Checks if running in a Fastly environment.
+   * @returns True if in Fastly environment.
+   */
+  private isFastlyEnvironment(): boolean {
+    try {
+      // Check for Fastly specific globals and properties using type-safe approach
+      return (
+        // Use optional chaining and type assertion for fastly global
+        typeof (globalThis as any).fastly !== 'undefined' ||
+        // Use optional chaining and type assertion for env global
+        typeof (globalThis as any).env !== 'undefined' && 
+        typeof ((globalThis as any).env).FASTLY === 'object' ||
+        // This is type-safe already
+        this.envAdapter.getVariable('FASTLY_SERVICE_ID') !== undefined
+      );
+    } catch (e) {
+      return false;
     }
   }
   
@@ -358,22 +456,56 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
 
   /**
    * [Legacy] Accepts an event for dispatch.
+   * Enhanced with environment-specific handling for event dispatch.
    * @param event - The event object to dispatch.
    * @returns A promise resolving immediately.
    */
   async dispatchEvent(event: OptimizelyEvent): Promise<void> {
-    this.logger.debug(`EventDispatcher.dispatchEvent called.`, event);
+    this.logger.debug(`EventDispatcher.dispatchEvent called in ${this.environmentType} environment`, event);
 
-    // Adapt to the new trackEvent method
-    await this.trackEvent({
+    // Convert to the new event format
+    const optimizelyEvent: OptimizelyEventData = {
       type: event.type,
       timestamp: event.timestamp,
       uuid: event.uuid,
       userContext: event.userContext,
-    });
+    };
 
-    // Resolve immediately as the event is accepted for processing
+    // Create a typed dispatch function to avoid potential type issues
+    const dispatchFn = () => this.doDispatchEvent(optimizelyEvent);
+
+    // Detect environment and use the appropriate waitUntil implementation
+    if (this.isCloudflareEnvironment()) {
+      this.cloudflareWaitUntil(dispatchFn);
+    } else if (this.isVercelEnvironment()) {
+      this.vercelWaitUntil(dispatchFn);
+    } else if (this.isFastlyEnvironment()) {
+      this.fastlyWaitUntil(dispatchFn);
+    } else {
+      // Default fallback
+      this.genericWaitUntil(dispatchFn);
+    }
+
+    // Resolve immediately as the event is accepted for background processing
     return Promise.resolve();
+  }
+
+  /**
+   * Handles the actual event dispatch logic.
+   * This is moved to a separate method to be used with waitUntil.
+   * @param event - The event to dispatch.
+   * @returns A promise that resolves when the event is processed.
+   */
+  private async doDispatchEvent(event: OptimizelyEventData): Promise<void> {
+    try {
+      // Track the event using the new method
+      await this.trackEvent(event);
+      this.logger.debug(`EventDispatcher: Successfully dispatched event in ${this.environmentType} environment`, { 
+        eventType: event.type 
+      });
+    } catch (error) {
+      this.logger.error(`EventDispatcher: Failed to dispatch event in ${this.environmentType} environment:`, error);
+    }
   }
 
   /**
@@ -533,7 +665,7 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
   
   /**
    * Safely executes waitUntil based on the current environment.
-   * Provides fallbacks for environments where waitUntil might behave differently.
+   * Enhanced with dedicated methods for each environment type.
    * 
    * @param promise - The promise to execute in waitUntil.
    */
@@ -541,35 +673,20 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
     try {
       switch (this.environmentType) {
         case EnvironmentType.CLOUDFLARE:
-          // Cloudflare has reliable waitUntil
-          this.envAdapter.waitUntil(promise);
+          this.cloudflareWaitUntil(promise);
           break;
         
         case EnvironmentType.VERCEL:
-          // Vercel's waitUntil requires extra care
-          this.envAdapter.waitUntil(
-            promise.catch(error => {
-              this.logger.error(`EventDispatcher: Vercel waitUntil error`, error);
-            })
-          );
+          this.vercelWaitUntil(promise);
           break;
         
         case EnvironmentType.FASTLY:
-          // Fastly might not have native waitUntil, adapter should handle fallback
-          this.envAdapter.waitUntil(
-            promise.catch(error => {
-              this.logger.error(`EventDispatcher: Fastly waitUntil error`, error);
-            })
-          );
+          this.fastlyWaitUntil(promise);
           break;
         
         default:
-          // Unknown environment - use waitUntil but with extra error handling
-          this.envAdapter.waitUntil(
-            promise.catch(error => {
-              this.logger.error(`EventDispatcher: Unknown environment waitUntil error`, error);
-            })
-          );
+          // Unknown environment - try generic approach with extra error handling
+          this.genericWaitUntil(promise);
           break;
       }
     } catch (error) {
@@ -580,6 +697,171 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
       promise.catch(promiseError => {
         this.logger.error('EventDispatcher: Background task error', promiseError);
       });
+    }
+  }
+  
+  /**
+   * CloudflareWaitUntil - Implementation for Cloudflare environment.
+   * Cloudflare Workers have a reliable waitUntil implementation.
+   * 
+   * @param promiseFn - The promise or promise-returning function to execute in waitUntil.
+   */
+  private cloudflareWaitUntil(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+    try {
+      // Handle both Promise and function returning Promise
+      const promise = typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn;
+      
+      // Get the execution context from the environment adapter and ensure proper typing
+      const executionContext = this.envAdapter.getContext<CloudflareContext>();
+      
+      if (executionContext && typeof (executionContext as CloudflareContext).waitUntil === 'function') {
+        // Use the native waitUntil from Cloudflare's execution context
+        (executionContext as CloudflareContext).waitUntil(
+          promise.catch(error => {
+            this.logger.error(`EventDispatcher: Cloudflare waitUntil error`, error);
+          })
+        );
+      } else {
+        // Fallback to adapter's waitUntil
+        this.envAdapter.waitUntil(
+          promise.catch(error => {
+            this.logger.error(`EventDispatcher: Cloudflare adapter waitUntil error`, error);
+          })
+        );
+      }
+    } catch (error) {
+      this.logger.error(`EventDispatcher: Error in cloudflareWaitUntil`, error);
+    }
+  }
+  
+  /**
+   * VercelWaitUntil - Implementation for Vercel environment.
+   * Vercel's Edge Runtime has a different execution model than Cloudflare.
+   * 
+   * @param promiseFn - The promise or promise-returning function to execute.
+   */
+  private vercelWaitUntil(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+    try {
+      // Handle both Promise and function returning Promise
+      const promise = typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn;
+      
+      // Get the execution context from the environment adapter with proper typing
+      const executionContext = this.envAdapter.getContext<VercelContext>();
+      
+      if (executionContext && typeof (executionContext as VercelContext).waitUntil === 'function') {
+        // Use the execution context's waitUntil if available
+        (executionContext as VercelContext).waitUntil(
+          promise.catch(error => {
+            this.logger.error(`EventDispatcher: Vercel waitUntil error`, error);
+          })
+        );
+      } else {
+        // Vercel Edge Functions might support a global waitUntil
+        if (typeof (globalThis as any).waitUntil === 'function') {
+          (globalThis as any).waitUntil(
+            promise.catch(error => {
+              this.logger.error(`EventDispatcher: Vercel global waitUntil error`, error);
+            })
+          );
+        } else {
+          // Fallback to the adapter's implementation
+          this.envAdapter.waitUntil(
+            promise.catch(error => {
+              this.logger.error(`EventDispatcher: Vercel adapter waitUntil error`, error);
+            })
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(`EventDispatcher: Error in vercelWaitUntil`, error);
+      
+      // For Vercel, ensure the promise runs anyway
+      if (typeof promiseOrFn === 'function') {
+        promiseOrFn().catch(error => {
+          this.logger.error(`EventDispatcher: Vercel background task error`, error);
+        });
+      } else {
+        promiseOrFn.catch(error => {
+          this.logger.error(`EventDispatcher: Vercel background task error`, error);
+        });
+      }
+    }
+  }
+  
+  /**
+   * FastlyWaitUntil - Implementation for Fastly Compute@Edge environment.
+   * 
+   * @param promiseFn - The promise or promise-returning function to execute.
+   */
+  private fastlyWaitUntil(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+    try {
+      // Handle both Promise and function returning Promise
+      const promise = typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn;
+      
+      // Get the execution context from the environment adapter with proper typing
+      const executionContext = this.envAdapter.getContext<FastlyContext>();
+      
+      if (executionContext && typeof (executionContext as FastlyContext).waitUntil === 'function') {
+        // If the adapter provides a waitUntil-compatible method, use it
+        (executionContext as FastlyContext).waitUntil!(
+          promise.catch(error => {
+            this.logger.error(`EventDispatcher: Fastly waitUntil error`, error);
+          })
+        );
+      } else {
+        // Fastly doesn't have a native waitUntil, so we'll use the adapter's implementation
+        // which should provide an appropriate fallback
+        this.envAdapter.waitUntil(
+          promise.catch(error => {
+            this.logger.error(`EventDispatcher: Fastly adapter waitUntil error`, error);
+          })
+        );
+      }
+    } catch (error) {
+      this.logger.error(`EventDispatcher: Error in fastlyWaitUntil`, error);
+      
+      // For Fastly, ensure the promise runs anyway
+      if (typeof promiseOrFn === 'function') {
+        promiseOrFn().catch(error => {
+          this.logger.error(`EventDispatcher: Fastly background task error`, error);
+        });
+      } else {
+        promiseOrFn.catch(error => {
+          this.logger.error(`EventDispatcher: Fastly background task error`, error);
+        });
+      }
+    }
+  }
+  
+  /**
+   * GenericWaitUntil - Fallback implementation for unknown environments.
+   * 
+   * @param promiseFn - The promise or promise-returning function to execute.
+   */
+  private genericWaitUntil(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+    try {
+      // Handle both Promise and function returning Promise
+      const promise = typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn;
+      
+      // Try the adapter's waitUntil with extra error handling
+      this.envAdapter.waitUntil(
+        promise.catch(error => {
+          this.logger.error(`EventDispatcher: Generic waitUntil error`, error);
+        })
+      );
+    } catch (error) {
+      this.logger.error(`EventDispatcher: Error in genericWaitUntil`, error);
+      
+      // Make sure the promise runs anyway
+      if (typeof promiseOrFn === 'function') {
+        promiseOrFn().catch(error => {
+          this.logger.error(`EventDispatcher: Generic background task error`, error);
+        });
+      } else {
+        promiseOrFn.catch(error => {
+          this.logger.error(`EventDispatcher: Generic background task error`, error);
+        });
+      }
     }
   }
   

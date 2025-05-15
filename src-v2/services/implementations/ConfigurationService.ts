@@ -292,8 +292,17 @@ export class ConfigurationService implements IConfigurationService {
 		const headerEntries: string[] = [];
 		headers.forEach((value, key) => {
 			headerEntries.push(`${key}=${value}`);
+			console.log(`[HEADER_DEBUG] ${key}=${value}`);
 		});
 		this.logger.debug(`${this.logPrefix} Request headers: ${headerEntries.join(', ')}`);
+
+		// EXTRA SPECIAL CASE FOR DEBUGGING: Check for SDK Key header explicitly
+		if (headers.has('X-Optimizely-SDK-Key')) {
+			const sdkKeyValue = headers.get('X-Optimizely-SDK-Key');
+			console.log(`[HEADER_DEBUG] Found X-Optimizely-SDK-Key in headers: '${sdkKeyValue}'`);
+			this.setConfigValue('sdkKey', sdkKeyValue, 'headers');
+			console.log(`[HEADER_DEBUG] Set sdkKey to ${sdkKeyValue} from headers`);
+		}
 
 		// Process headers to extract configuration values
 		headers.forEach((value, key) => {
@@ -341,6 +350,10 @@ export class ConfigurationService implements IConfigurationService {
 			const sdkKeyValue = headers.get(this.settings.sdkKeyHeader);
 			this.logger.debug(`${this.logPrefix} Found SDK Key in header '${this.settings.sdkKeyHeader}': '${sdkKeyValue}'`);
 			this.setConfigValue('sdkKey', sdkKeyValue, 'headers');
+			
+			// Extra logging for debugging
+			console.log(`[HEADER_DEBUG] SDK key from header: ${sdkKeyValue}, source: headers`);
+			console.log(`[HEADER_DEBUG] Metadata sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
 		} else {
 			this.logger.debug(`${this.logPrefix} No SDK Key found in headers. Looking for: '${this.settings.sdkKeyHeader}'`);
 		}
@@ -493,7 +506,6 @@ export class ConfigurationService implements IConfigurationService {
 		this.logger.debug(`${this.logPrefix} Initializing from query parameters`);
 		const url = request.getUrl();
 		const queryParams = url.searchParams;
-		const prioritizeHeaders = this.settings.prioritizeHeadersOverQueryParams;
 
 		// Log all query parameters for debugging
 		this.logger.debug(
@@ -505,13 +517,13 @@ export class ConfigurationService implements IConfigurationService {
 		// Map of query parameter names to config keys
 		const queryParamMapping = this.getQueryParamMapping();
 
-		// Process each query parameter and update config if value not set from headers
+		// Process each query parameter and update config if allowed by precedence rules
 		for (const [paramName, configKey] of Object.entries(queryParamMapping)) {
 			if (queryParams.has(paramName)) {
 				const paramValue = queryParams.get(paramName);
-
-				// Check if we should override the value from headers
-				if (!prioritizeHeaders || this.config[configKey] === undefined) {
+				
+				// Check if we should apply this value based on precedence rules
+				if (this.shouldApplyValueFromSource(configKey as keyof OptimizelyConfigOptions, 'queryParams')) {
 					// Try to parse as complex type if applicable
 					if (['attributes', 'eventTags', 'forcedDecisions', 'cdnVariationSettings'].includes(configKey)) {
 						try {
@@ -551,9 +563,12 @@ export class ConfigurationService implements IConfigurationService {
 							this.logger.debug(`${this.logPrefix} Found SDK Key in query parameter '${paramName}': '${paramValue}'`);
 						}
 					}
-				} else if (configKey === 'sdkKey') {
+				} else {
+					// Log that we're skipping due to precedence
 					this.logger.debug(
-						`${this.logPrefix} SDK Key from query param '${paramName}' not used because headers take precedence and we already have an SDK Key`
+						`${this.logPrefix} Skipping ${paramName} from query params due to precedence. Current source: ${
+							(this.metadata as any)[`${configKey}From`]
+						}`
 					);
 				}
 			}
@@ -563,16 +578,14 @@ export class ConfigurationService implements IConfigurationService {
 		this.logger.debug(`${this.logPrefix} Current SDK Key after query params: '${this.config.sdkKey}'`);
 
 		// Special handling for flag keys (can have multiple values)
-		if (queryParams.has('keys')) {
+		if (queryParams.has('keys') && this.shouldApplyValueFromSource('flagKeys', 'queryParams')) {
 			const flagKeys = queryParams.getAll('keys');
-			if (!prioritizeHeaders || !this.config.flagKeys || this.config.flagKeys.length === 0) {
-				this.setConfigValue('flagKeys', flagKeys, 'queryParams');
-			}
+			this.setConfigValue('flagKeys', flagKeys, 'queryParams');
 		}
 
 		// Special handling for trimmedDecisions
 		const trimmedDecisionsParam = queryParams.get('trimmedDecisions');
-		if (trimmedDecisionsParam !== null && (!prioritizeHeaders || this.config.trimmedDecisions === undefined)) {
+		if (trimmedDecisionsParam !== null && this.shouldApplyValueFromSource('trimmedDecisions', 'queryParams')) {
 			this.setConfigValue('trimmedDecisions', trimmedDecisionsParam === 'true', 'queryParams');
 		}
 	}
@@ -616,7 +629,44 @@ export class ConfigurationService implements IConfigurationService {
 	 * Initializes configuration settings from the request body if available.
 	 * @param request - The request adapter.
 	 */
+	/**
+	 * Checks if a new value from the given source should be applied based on precedence rules.
+	 * Headers take precedence over query parameters, which take precedence over body.
+	 * 
+	 * @param key - The configuration key
+	 * @param source - The source of the new value ('headers', 'queryParams', or 'body')
+	 * @returns True if the value should be applied, false otherwise
+	 */
+	private shouldApplyValueFromSource(key: keyof OptimizelyConfigOptions, source: string): boolean {
+		const sourceField = `${String(key)}From`;
+		const currentSource = (this.metadata as any)[sourceField];
+		
+		// If we don't have an existing source, always apply the new value
+		if (!currentSource) {
+			return true;
+		}
+		
+		// Check precedence: headers > queryParams > body
+		if (currentSource === 'headers') {
+			// Headers have highest precedence, never override
+			return false;
+		}
+		
+		if (currentSource === 'queryParams' && source === 'body') {
+			// Don't override query params with body values
+			return false;
+		}
+		
+		// In all other cases, apply the new value
+		return true;
+	}
+
 	private async initializeFromBody(request: IRequestAdapter): Promise<void> {
+		// Log all the values at the beginning
+		console.log(`[BODY_DEBUG] Starting body processing with current metadata/config state:`);
+		console.log(`[BODY_DEBUG] Current sdkKey: ${this.config.sdkKey}`);
+		console.log(`[BODY_DEBUG] Current sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
+		
 		this.logger.debug(`${this.logPrefix} Initializing from body`);
 
 		// Only process body for POST/PUT methods
@@ -641,12 +691,21 @@ export class ConfigurationService implements IConfigurationService {
 				return;
 			}
 
+			console.log(`[BODY_DEBUG] Request body: ${JSON.stringify(body)}`);
 			this.logger.debug(`${this.logPrefix} Request body: ${JSON.stringify(body)}`);
+
+			// SPECIAL DEBUGGING FOR SDK KEY
+			if (body.sdkKey) {
+				console.log(`[BODY_DEBUG] Found sdkKey in body: ${body.sdkKey}`);
+				console.log(`[BODY_DEBUG] Current sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
+				console.log(`[BODY_DEBUG] Should apply? ${this.shouldApplyValueFromSource('sdkKey', 'body')}`);
+			}
 
 			// Process each property in the body
 			for (const [key, value] of Object.entries(body)) {
-				// Skip if already set from headers or query params
-				if (this.config[key as keyof OptimizelyConfigOptions] === undefined) {
+				// Only apply if allowed by precedence rules (bodies have lowest precedence)
+				if (this.shouldApplyValueFromSource(key as keyof OptimizelyConfigOptions, 'body')) {
+					console.log(`[BODY_DEBUG] Setting ${key} from body: ${JSON.stringify(value)}`);
 					this.setConfigValue(key as keyof OptimizelyConfigOptions, value, 'body');
 					this.logger.debug(`${this.logPrefix} Extracted from body: ${key} = ${JSON.stringify(value)}`);
 
@@ -654,21 +713,27 @@ export class ConfigurationService implements IConfigurationService {
 					if (key === 'sdkKey') {
 						this.logger.debug(`${this.logPrefix} Found SDK Key in request body: '${value}'`);
 					}
-				} else if (key === 'sdkKey') {
+				} else {
+					// Log that we're skipping due to precedence
+					console.log(`[BODY_DEBUG] SKIPPING ${key} from body due to precedence. Current source: ${
+						(this.metadata as any)[`${key}From`]
+					}`);
 					this.logger.debug(
-						`${this.logPrefix} SDK Key from body not used because headers/query params take precedence and we already have an SDK Key: '${this.config.sdkKey}'`
+						`${this.logPrefix} Skipping ${key} from body due to precedence. Current source: ${
+							(this.metadata as any)[`${key}From`]
+						}`
 					);
 				}
 			}
 
 			// Special handling for userId/visitorId (aliases)
-			if (body.userId && !this.config.visitorId) {
+			if (body.userId && this.shouldApplyValueFromSource('visitorId', 'body')) {
 				this.setConfigValue('visitorId', body.userId, 'body');
 				this.logger.debug(`${this.logPrefix} Using userId from body as visitorId: ${body.userId}`);
 			}
 
 			// Ensure flagKeys is an array
-			if (body.flagKeys && !Array.isArray(this.config.flagKeys)) {
+			if (body.flagKeys && this.shouldApplyValueFromSource('flagKeys', 'body')) {
 				this.setConfigValue('flagKeys', Array.isArray(body.flagKeys) ? body.flagKeys : [body.flagKeys], 'body');
 				this.logger.debug(`${this.logPrefix} Converted flagKeys to array: ${JSON.stringify(this.config.flagKeys)}`);
 			}
@@ -677,6 +742,7 @@ export class ConfigurationService implements IConfigurationService {
 		}
 
 		// Log current SDK key after body processing
+		console.log(`[BODY_DEBUG] AFTER BODY PROCESSING: sdkKey = ${this.config.sdkKey}, sdkKeyFrom = ${this.metadata.sdkKeyFrom}`);
 		this.logger.debug(`${this.logPrefix} Current SDK Key after body processing: '${this.config.sdkKey}'`);
 	}
 
@@ -807,11 +873,16 @@ export class ConfigurationService implements IConfigurationService {
 	 * Updates configuration metadata based on current config.
 	 */
 	private updateMetadata(): void {
+		// Extra debug logging
+		console.log(`[META_DEBUG] Updating metadata, enableResponseMetadata: ${this.config.enableResponseMetadata}`);
+		
 		// Update metadata if enableResponseMetadata is true
 		if (this.config.enableResponseMetadata) {
 			// Update metadata with current config values
 			if (this.config.sdkKey) {
+				console.log(`[META_DEBUG] Setting metadata.sdkKey to ${this.config.sdkKey}`);
 				this.metadata.sdkKey = this.config.sdkKey;
+				console.log(`[META_DEBUG] Current metadata.sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
 			}
 
 			if (this.config.visitorId) {
@@ -829,6 +900,12 @@ export class ConfigurationService implements IConfigurationService {
 					? this.config.flagKeys
 					: [this.config.flagKeys as unknown as string];
 			}
+			
+			// DEBUG: Log all metadata fields and values
+			console.log('[META_DEBUG] Final metadata after update:');
+			for (const [key, value] of Object.entries(this.metadata)) {
+				console.log(`[META_DEBUG]   ${key}: ${JSON.stringify(value)}`);
+			}
 		}
 	}
 
@@ -843,30 +920,44 @@ export class ConfigurationService implements IConfigurationService {
 			return;
 		}
 
+		// ===== DEBUG LOGGING FOR PRECEDENCE TESTING =====
+		console.log(`[DEBUG] setConfigValue called: key=${key}, value=${JSON.stringify(value)}, source=${source}`);
+		
+		// Check for existing value and prioritize based on source
+		const sourceField = `${String(key)}From`;
+		const currentSource = (this.metadata as any)[sourceField];
+		
+		console.log(`[DEBUG] Current source for ${key}: ${currentSource || 'none'}`);
+		
+		// Implement precedence: headers > queryParams > body
+		// Always check source precedence regardless of whether a value exists or not
+		if (currentSource === 'headers') {
+			// Headers always win, don't override with any other source
+			console.log(`[DEBUG] Not overriding ${key} from 'headers' with value from '${source}'`);
+			this.logger.debug(`${this.logPrefix} Not overriding ${key} from 'headers' with value from '${source}'`);
+			return;
+		}
+		if (currentSource === 'queryParams' && source === 'body') {
+			// queryParams win over body
+			console.log(`[DEBUG] Not overriding ${key} from 'queryParams' with value from 'body'`);
+			this.logger.debug(`${this.logPrefix} Not overriding ${key} from 'queryParams' with value from 'body'`);
+			return;
+		}
+
+		// Log what we're setting and from where
+		console.log(`[DEBUG] SETTING ${key} = ${JSON.stringify(value)} from source: ${source}`);
+		this.logger.debug(`${this.logPrefix} Setting ${String(key)} = ${JSON.stringify(value)} from source: ${source}`);
+		
 		// Set the value in the config
 		(this.config[key] as T) = value;
 
-		// Update metadata about the source
+		// Track source for all parameters, not just the specific ones listed
 		if (this.config.enableResponseMetadata !== false) {
-			switch (key) {
-				case 'sdkKey':
-					this.metadata.sdkKeyFrom = source;
-					break;
-				case 'visitorId':
-				case 'userId':
-					this.metadata.visitorIdFrom = source;
-					break;
-				case 'attributes':
-					this.metadata.attributesFrom = source;
-					break;
-				case 'eventTags':
-					this.metadata.eventTagsFrom = source;
-					break;
-				case 'flagKeys':
-				case 'flagKey':
-					this.metadata.flagKeysFrom = source;
-					break;
-			}
+			(this.metadata as any)[sourceField] = source;
+			
+			// Debug logging for source tracking
+			console.log(`[DEBUG] Tracked source for ${key} as ${source} in metadata.${sourceField}`);
+			this.logger.debug(`${this.logPrefix} Tracked source for ${key} as ${source} in metadata.${sourceField}`);
 		}
 	}
 
@@ -875,7 +966,8 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns The initial metadata configuration object.
 	 */
 	private initializeConfigMetadata(): ConfigMetadata {
-		return {
+		console.log(`[META_DEBUG] Initializing empty metadata object`);
+		const newMetadata = {
 			visitorId: '',
 			visitorIdFrom: '',
 			decideOptions: [],
@@ -897,6 +989,9 @@ export class ConfigurationService implements IConfigurationService {
 			pathName: '',
 			cdnVariationSettings: {},
 		};
+		
+		console.log(`[META_DEBUG] Initial metadata:`, newMetadata);
+		return newMetadata;
 	}
 
 	/**

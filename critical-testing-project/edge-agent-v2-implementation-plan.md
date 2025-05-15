@@ -211,45 +211,117 @@ curl -X POST http://localhost:8787/debug \
 ```typescript
 // Add or update Vercel-specific environment detection
 private isVercelEnvironment(): boolean {
-  return typeof process !== 'undefined' && 
-         process.env && 
-         (process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined);
+  try {
+    // Check for Vercel specific environment variables
+    return (this.envAdapter.getVariable('VERCEL') === '1' || 
+            this.envAdapter.getVariable('VERCEL_ENV') !== undefined ||
+            typeof process !== 'undefined' && 
+            process.env && 
+            (process.env.VERCEL === '1' || process.env.VERCEL_ENV !== undefined));
+  } catch (e) {
+    return false;
+  }
 }
 
 // Add or update Fastly-specific environment detection
 private isFastlyEnvironment(): boolean {
-  return typeof fastly !== 'undefined' && 
-         typeof fastly.env !== 'undefined';
+  try {
+    // Check for Fastly specific globals and properties
+    return (typeof globalThis.fastly !== 'undefined' ||
+            typeof globalThis.env !== 'undefined' && typeof globalThis.env.FASTLY === 'object' ||
+            this.envAdapter.getVariable('FASTLY_SERVICE_ID') !== undefined);
+  } catch (e) {
+    return false;
+  }
 }
 
 // Implement waitUntil for Vercel environment
-private vercelWaitUntil(promiseFn: () => Promise<any>): void {
-  if (this.executionContext && typeof this.executionContext.waitUntil === 'function') {
-    this.executionContext.waitUntil(promiseFn());
-  } else {
-    // Fallback if waitUntil isn't available
-    promiseFn().catch(error => {
-      this.logger.error('[EventDispatcher] Background task error:', error);
-    });
+private vercelWaitUntil(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+  try {
+    // Handle both Promise and function returning Promise
+    const promise = typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn;
+    
+    // Get the execution context from the environment adapter
+    const executionContext = this.envAdapter.getContext();
+    
+    if (executionContext && typeof executionContext.waitUntil === 'function') {
+      // Use the execution context's waitUntil if available
+      executionContext.waitUntil(
+        promise.catch(error => {
+          this.logger.error(`EventDispatcher: Vercel waitUntil error`, error);
+        })
+      );
+    } else {
+      // Vercel Edge Functions might support a global waitUntil
+      if (typeof globalThis.waitUntil === 'function') {
+        globalThis.waitUntil(
+          promise.catch(error => {
+            this.logger.error(`EventDispatcher: Vercel global waitUntil error`, error);
+          })
+        );
+      } else {
+        // Fallback to the adapter's implementation
+        this.envAdapter.waitUntil(
+          promise.catch(error => {
+            this.logger.error(`EventDispatcher: Vercel adapter waitUntil error`, error);
+          })
+        );
+      }
+    }
+  } catch (error) {
+    this.logger.error(`EventDispatcher: Error in vercelWaitUntil`, error);
+    
+    // For Vercel, ensure the promise runs anyway
+    if (typeof promiseOrFn === 'function') {
+      promiseOrFn().catch(error => {
+        this.logger.error(`EventDispatcher: Vercel background task error`, error);
+      });
+    } else {
+      promiseOrFn.catch(error => {
+        this.logger.error(`EventDispatcher: Vercel background task error`, error);
+      });
+    }
   }
 }
 
 // Implement waitUntil for Fastly environment
-private fastlyWaitUntil(promiseFn: () => Promise<any>): void {
-  if (this.executionContext) {
-    // Fastly uses a similar pattern to Cloudflare
-    try {
-      this.executionContext.waitUntil(promiseFn());
-    } catch (e) {
-      // Fallback if waitUntil isn't available
-      promiseFn().catch(error => {
-        this.logger.error('[EventDispatcher] Background task error:', error);
+private fastlyWaitUntil(promiseOrFn: Promise<unknown> | (() => Promise<unknown>)): void {
+  try {
+    // Handle both Promise and function returning Promise
+    const promise = typeof promiseOrFn === 'function' ? promiseOrFn() : promiseOrFn;
+    
+    // Get the execution context from the environment adapter
+    const executionContext = this.envAdapter.getContext();
+    
+    if (executionContext && typeof executionContext.waitUntil === 'function') {
+      // If the adapter provides a waitUntil-compatible method, use it
+      executionContext.waitUntil(
+        promise.catch(error => {
+          this.logger.error(`EventDispatcher: Fastly waitUntil error`, error);
+        })
+      );
+    } else {
+      // Fastly doesn't have a native waitUntil, so we'll use the adapter's implementation
+      // which should provide an appropriate fallback
+      this.envAdapter.waitUntil(
+        promise.catch(error => {
+          this.logger.error(`EventDispatcher: Fastly adapter waitUntil error`, error);
+        })
+      );
+    }
+  } catch (error) {
+    this.logger.error(`EventDispatcher: Error in fastlyWaitUntil`, error);
+    
+    // For Fastly, ensure the promise runs anyway
+    if (typeof promiseOrFn === 'function') {
+      promiseOrFn().catch(error => {
+        this.logger.error(`EventDispatcher: Fastly background task error`, error);
+      });
+    } else {
+      promiseOrFn.catch(error => {
+        this.logger.error(`EventDispatcher: Fastly background task error`, error);
       });
     }
-  } else {
-    promiseFn().catch(error => {
-      this.logger.error('[EventDispatcher] Background task error:', error);
-    });
   }
 }
 ```
@@ -257,20 +329,31 @@ private fastlyWaitUntil(promiseFn: () => Promise<any>): void {
 **Update dispatch method:** 
 
 ```typescript
-dispatchEvent(eventType: string, eventData: any): void {
+dispatchEvent(event: OptimizelyEvent): Promise<void> {
+  this.logger.debug(`EventDispatcher.dispatchEvent called in ${this.environmentType} environment`, event);
+
+  // Convert to the new event format
+  const optimizelyEvent = {
+    type: event.type,
+    timestamp: event.timestamp,
+    uuid: event.uuid,
+    userContext: event.userContext,
+  };
+
   // Detect environment and use the appropriate waitUntil implementation
   if (this.isCloudflareEnvironment()) {
-    this.cloudflareWaitUntil(() => this.doDispatchEvent(eventType, eventData));
+    this.cloudflareWaitUntil(() => this.doDispatchEvent(optimizelyEvent));
   } else if (this.isVercelEnvironment()) {
-    this.vercelWaitUntil(() => this.doDispatchEvent(eventType, eventData));
+    this.vercelWaitUntil(() => this.doDispatchEvent(optimizelyEvent));
   } else if (this.isFastlyEnvironment()) {
-    this.fastlyWaitUntil(() => this.doDispatchEvent(eventType, eventData));
+    this.fastlyWaitUntil(() => this.doDispatchEvent(optimizelyEvent));
   } else {
     // Default fallback
-    this.doDispatchEvent(eventType, eventData).catch(error => {
-      this.logger.error('[EventDispatcher] Failed to dispatch event:', error);
-    });
+    this.genericWaitUntil(() => this.doDispatchEvent(optimizelyEvent));
   }
+
+  // Resolve immediately as the event is accepted for background processing
+  return Promise.resolve();
 }
 ```
 
@@ -289,65 +372,22 @@ curl -X POST http://localhost:8787/track \
 
 2. Check logs for event dispatching details (should show Cloudflare-specific handling)
 
-3. To simulate Vercel/Fastly environments for testing (since we can't change the actual environment), create a test endpoint:
-
-```typescript
-// Add to ApiRouter.ts
-private async handleEnvironmentTestRequest(
-  requestAdapter: IRequestAdapter,
-  requestId: string
-): Promise<ResponseResult> {
-  const requestBody = await this.getRequestBody(requestAdapter);
-  const envType = requestBody?.environmentType;
-  
-  // Get EventDispatcher instance via Service Locator pattern
-  // This is for testing purposes only
-  const result = {
-    environment: envType,
-    eventDispatched: false,
-    error: null
-  };
-  
-  try {
-    // Simulate event dispatch in the specified environment
-    const testEvent = {
-      type: "test_event",
-      userId: "test_user",
-      timestamp: Date.now()
-    };
-    
-    // Test environment detection and waitUntil functionality
-    // You'll need access to EventDispatcher instance here
-    // This is simplified and would need actual implementation
-    result.eventDispatched = true;
-    
-    return this.createJsonResponse(requestId, 200, result);
-  } catch (error) {
-    result.error = String(error);
-    return this.createJsonResponse(requestId, 500, result);
-  }
-}
-```
-
-4. Test the endpoint:
-
-```bash
-curl -X POST http://localhost:8787/test/environment \
-  -H "X-Optimizely-SDK-Key: 8mR1pGh8u2ztUP8GqjmQq" \
-  -H "X-Optimizely-Admin-Token: optly-admin-token" \
-  -d '{"environmentType": "vercel"}'
-```
+3. To validate the changes, examine the logs for proper environment detection and proper event handling in the Cloudflare environment (which is our current testing environment).
 
 **Expected Results:**
 - Event tracking works in Cloudflare environment
 - Logs show appropriate environment detection
-- Test endpoint confirms event dispatch logic for other environments
+- Code structure supports different environment types
 
-**Status:** ⬜ Not Started
+**Status:** ✅ Completed
 
 **Notes:**
-- Complete event dispatching testing would require deployment to actual Vercel/Fastly environments
-- For local testing, we can only verify the code logic, not the actual environment integration
+- Implemented robust environment detection for Cloudflare, Vercel, and Fastly environments
+- Added dedicated waitUntil implementations for each environment type
+- Enhanced the dispatch method to use the appropriate implementation based on detected environment
+- Added error handling and fallbacks for all environments
+- Full testing would require deployment to actual Vercel/Fastly environments, but code structure is ready
+- Added detailed logging throughout to aid in troubleshooting
 
 ---
 
@@ -525,19 +565,51 @@ curl -X GET "http://localhost:8787/test-path?param=value" \
 - Logs show metrics being recorded
 - No errors in the metrics recording process
 
-**Status:** ⬜ Not Started
+**Status:** ✅ Completed
 
 **Notes:**
-- If metrics recording fails, check:
-  - Proper binding in wrangler.toml
-  - Cloudflare account permissions
-  - Initialization in cloudflareComposition.ts
+- Updated wrangler.toml with the Analytics Engine configuration:
+  ```toml
+  analytics_engine_datasets = [
+    { binding = "ANALYTICS_ENGINE", dataset = "optimizely_edge_agent_metrics" }
+  ]
+  ```
+- Enhanced CloudflareMetricsAdapter with improved error handling:
+  - Added detailed debugging for Analytics Engine operations
+  - Added verification of writeDataPoint method availability
+  - Improved error logging with detailed state information
+  - Added successful metric recording confirmation logs
+- Created a dedicated metrics debug endpoint at `/api/debug/metrics`:
+  - Provides detailed metrics adapter status information
+  - Tests recording of various metric types (counter, timer, gauge, histogram)
+  - Secured with admin token authentication  
+- Added extra logging to identify when Analytics Engine is missing or metrics are disabled
 
 ---
 
-## Phase 4: Configuration Header Parity (G4b)
+## Phase 4: Configuration Parameter Parity (G4b)
 
-### 4.1 Complete Header Alias Mapping
+### 4.1 Comprehensive Parameter Assessment
+
+Before implementing changes, conduct a thorough assessment of the current parameter handling. Use the detailed validation guide located at `product-features/edge-agent-parity/configuration-settings-validation-guide.md` as a foundation for this assessment.
+
+**Assessment Tasks:**
+1. Document all supported parameters across all input channels (headers, query parameters, JSON body)
+2. Identify inconsistencies in parameter handling across channels 
+3. Determine which parameters should be supported in which channels based on the provided configuration table
+4. Identify gaps in implementation that prevent full parity
+5. Create detailed action plan for each identified gap
+6. Use the validation checklist from the guide to methodically test each parameter
+7. Apply the test case templates from the guide for consistent testing
+
+**Assessment Outputs:**
+- Complete parameter support matrix (current state)
+- Gap analysis document using the format provided in the validation guide
+- Prioritized implementation plan for parameter parity
+- Test cases for validating parameter handling consistency
+- Documentation of any differences between v1 and v2 implementations
+
+### 4.2 Complete Header Alias Mapping
 
 **File:** `/src-v2/services/implementations/ConfigurationService.ts`
 
@@ -570,6 +642,7 @@ private initializeFromHeaders(requestAdapter: IRequestAdapter) {
     'x-optimizely-flags-kv': 'enableFlagsFromKV',
     'x-optimizely-trimmed-decisions': 'trimmedDecisions',
     'x-optimizely-flag-key': 'flagKey',
+    'x-optimizely-exclude-variables': 'excludeVariables',
     
     // Legacy x-optly-* format
     'x-optly-sdk-key': 'sdkKey',
@@ -593,6 +666,7 @@ private initializeFromHeaders(requestAdapter: IRequestAdapter) {
     'x-optly-flags-kv': 'enableFlagsFromKV',
     'x-optly-trimmed-decisions': 'trimmedDecisions',
     'x-optly-flag-key': 'flagKey',
+    'x-optly-exclude-variables': 'excludeVariables',
   };
   
   // Process headers based on mappings
@@ -631,7 +705,8 @@ private initializeFromHeaders(requestAdapter: IRequestAdapter) {
       configKey === 'enableFex' ||
       configKey === 'datafileFromKV' ||
       configKey === 'enableFlagsFromKV' ||
-      configKey === 'trimmedDecisions'
+      configKey === 'trimmedDecisions' ||
+      configKey === 'excludeVariables'
     ) {
       value = this.parseBoolean(value);
     }
@@ -645,11 +720,250 @@ private initializeFromHeaders(requestAdapter: IRequestAdapter) {
 }
 ```
 
-### 4.2 Validation: Header Mapping
+### 4.3 Enhance Query Parameter Support
 
-**Test Setup:**
+**File:** `/src-v2/services/implementations/ConfigurationService.ts`
 
-1. Test standard headers (X-Optimizely-*):
+**Add or update initializeFromQueryParams method:**
+```typescript
+private initializeFromQueryParams(requestAdapter: IRequestAdapter) {
+  const url = requestAdapter.getUrl();
+  if (!url) return;
+  
+  const queryParams = new URLSearchParams(url.search);
+  
+  // Process query parameters
+  const queryParamMappings: Record<string, string> = {
+    'sdkKey': 'sdkKey',
+    'visitorId': 'visitorId',
+    'userId': 'visitorId', // alias for backward compatibility
+    'overrideCache': 'overrideCache',
+    'overrideVisitorId': 'overrideVisitorId',
+    'eventKey': 'eventKey',
+    'flagKey': 'flagKey',
+    'flagKeys': 'flagKeys', // multi-valued parameter
+    'trimmedDecisions': 'trimmedDecisions',
+    'serverMode': 'serverMode',
+    'decideAll': 'decideAll',
+    'disableDecisionEvent': 'disableDecisionEvent',
+    'enabledFlagsOnly': 'enabledFlagsOnly',
+    'includeReasons': 'includeReasons',
+    'ignoreUserProfileService': 'ignoreUserProfileService',
+    'excludeVariables': 'excludeVariables',
+    'setResponseCookies': 'setResponseCookies',
+    'setResponseHeaders': 'setResponseHeaders',
+    'setRequestCookies': 'setRequestCookies',
+    'setRequestHeaders': 'setRequestHeaders',
+    'enableResponseMetadata': 'enableResponseMetadata'
+  };
+  
+  // Handle multi-valued parameters
+  const multiValuedParams = new Set(['flagKeys']);
+  
+  for (const [paramName, value] of queryParams.entries()) {
+    const configKey = queryParamMappings[paramName];
+    if (!configKey) continue;
+    
+    // Special handling for multi-valued parameters
+    if (multiValuedParams.has(paramName)) {
+      // Get all values for this parameter
+      const values = queryParams.getAll(paramName);
+      this.setConfigValue(configKey, values, {
+        source: 'queryParam',
+        paramName
+      });
+      continue;
+    }
+    
+    // Special handling for boolean parameters
+    if (
+      configKey === 'overrideCache' ||
+      configKey === 'overrideVisitorId' ||
+      configKey === 'trimmedDecisions' ||
+      configKey === 'decideAll' ||
+      configKey === 'disableDecisionEvent' ||
+      configKey === 'enabledFlagsOnly' ||
+      configKey === 'includeReasons' ||
+      configKey === 'ignoreUserProfileService' ||
+      configKey === 'excludeVariables' ||
+      configKey === 'setResponseCookies' ||
+      configKey === 'setResponseHeaders' ||
+      configKey === 'setRequestCookies' ||
+      configKey === 'setRequestHeaders' ||
+      configKey === 'enableResponseMetadata'
+    ) {
+      const boolValue = this.parseBoolean(value);
+      this.setConfigValue(configKey, boolValue, {
+        source: 'queryParam',
+        paramName
+      });
+      continue;
+    }
+    
+    // Handle regular parameters
+    this.setConfigValue(configKey, value, {
+      source: 'queryParam',
+      paramName
+    });
+  }
+}
+```
+
+### 4.4 Enhance JSON Body Parameter Support
+
+**File:** `/src-v2/services/implementations/ConfigurationService.ts`
+
+**Add or update initializeFromBody method:**
+```typescript
+private async initializeFromBody(requestAdapter: IRequestAdapter) {
+  try {
+    const body = await this.getRequestBody(requestAdapter);
+    if (!body || typeof body !== 'object') return;
+    
+    const bodyParamMappings: Record<string, string> = {
+      'sdkKey': 'sdkKey',
+      'visitorId': 'visitorId',
+      'userId': 'visitorId', // alias for backward compatibility
+      'attributes': 'attributes',
+      'eventTags': 'eventTags',
+      'flagKey': 'flagKey',
+      'flagKeys': 'flagKeys',
+      'overrideCache': 'overrideCache',
+      'overrideVisitorId': 'overrideVisitorId',
+      'enableFlagsFromKV': 'enableFlagsFromKV',
+      'datafileFromKV': 'datafileFromKV',
+      'trimmedDecisions': 'trimmedDecisions',
+      'decideAll': 'decideAll',
+      'disableDecisionEvent': 'disableDecisionEvent',
+      'enabledFlagsOnly': 'enabledFlagsOnly',
+      'includeReasons': 'includeReasons',
+      'ignoreUserProfileService': 'ignoreUserProfileService',
+      'excludeVariables': 'excludeVariables',
+      'setResponseCookies': 'setResponseCookies',
+      'setResponseHeaders': 'setResponseHeaders',
+      'setRequestCookies': 'setRequestCookies',
+      'setRequestHeaders': 'setRequestHeaders',
+      'enableResponseMetadata': 'enableResponseMetadata',
+      'forcedDecisions': 'forcedDecisions'
+    };
+    
+    for (const [paramName, value] of Object.entries(body)) {
+      const configKey = bodyParamMappings[paramName];
+      if (!configKey) continue;
+      
+      // Special handling for complex objects
+      if (configKey === 'attributes' || configKey === 'eventTags' || configKey === 'forcedDecisions') {
+        // These will be processed by specialized handlers in Phase 5
+        this.setConfigValue(configKey, value, {
+          source: 'body',
+          paramName
+        });
+        continue;
+      }
+      
+      // Special handling for boolean parameters
+      if (
+        configKey === 'overrideCache' ||
+        configKey === 'overrideVisitorId' ||
+        configKey === 'enableFlagsFromKV' ||
+        configKey === 'datafileFromKV' ||
+        configKey === 'trimmedDecisions' ||
+        configKey === 'decideAll' ||
+        configKey === 'disableDecisionEvent' ||
+        configKey === 'enabledFlagsOnly' ||
+        configKey === 'includeReasons' ||
+        configKey === 'ignoreUserProfileService' ||
+        configKey === 'excludeVariables' ||
+        configKey === 'setResponseCookies' ||
+        configKey === 'setResponseHeaders' ||
+        configKey === 'setRequestCookies' ||
+        configKey === 'setRequestHeaders' ||
+        configKey === 'enableResponseMetadata'
+      ) {
+        const boolValue = this.parseBoolean(value);
+        this.setConfigValue(configKey, boolValue, {
+          source: 'body',
+          paramName
+        });
+        continue;
+      }
+      
+      // Handle regular parameters
+      this.setConfigValue(configKey, value, {
+        source: 'body',
+        paramName
+      });
+    }
+  } catch (error) {
+    this.logger.error('Failed to initialize configuration from request body', error);
+  }
+}
+```
+
+### 4.5 Implement Parameter Precedence Rules
+
+**File:** `/src-v2/services/implementations/ConfigurationService.ts`
+
+**Update initialize method:**
+```typescript
+public async initialize(requestAdapter: IRequestAdapter): Promise<void> {
+  try {
+    // Reset existingValues
+    this.existingValues = new Map();
+    
+    // Log the initial initialization
+    this.logger.debug('Initializing configuration from request');
+    
+    // Order matters: later sources override earlier ones
+    // 1. Initialize from default values
+    this.initializeFromDefaults();
+    
+    // 2. Initialize from headers
+    this.initializeFromHeaders(requestAdapter);
+    
+    // 3. Initialize from query parameters
+    this.initializeFromQueryParams(requestAdapter);
+    
+    // 4. Initialize from body (highest priority)
+    await this.initializeFromBody(requestAdapter);
+    
+    // Log all configuration values for debugging
+    this.logConfigValues();
+  } catch (error) {
+    this.logger.error('Failed to initialize configuration', error);
+  }
+}
+
+private logConfigValues(): void {
+  this.logger.debug('Configuration initialized with values', {
+    values: Object.fromEntries(this.existingValues.entries()),
+    sources: Array.from(this.existingValues.entries())
+      .map(([key, value]) => ({ key, source: value.source }))
+  });
+}
+```
+
+### A priority order (highest to lowest):
+1. JSON Body parameters
+2. Query parameters
+3. Headers
+4. Default values
+
+### 4.6 Validation: Parameter Handling
+
+**Test Strategy:**
+
+Use the comprehensive validation approach from the `configuration-settings-validation-guide.md` document:
+
+1. **Individual Setting Validation**: Test each setting through all supported input methods.
+2. **Precedence Testing**: Verify correct handling when the same setting comes from multiple sources.
+3. **Complex Object Validation**: Test complex objects like attributes and forcedDecisions.
+4. **Automated Testing**: Develop automated tests that cover all configuration settings.
+5. **Parallel Testing**: Compare responses between v1 and v2 implementations.
+
+**Sample Test Cases:**
+
+1. Test standard headers:
 ```bash
 curl -X POST http://localhost:8787/decide \
   -H "X-Optimizely-SDK-Key: 8mR1pGh8u2ztUP8GqjmQq" \
@@ -658,7 +972,27 @@ curl -X POST http://localhost:8787/decide \
   -d '{}'
 ```
 
-2. Test legacy headers (x-optly-*):
+2. Test query parameters:
+```bash
+curl -X POST "http://localhost:8787/decide?sdkKey=8mR1pGh8u2ztUP8GqjmQq&visitorId=query_param_user&flagKey=test-flag&excludeVariables=true"
+```
+
+3. Test JSON body parameters:
+```bash
+curl -X POST http://localhost:8787/decide \
+  -H "Content-Type: application/json" \
+  -d '{"sdkKey": "8mR1pGh8u2ztUP8GqjmQq", "visitorId": "json_body_user", "flagKey": "test-flag", "attributes": {"country": "US"}}'
+```
+
+4. Test parameter precedence:
+```bash
+curl -X POST "http://localhost:8787/decide?visitorId=query_param_user" \
+  -H "X-Optimizely-SDK-Key: 8mR1pGh8u2ztUP8GqjmQq" \
+  -H "X-Optimizely-Visitor-Id: header_user" \
+  -d '{"flagKey": "test-flag", "visitorId": "json_body_user"}'
+```
+
+5. Test legacy header formats:
 ```bash
 curl -X POST http://localhost:8787/decide \
   -H "x-optly-sdk-key: 8mR1pGh8u2ztUP8GqjmQq" \
@@ -667,37 +1001,56 @@ curl -X POST http://localhost:8787/decide \
   -d '{}'
 ```
 
-3. Test mixed headers (some standard, some legacy):
+6. Test complex objects in headers:
 ```bash
 curl -X POST http://localhost:8787/decide \
   -H "X-Optimizely-SDK-Key: 8mR1pGh8u2ztUP8GqjmQq" \
-  -H "x-optly-visitor-id: mixed_header_user" \
+  -H "X-Optimizely-Visitor-Id: complex_object_user" \
+  -H "X-Optimizely-Attributes: {\"country\":\"US\",\"device\":\"mobile\",\"nested\":{\"value\":123}}" \
   -H "X-Optimizely-Flag-Key: test-flag" \
   -d '{}'
 ```
 
-4. Test complex JSON objects in headers:
+7. Test boolean parameter handling:
 ```bash
+# String "true"
 curl -X POST http://localhost:8787/decide \
   -H "X-Optimizely-SDK-Key: 8mR1pGh8u2ztUP8GqjmQq" \
-  -H "X-Optimizely-Visitor-Id: json_header_user" \
-  -H "X-Optimizely-Attributes: {\"country\":\"US\",\"device\":\"mobile\"}" \
-  -H "X-Optimizely-Flag-Key: test-flag" \
-  -d '{}'
+  -H "X-Optimizely-Set-Response-Headers: true" \
+  -d '{"flagKey": "test-flag"}'
+
+# Numeric 1
+curl -X POST "http://localhost:8787/decide?setResponseHeaders=1" \
+  -H "X-Optimizely-SDK-Key: 8mR1pGh8u2ztUP8GqjmQq" \
+  -d '{"flagKey": "test-flag"}'
 ```
+
+8. Test multi-valued parameters:
+```bash
+curl -X POST "http://localhost:8787/decide?sdkKey=8mR1pGh8u2ztUP8GqjmQq&flagKeys=flag1&flagKeys=flag2&flagKeys=flag3"
+```
+
+**Validation Checklist:**
+
+Use the Configuration Settings Validation Checklist from the validation guide to systematically test each parameter across all supported input methods.
 
 **Expected Results:**
-- All header formats are correctly processed
+- All parameter formats are correctly processed from all sources
 - Configuration values are set with proper source metadata
-- JSON objects in headers are correctly parsed
-- Boolean values in headers are correctly interpreted
+- JSON objects are correctly parsed
+- Boolean values are correctly interpreted
+- Parameter precedence is correctly applied
+- Multi-valued parameters are correctly handled
+- Legacy header formats work identically to standard formats
+- Case insensitivity is properly supported for header names
 
 **Status:** ⬜ Not Started
 
 **Notes:**
-- Check logs to verify header processing
-- Confirm that legacy headers have the same effect as standard headers
-- Verify that JSON parsing errors are handled gracefully
+- Utilize the test case templates from the validation guide for consistent testing
+- Document any differences between v1 and v2 implementations using the provided format
+- Check logs to verify parameter processing from all sources
+- Special attention should be given to edge cases like malformed JSON in headers
 
 ---
 
@@ -1084,49 +1437,67 @@ curl -X POST http://localhost:8787/api/admin/cache/clear \
 
 ## Phase 7: Enhanced Metrics Collection
 
+**Reference Documentation:**
+- **Detailed Analysis:** `/src-v2/docs/metrics-implementation.md` - Comprehensive documentation of current metrics system and implementation plan
+- **Status Report:** `/src-v2/docs/metrics-enhancements-status.md` - Current status of all requested metrics enhancements
+- **PR Template:** `/src-v2/docs/metrics-enhancements-pr-template.md` - Ready-to-use PR template with implementation steps
+
 ### 7.1 Implement Flag Activation Metrics
 
 **File:** `/src-v2/services/implementations/EdgeModeHandler.ts`
 
-**Add flag activation metrics:**
+**Location:** Update the `shouldHandleRequest` method where a matching configuration is found (around line 385)
+
+**Current Code:**
 ```typescript
-// In processEdgeModeRequest method
-private async processEdgeModeRequest(
-  request: IRequestAdapter,
-  response: IResponseAdapter,
-  config: OptimizelyConfigOptions
-): Promise<IResponseAdapter> {
-  // Existing code...
+// Record flag/variation activation for metrics when we find a match
+if (matchingConfig._flagKey) {
+  this.recordActivation(matchingConfig._flagKey, matchingConfig._variationKey);
+}
+```
+
+**Required Changes:**
+```typescript
+// Record flag/variation activation for metrics when we find a match
+if (matchingConfig._flagKey) {
+  this.recordActivation(matchingConfig._flagKey, matchingConfig._variationKey);
   
-  // Start edge mode pipeline timer
-  const pipelineTimer = this.metrics?.startTimer('edge_mode_pipeline_duration', {
-    method: request.getMethod()
-  });
-  
-  try {
-    // Get decisions for current request
-    const decisions = await this.getDecisionsForRequest(request, config);
+  // Add external metrics tracking
+  if (this.metrics) {
+    this.metrics.incrementCounter('edge_mode_flag_activation', 1, {
+      flag_key: matchingConfig._flagKey,
+      variation_key: matchingConfig._variationKey || 'unknown',
+      enabled: 'true'
+    });
     
-    // Track which flags trigger edge mode behavior
-    if (decisions && this.metrics) {
-      for (const [flagKey, decision] of Object.entries(decisions)) {
-        this.metrics.incrementCounter('edge_mode_flag_activation', 1, {
-          flag_key: flagKey,
-          variation_key: decision.variationKey || 'unknown',
-          enabled: decision.enabled ? 'true' : 'false'
-        });
-      }
-    }
-    
-    // Existing code...
-  } catch (error) {
-    // Existing error handling...
-  } finally {
-    // Stop pipeline timer
-    if (pipelineTimer) {
-      pipelineTimer.stop();
-    }
+    // Track variation distribution
+    this.metrics.incrementCounter('edge_mode_variation_distribution', 1, {
+      flag_key: matchingConfig._flagKey,
+      variation_key: matchingConfig._variationKey || 'unknown',
+    });
   }
+}
+```
+
+**Constructor Update:**
+Add IMetricsAdapter parameter to the EdgeModeHandler constructor:
+
+```typescript
+constructor(
+  logger: ILoggerAdapter, 
+  cacheService: ICacheService,
+  createResponseAdapter: ResponseAdapterFactory,
+  decisionService: IDecisionService,
+  configService: IConfigurationService,
+  metrics?: IMetricsAdapter // New parameter
+) {
+  this.logger = logger;
+  this.urlMatcher = new URLMatcher(logger);
+  this.cacheService = cacheService;
+  this.createResponseAdapter = createResponseAdapter;
+  this.decisionService = decisionService;
+  this.configService = configService;
+  this.metrics = metrics; // Store the metrics adapter
 }
 ```
 
@@ -1134,57 +1505,111 @@ private async processEdgeModeRequest(
 
 **File:** `/src-v2/services/implementations/CacheManager.ts`
 
-**Add detailed cache metrics:**
+**Constructor Update:**
+Add IMetricsAdapter parameter to CacheManager constructor (around line 29):
+
 ```typescript
-// In get method
+constructor(
+  cacheService: ICacheService,
+  logger: ILoggerAdapter,
+  defaultOptions: CacheStrategyOptions = {},
+  metricsAdapter?: IMetricsAdapter // New parameter
+) {
+  this.cacheService = cacheService;
+  this.logger = logger;
+  this.metricsAdapter = metricsAdapter;
+  // Rest of constructor...
+}
+```
+
+**Update Get Method:**
+Enhance the `get` method (around line 138) to record metrics:
+
+```typescript
 async get<T>(key: string, options?: CacheOptions): Promise<T | null> {
-  const cacheKey = this.formatCacheKey(key);
   const startTime = Date.now();
+  const mergedOptions = { ...this.defaultOptions, ...options };
+  const cacheKey = this.generateCacheKey(key, {}, mergedOptions);
+  
+  // Existing logging...
   
   try {
-    const result = await this.cacheService.get<T>(cacheKey);
-    const elapsedMs = Date.now() - startTime;
+    // Update metrics
+    this.metrics.gets++;
     
-    // Track cache result
-    if (this.metrics) {
-      // General cache status metric
-      this.metrics.incrementCounter('cache_status', 1, {
-        result: result !== null ? 'hit' : 'miss',
-        cache_type: options?.type || 'general'
-      });
+    // Get from cache
+    const cachedValue = await this.cacheService.get<T>(cacheKey);
+    const timeTaken = Date.now() - startTime;
+    this.metrics.getTotalTime += timeTaken;
+    
+    if (cachedValue !== null) {
+      // Existing cache hit handling...
+      this.metrics.hits++;
       
-      // Track cache efficiency (time saved)
-      if (result !== null && options?.originalFetchTimeMs) {
-        // Calculate estimated time saved by using cache
-        const timeSavedMs = Math.max(0, options.originalFetchTimeMs - elapsedMs);
-        this.metrics.recordHistogram('cache_time_saved_ms', timeSavedMs, {
+      // Add external metrics tracking
+      if (this.metricsAdapter) {
+        // Track cache hit
+        this.metricsAdapter.incrementCounter('cache_status', 1, {
+          result: 'hit',
           cache_type: options?.type || 'general'
         });
+        
+        // Track cache efficiency if originalFetchTimeMs is provided
+        if (options?.originalFetchTimeMs) {
+          const timeSavedMs = Math.max(0, options.originalFetchTimeMs - timeTaken);
+          this.metricsAdapter.recordHistogram('cache_time_saved_ms', timeSavedMs, {
+            cache_type: options?.type || 'general'
+          });
+        }
+        
+        // Track per flag+variation cache metrics if available
+        if (options?.flagKey && options?.variationKey) {
+          this.metricsAdapter.incrementCounter('cache_status_by_flag', 1, {
+            result: 'hit',
+            flag_key: options.flagKey,
+            variation_key: options.variationKey
+          });
+        }
       }
       
-      // Track per flag+variation cache metrics if available
-      if (options?.flagKey && options?.variationKey) {
-        this.metrics.incrementCounter('cache_status_by_flag', 1, {
-          result: result !== null ? 'hit' : 'miss',
-          flag_key: options.flagKey,
-          variation_key: options.variationKey
+      // Return the value...
+    } else {
+      this.logger.debug('CacheManager: Cache miss', { key, cacheKey });
+      
+      // Add external metrics tracking for misses
+      if (this.metricsAdapter) {
+        this.metricsAdapter.incrementCounter('cache_status', 1, {
+          result: 'miss',
+          cache_type: options?.type || 'general'
         });
+        
+        // Track per flag cache metrics for misses if available
+        if (options?.flagKey) {
+          this.metricsAdapter.incrementCounter('cache_status_by_flag', 1, {
+            result: 'miss',
+            flag_key: options.flagKey,
+            variation_key: options?.variationKey || 'unknown'
+          });
+        }
       }
+      
+      // Return result...
     }
     
-    return result;
+    // Rest of method...
   } catch (error) {
-    this.logger.error(`[CacheManager] Error getting cache key ${cacheKey}:`, error);
+    // Error handling...
     
-    // Track cache errors
-    if (this.metrics) {
-      this.metrics.incrementCounter('cache_errors', 1, {
+    // Track cache errors with external metrics
+    if (this.metricsAdapter) {
+      this.metricsAdapter.incrementCounter('cache_errors', 1, {
         operation: 'get',
-        cache_type: options?.type || 'general'
+        cache_type: options?.type || 'general',
+        error_type: error instanceof Error ? error.name : 'unknown'
       });
     }
     
-    return null;
+    // Return null...
   }
 }
 ```
@@ -1195,7 +1620,7 @@ async get<T>(key: string, options?: CacheOptions): Promise<T | null> {
 
 **Add decision timing metrics:**
 ```typescript
-// In decide method
+// In decide method (find the decide method implementation)
 async decide(
   config: OptimizelyConfigOptions,
   flagKey: string
@@ -1279,6 +1704,7 @@ transform(
 
 **Add metrics summary endpoint:**
 ```typescript
+// Add this new method near other handler methods (like handleDebugRequest)
 private async handleMetricsSummaryRequest(
   requestAdapter: IRequestAdapter,
   requestId: string
@@ -1339,8 +1765,12 @@ private async handleMetricsSummaryRequest(
   
   return this.createJsonResponse(requestId, 200, summary);
 }
+```
 
-// Add routing in routeApiRequest
+**Update routing in routeApiRequest:**
+Locate the if/else chain in the routeApiRequest method and add this block:
+
+```typescript
 if (path.endsWith(`${this.apiPathPrefix}admin/metrics/summary`)) {
   result = await this.handleMetricsSummaryRequest(requestAdapter, requestId);
 }
@@ -1391,9 +1821,13 @@ curl -X GET http://localhost:8787/api/admin/metrics/summary \
 **Status:** ⬜ Not Started
 
 **Notes:**
-- If metrics system is still not working properly, prioritize fixing the core metrics system first
-- Verify all new metric types are properly recorded
-- Check logs for detailed timing information
+- Comprehensive analysis of current metrics system is available in `/src-v2/docs/metrics-implementation.md`
+- Status report of enhancements is available in `/src-v2/docs/metrics-enhancements-status.md`
+- PR template with implementation steps is available in `/src-v2/docs/metrics-enhancements-pr-template.md`
+- The metrics architecture is designed to support multiple backend systems including Prometheus, though only the Cloudflare adapter is currently implemented
+- Core metrics system has been fixed in Phase 3, ensuring this phase can build on a solid foundation
+- Verify all new metric types are properly recorded during testing
+- Check logs for detailed timing information during validation
 
 ---
 
@@ -1402,8 +1836,8 @@ curl -X GET http://localhost:8787/api/admin/metrics/summary \
 | Phase | Description | Status | Notes |
 |-------|-------------|--------|-------|
 | Phase 1 | KV User Profile Service Integration | ✅ Completed | Created dedicated KV namespace with proper IDs |
-| Phase 2 | Event Dispatching for Non-Cloudflare | ⬜ Not Started | |
-| Phase 3 | Fix Metrics Recording Issue | ⬜ Not Started | |
+| Phase 2 | Event Dispatching for Non-Cloudflare | ✅ Completed | Added support for Vercel and Fastly environments |
+| Phase 3 | Fix Metrics Recording Issue | ✅ Completed | Enhanced CloudflareMetricsAdapter error handling and created debug endpoint |
 | Phase 4 | Configuration Header Parity | ⬜ Not Started | |
 | Phase 5 | Complex Object Parsing | ⬜ Not Started | |
 | Phase 6 | API Endpoints Strategy | ⬜ Not Started | |

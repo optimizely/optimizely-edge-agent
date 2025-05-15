@@ -5,54 +5,55 @@ import { IRequestAdapter } from '../../adapters/interfaces/IRequestAdapter';
  */
 export interface OptimizelyConfigOptions {
   // Core decision making
-  sdkKey?: string;                        // Optimizely SDK key
-  visitorId?: string;                     // Visitor ID for making decisions
-  userId?: string;                        // Alias for visitorId (backward compatibility)
-  flagKey?: string;                       // Single flag key for decide operations
-  flagKeys?: string[];                    // Multiple flag keys for decide operations
-  attributes?: Record<string, any>;       // User attributes for decision making
-  forcedDecisions?: Record<string, any>;  // Forced decisions to apply
+  sdkKey?: string | null;                        // Optimizely SDK key
+  visitorId?: string | null;                     // Visitor ID for making decisions
+  userId?: string | null;                        // Alias for visitorId (backward compatibility)
+  flagKey?: string | null;                       // Single flag key for decide operations
+  flagKeys?: string[] | null;                    // Multiple flag keys for decide operations
+  attributes?: Record<string, any> | null;       // User attributes for decision making
+  forcedDecisions?: Record<string, any> | null;  // Forced decisions to apply
   
   // Event tracking
-  eventKey?: string;                      // Event key for tracking conversions
-  eventTags?: Record<string, any>;        // Tags for tracked events
-  value?: number;                         // Numeric value for conversion events
+  eventKey?: string | null;                      // Event key for tracking conversions
+  eventTags?: Record<string, any> | null;        // Tags for tracked events
+  value?: number | null;                         // Numeric value for conversion events
   
   // Decision options
-  decideOptions?: string[];               // Options to pass to decide calls
-  decideAll?: boolean;                    // Whether to decide all flags
+  decideOptions?: string[] | null;               // Options to pass to decide calls
+  decideAll?: boolean | null;                    // Whether to decide all flags
   
-  enabledFlagsOnly?: boolean;             // Whether to only include enabled flags in response
-  includeReasons?: boolean;               // Whether to include decision reasons
-  excludeVariables?: boolean;             // Whether to exclude variables from decisions
-  disableDecisionEvent?: boolean;         // Whether to disable decision events
-  ignoreUserProfileService?: boolean;     // Whether to ignore user profile service
-  trimmedDecisions?: boolean;             // Whether to return trimmed decisions
+  enabledFlagsOnly?: boolean | null;             // Whether to only include enabled flags in response
+  includeReasons?: boolean | null;               // Whether to include decision reasons
+  excludeVariables?: boolean | null;             // Whether to exclude variables from decisions
+  disableDecisionEvent?: boolean | null;         // Whether to disable decision events
+  ignoreUserProfileService?: boolean | null;     // Whether to ignore user profile service
+  trimmedDecisions?: boolean | null;             // Whether to return trimmed decisions
 
   // Visitor ID management
-  overrideVisitorId?: boolean;            // Whether to override visitor ID with query parameter
+  overrideVisitorId?: boolean | null;            // Whether to override visitor ID with query parameter
 
   // Response control
-  setResponseHeaders?: boolean;           // Whether to set response headers
-  setResponseCookies?: boolean;           // Whether to set response cookies
-  setRequestHeaders?: boolean;            // Whether to set request headers
-  setRequestCookies?: boolean;            // Whether to set request cookies
+  setResponseHeaders?: boolean | null;           // Whether to set response headers
+  setResponseCookies?: boolean | null;           // Whether to set response cookies
+  setRequestHeaders?: boolean | null;            // Whether to set request headers
+  setRequestCookies?: boolean | null;            // Whether to set request cookies
 
   // Storage and caching
-  overrideCache?: boolean;                // Whether to override cache
-  enableFlagsFromKV?: boolean;            // Whether to enable flags from KV storage
-  datafileFromKV?: boolean;               // Whether to retrieve datafile from KV
+  overrideCache?: boolean | null;                // Whether to override cache
+  enableFlagsFromKV?: boolean | null;            // Whether to enable flags from KV storage
+  datafileFromKV?: boolean | null;               // Whether to retrieve datafile from KV
 
   // Advanced options
-  enableResponseMetadata?: boolean;       // Whether to include metadata in response
-  datafileAccessToken?: string;           // Access token for datafile retrieval
-  serverMode?: string;                    // Server mode (edge or agent)
+  enableResponseMetadata?: boolean | null;       // Whether to include metadata in response
+  datafileAccessToken?: string | null;           // Access token for datafile retrieval
+  serverMode?: string | null;                    // Server mode (edge or agent)
+  enableFex?: boolean | null;                    // Whether to enable Feature Experimentation bypass
 
   // Variation settings (for Edge Mode)
-  cdnVariationSettings?: Record<string, any>; // CDN variation settings
+  cdnVariationSettings?: Record<string, any> | null; // CDN variation settings
 
   // New fields from the code block
-  enableDebugHeaders?: boolean;
+  enableDebugHeaders?: boolean | null;
 }
 
 /**
@@ -134,16 +135,54 @@ export interface ConfigMetadata {
   sdkKeyFrom: string;                   // Source of SDK key
   datafileFrom: string;                 // Source of datafile
   trimmedDecisions: boolean;            // Whether decisions are trimmed
+  trimmedDecisionsFrom?: string;        // Source of trimmedDecisions setting
   decideAll: boolean;                   // Whether all flags are decided
+  decideAllFrom?: string;               // Source of decideAll setting
   flagKeysDecided: string[];            // Flag keys that were decided
   flagKeysFrom: string;                 // Source of flag keys
   storedDecisionsFound: boolean;        // Whether stored decisions were found
   storedCookieDecisions: any[];         // Stored decisions from cookies
   forcedDecisions: any[];               // Forced decisions applied
+  forcedDecisionsFrom?: string;         // Source of forced decisions
   agentServerMode: boolean;             // Whether in agent server mode
   pathName: string;                     // Path name of request
   cdnVariationSettings: Record<string, any>; // CDN variation settings
   validationResult?: ValidationResult;  // Result of configuration validation
+  updatedAt?: string;                   // Timestamp when metadata was last updated
+  
+  // Boolean parameter values (matching OptimizelyConfigOptions)
+  enableFex?: boolean;                  // Whether Feature Experimentation bypass is enabled
+  overrideCache?: boolean;              // Whether to override cache
+  enableResponseMetadata?: boolean;     // Whether to include metadata in response
+  overrideVisitorId?: boolean;          // Whether to override visitor ID
+  setResponseHeaders?: boolean;         // Whether to set response headers
+  setResponseCookies?: boolean;         // Whether to set response cookies
+  setRequestHeaders?: boolean;          // Whether to set request headers
+  setRequestCookies?: boolean;          // Whether to set request cookies
+  
+  // Track sources for all boolean parameters
+  overrideCacheFrom?: string;           // Source of overrideCache setting
+  overrideVisitorIdFrom?: string;       // Source of overrideVisitorId setting
+  setResponseHeadersFrom?: string;      // Source of setResponseHeaders setting
+  setResponseCookiesFrom?: string;      // Source of setResponseCookies setting
+  setRequestHeadersFrom?: string;       // Source of setRequestHeaders setting
+  setRequestCookiesFrom?: string;       // Source of setRequestCookies setting
+  enableFexFrom?: string;               // Source of enableFex setting
+  datafileFromKVFrom?: string;          // Source of datafileFromKV setting
+  enableFlagsFromKVFrom?: string;       // Source of enableFlagsFromKV setting
+  enableResponseMetadataFrom?: string;  // Source of enableResponseMetadata setting
+  excludeVariablesFrom?: string;        // Source of excludeVariables setting
+  eventKeyFrom?: string;                // Source of eventKey setting
+  decideOptionsFrom?: string;           // Source of decideOptions setting
+  disableDecisionEventFrom?: string;    // Source of disableDecisionEvent setting
+  enabledFlagsOnlyFrom?: string;        // Source of enabledFlagsOnly setting
+  includeReasonsFrom?: string;          // Source of includeReasons setting
+  ignoreUserProfileServiceFrom?: string; // Source of ignoreUserProfileService setting
+  precedenceRules?: {                   // Parameter precedence rules used during initialization
+    headersOverQueryParams: boolean;    // Whether headers take precedence over query parameters
+    queryParamsOverBody: boolean;       // Whether query parameters take precedence over body
+    order: string;                      // Human-readable precedence order
+  };
 }
 
 /**

@@ -16,6 +16,9 @@ This directory contains documentation for the Optimizely Edge Agent, focusing on
 - [**Implementation Summary**](./implementation-summary.md) - Overview of the implementation approach
 - [**CDN Adapters**](./cdn-adapters.md) - Documentation for using multiple CDN environments (Cloudflare, Vercel, Fastly)
 - [**Adapter Implementation Summary**](./adapter-implementation-summary.md) - Summary of the CDN adapter implementation process
+- [**Metrics Implementation**](./metrics-implementation.md) - Comprehensive documentation of the metrics system and enhancement plans
+- [**Metrics Enhancements Status**](./metrics-enhancements-status.md) - Status report of requested metrics enhancements
+- [**Metrics Enhancements PR Template**](./metrics-enhancements-pr-template.md) - Ready-to-use PR template for implementing metrics enhancements
 
 ## Troubleshooting and Reference Guides
 
@@ -28,6 +31,9 @@ For the overall project architecture, please see the main [Architecture Document
 
 ## Recent Updates
 
+- May 14, 2025: Added comprehensive metrics system documentation and enhancement plans
+- May 14, 2025: Created metrics enhancements status report and PR template
+- May 14, 2025: Updated implementation plan with detailed metrics enhancement instructions
 - April 5, 2025: Implemented Vercel and Fastly adapters for multi-CDN support
 - April 5, 2025: Updated Composition Root to support multiple CDN environments
 - April 5, 2025: Added CDN adapter documentation
