@@ -388,7 +388,7 @@ describe('ConfigurationService', () => {
       await configService.initialize(requestAdapter);
       
       const metadata = configService.getMetadata();
-      expect(metadata.sdkKeyFrom).toBe('headers');
+      expect(metadata.sdkKeyFrom).toBe('header');
       expect(metadata.visitorIdFrom).toBe('queryParams');
       expect(metadata.attributesFrom).toBe('body');
     });

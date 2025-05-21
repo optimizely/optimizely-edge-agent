@@ -245,11 +245,11 @@ export default class RequestConfig {
 		this.sdkKey = this.getHeader(this.settings.sdkKeyHeader);
 		this.overrideCache = this.getHeader(this.settings.overrideCacheHeader) === 'true' ? true : false;
 		this.overrideVisitorId = this.parseBoolean(this.getHeader(this.settings.overrideVisitorIdHeader));
-		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'Headers';
+		if (this.sdkKey && this.settings.enableResponseMetadata) this.configMetadata.sdkKeyFrom = 'header';
 		this.attributes = this.parseJson(this.getHeader(this.settings.attributesHeader));
 		if (this.attributes && this.settings.enableResponseMetadata) this.configMetadata.attributesFrom = 'body';
 		this.eventTags = this.parseJson(this.getHeader(this.settings.eventTagsHeader));
-		if (this.eventTags && this.settings.enableResponseMetadata) this.configMetadata.eventTagsFrom = 'headers';
+		if (this.eventTags && this.settings.enableResponseMetadata) this.configMetadata.eventTagsFrom = 'header';
 		this.datafileAccessToken = this.getHeader(this.settings.datafileAccessToken);
 		this.optimizelyEnabled = this.parseBoolean(this.getHeader(this.settings.enableOptimizelyHeader));
 		this.decideOptions = this.parseJson(this.getHeader(this.settings.decideOptionsHeader));

@@ -303,8 +303,8 @@ export class DecisionService implements IDecisionService {
         datafileFetchDuration = datafileTimer.stop();
       }
       
-      if (!datafile || typeof datafile !== 'object' || !('revision' in datafile)) {
-        this.logger.error("Failed to fetch valid datafile", {
+      if (!datafile) {
+        this.logger.error("Failed to fetch datafile", {
           sdkKey: this.maskSensitiveData(sdkKey),
           datafileFetchDurationMs: datafileFetchDuration
         });
@@ -312,14 +312,51 @@ export class DecisionService implements IDecisionService {
         if (this.metrics) {
           this.metrics.incrementCounter('datafile_fetch_errors', 1, {
             sdkKey: this.maskSensitiveData(sdkKey),
-            error_type: 'invalid_datafile'
+            error_type: 'missing_datafile'
+          });
+        }
+        
+        return null;
+      }
+      
+      // Parse datafile if it's a string
+      let parsedDatafile: any;
+      try {
+        parsedDatafile = typeof datafile === 'string' ? JSON.parse(datafile) : datafile;
+      } catch (error) {
+        this.logger.error("Failed to parse datafile JSON", {
+          sdkKey: this.maskSensitiveData(sdkKey),
+          datafileFetchDurationMs: datafileFetchDuration,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        
+        if (this.metrics) {
+          this.metrics.incrementCounter('datafile_fetch_errors', 1, {
+            sdkKey: this.maskSensitiveData(sdkKey),
+            error_type: 'invalid_json'
+          });
+        }
+        
+        return null;
+      }
+      
+      if (!parsedDatafile || typeof parsedDatafile !== 'object' || !('revision' in parsedDatafile)) {
+        this.logger.error("Datafile is missing required fields", {
+          sdkKey: this.maskSensitiveData(sdkKey),
+          datafileFetchDurationMs: datafileFetchDuration
+        });
+        
+        if (this.metrics) {
+          this.metrics.incrementCounter('datafile_fetch_errors', 1, {
+            sdkKey: this.maskSensitiveData(sdkKey),
+            error_type: 'invalid_datafile_format'
           });
         }
         
         return null;
       }
 
-      const revision = String((datafile as any).revision);
+      const revision = String(parsedDatafile.revision);
       
       // Calculate time since last datafile update
       let datafileUpdateInterval = 0;
@@ -381,7 +418,7 @@ export class DecisionService implements IDecisionService {
         try {
           // Create enhanced client
           const clientConfig: any = {
-            datafile: datafile,
+            datafile: parsedDatafile,
             logger: loggerAdapter,
             logLevel: this.getLogLevel(),
             errorHandler: {
@@ -428,23 +465,23 @@ export class DecisionService implements IDecisionService {
           // Record datafile metrics
           if (this.metrics) {
             // Record datafile size
-            if (datafile) {
+            if (parsedDatafile) {
               // Use string length as an estimate of size (works in all environments)
-              const datafileSize = JSON.stringify(datafile).length;
+              const datafileSize = JSON.stringify(parsedDatafile).length;
               this.metrics.recordHistogram('datafile_size_bytes', datafileSize, {
                 sdkKey: this.maskSensitiveData(sdkKey)
               });
               
               // Record feature flag count
-              if ((datafile as any).featureFlags && Array.isArray((datafile as any).featureFlags)) {
-                this.metrics.setGauge('feature_flag_count', (datafile as any).featureFlags.length, {
+              if ((parsedDatafile as any).featureFlags && Array.isArray((parsedDatafile as any).featureFlags)) {
+                this.metrics.setGauge('feature_flag_count', (parsedDatafile as any).featureFlags.length, {
                   sdkKey: this.maskSensitiveData(sdkKey)
                 });
               }
               
               // Record experiment count
-              if ((datafile as any).experiments && Array.isArray((datafile as any).experiments)) {
-                this.metrics.setGauge('experiment_count', (datafile as any).experiments.length, {
+              if ((parsedDatafile as any).experiments && Array.isArray((parsedDatafile as any).experiments)) {
+                this.metrics.setGauge('experiment_count', (parsedDatafile as any).experiments.length, {
                   sdkKey: this.maskSensitiveData(sdkKey)
                 });
               }

@@ -10,11 +10,11 @@ The test expected parameter sources to be:
 - 'body' for request body data
 
 However, the code was using:
-- 'headers' (plural) for HTTP headers
+- 'header' (plural) for HTTP headers
 - 'queryParams' for query parameters
 - 'body' was correct
 
-This normalization is now handled in the `setConfigValue` method. Any source value like 'headers' is automatically normalized to 'header', and 'queryParams' is normalized to 'query'.
+This normalization is now handled in the `setConfigValue` method. Any source value like 'header' is automatically normalized to 'header', and 'queryParams' is normalized to 'query'.
 
 ### 2. Duplicate Function Implementations
 

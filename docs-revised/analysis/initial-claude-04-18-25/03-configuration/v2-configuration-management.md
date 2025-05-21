@@ -217,7 +217,7 @@ private async initializeFromHeaders(request: IRequestAdapter): Promise<void> {
       const configValue = this.parseHeaderValue(value, key);
       
       // Store in config with source tracking
-      this.setConfigValue(configKey as keyof OptimizelyConfigOptions, configValue, 'headers');
+      this.setConfigValue(configKey as keyof OptimizelyConfigOptions, configValue, 'header');
     }
   });
   

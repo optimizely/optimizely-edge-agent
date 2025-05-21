@@ -113,16 +113,27 @@ export class ApiRouter {
     const url = requestAdapter.getUrl();
     const path = url.pathname;
     
+    // CRITICAL FIX: Initialize ConfigurationService with the request adapter FIRST
+    // This ensures the ConfigurationService has the correct metadata before any other component uses it
+    this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] ===== INITIALIZING CONFIGURATION FROM REQUEST =====`);
+    try {
+      await this.configService.initialize(requestAdapter);
+      this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Configuration initialized successfully`);
+    } catch (error) {
+      this.logger.error(`${this.logPrefix} [REQUEST:${requestId}] Failed to initialize configuration:`, error);
+      // Continue processing - we'll use defaults
+    }
+    
     // Check for X-Optimizely-Enable-FEX header flag
-    // If enabled, bypass all Optimizely SDK logic and process the request normally
-    if (this.configService.getEnableFex()) {
-      this.logger.info(`${this.logPrefix} X-Optimizely-Enable-FEX header is enabled, bypassing Optimizely SDK logic`);
+    // If disabled (false), bypass all Optimizely SDK logic and process the request normally
+    if (!this.configService.getEnableFex()) {
+      this.logger.info(`${this.logPrefix} X-Optimizely-Enable-FEX header is disabled, bypassing Optimizely SDK logic`);
       
       // Return a properly formatted ResponseResult to indicate normal processing
       // This effectively treats the request as if Optimizely is not present
       return this.createJsonResponse(requestId, 200, {
         bypass: true,
-        message: "Optimizely processing bypassed due to X-Optimizely-Enable-FEX header"
+        message: "Optimizely processing bypassed because X-Optimizely-Enable-FEX is false"
       }, method);
     }
     
@@ -1477,41 +1488,159 @@ export class ApiRouter {
       const requestBody = await this.getRequestBody(requestAdapter);
       const urlParams = this.parseUrlParams(requestAdapter.getUrl().search);
       
-      // Get decision parameters from body or URL with expanded options for user/visitor ID
-      const userId = requestBody?.userId || urlParams.userId || 
-                     requestBody?.visitorId || urlParams.visitorId || 
-                     requestAdapter.getHeader('X-Optimizely-Visitor-Id');
-                     
+      // Prepare a lowercase map of headers for case-insensitive access within this handler
+      const allHeadersRaw = requestAdapter.getHeaders();
+      const headers: Record<string, string> = {};
+      allHeadersRaw.forEach((value, key) => {
+        headers[key.toLowerCase()] = value;
+      });
+
+      // Determine User ID / Visitor ID and its source with correct precedence (header > query > body)
+      let initialUserId: string | null = null;
+      let actualVisitorIdFrom: string = '';
+
+      const headerVisitorId = headers['x-optimizely-visitor-id']; // Use lowercased map
+
+      if (headerVisitorId) {
+        initialUserId = headerVisitorId;
+        actualVisitorIdFrom = 'header';
+      } else if (urlParams.userId) {
+        initialUserId = urlParams.userId;
+        actualVisitorIdFrom = 'query';
+      } else if (urlParams.visitorId) {
+        initialUserId = urlParams.visitorId;
+        actualVisitorIdFrom = 'query';
+      } else if (requestBody?.userId) {
+        initialUserId = requestBody.userId;
+        actualVisitorIdFrom = 'body';
+      } else if (requestBody?.visitorId) {
+        initialUserId = requestBody.visitorId;
+        actualVisitorIdFrom = 'body';
+      }
+      
       // Check for auto-generation of visitor ID if requested
-      let finalUserId = userId;
-      const overrideVisitorId = urlParams.overrideVisitorId === 'true' || 
-                              requestAdapter.getHeader('X-Optimizely-Override-Visitor-Id') === 'true';
+      let finalUserId = initialUserId;
+      // Extract with proper precedence (header → query → body) for override flag
+      const rawOverrideVisitorIdHeader = requestAdapter.getHeader('X-Optimizely-Override-Visitor-Id');
+      const overrideVisitorIdHeaderValue = typeof rawOverrideVisitorIdHeader === 'string' ? rawOverrideVisitorIdHeader.toLowerCase() : null;
+
+      const rawOverrideVisitorIdQuery = urlParams.overrideVisitorId;
+      const overrideVisitorIdQueryValue = typeof rawOverrideVisitorIdQuery === 'string' ? rawOverrideVisitorIdQuery.toLowerCase() : null;
+
+      const overrideVisitorIdBodyValue = requestBody?.overrideVisitorId; // boolean or undefined
+
+      let finalOverrideVisitorIdValue = false; // Default to false
+      let actualOverrideVisitorIdFrom = '';
+
+      if (overrideVisitorIdHeaderValue !== null) {
+          finalOverrideVisitorIdValue = overrideVisitorIdHeaderValue === 'true';
+          actualOverrideVisitorIdFrom = 'header';
+      } else if (overrideVisitorIdQueryValue !== null) {
+          finalOverrideVisitorIdValue = overrideVisitorIdQueryValue === 'true';
+          actualOverrideVisitorIdFrom = 'query';
+      } else if (typeof overrideVisitorIdBodyValue === 'boolean') {
+          finalOverrideVisitorIdValue = overrideVisitorIdBodyValue;
+          actualOverrideVisitorIdFrom = 'body';
+      }
+
+      if (requestContext?.configMetadata) {
+          requestContext.configMetadata.overrideVisitorId = finalOverrideVisitorIdValue;
+          if (actualOverrideVisitorIdFrom) { // Only set 'From' if a source was identified
+            requestContext.configMetadata.overrideVisitorIdFrom = actualOverrideVisitorIdFrom;
+          }
+      }
+      
+      // The 'const overrideVisitorId' can now use finalOverrideVisitorIdValue
+      const overrideVisitorId = finalOverrideVisitorIdValue;
                               
+      // Explicitly set the source of overrideVisitorId in the requestContext metadata
+      // This will be used by addResponseMetadata
+      if (requestContext?.configMetadata) {
+        if (overrideVisitorIdHeaderValue !== null) {
+          requestContext.configMetadata.overrideVisitorIdFrom = 'header';
+        } else if (overrideVisitorIdQueryValue !== null) {
+          requestContext.configMetadata.overrideVisitorIdFrom = 'query';
+        } else if (typeof overrideVisitorIdBodyValue === 'boolean') {
+          requestContext.configMetadata.overrideVisitorIdFrom = 'body';
+        }
+        // If overrideVisitorId is false, overrideVisitorIdFrom will remain unset here,
+        // allowing it to be potentially picked up from ConfigService or default later in addResponseMetadata.
+      }
+
       if (overrideVisitorId) {
         finalUserId = this.generateUUID();
         this.logger.debug(`${this.logPrefix} Auto-generated visitor ID due to override: ${finalUserId}`);
         if (requestContext?.configMetadata) {
           requestContext.configMetadata.visitorId = finalUserId;
           requestContext.configMetadata.visitorIdFrom = 'override';
+          
+          // Track the source of overrideVisitorId in metadata
+          if (overrideVisitorIdHeaderValue !== null) { // Check based on the direct header value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'header';
+          } else if (overrideVisitorIdQueryValue !== null) { // Check based on the direct query value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'query';
+          } else if (typeof overrideVisitorIdBodyValue === 'boolean') { // Check based on the direct body value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'body';
+          }
+          // No direct update to (this.configService as any).metadata
+        }
+      } else {
+        // If not overridden, set the visitorIdFrom based on actual source
+        if (requestContext?.configMetadata && actualVisitorIdFrom) {
+          requestContext.configMetadata.visitorId = finalUserId; // Update value in context
+          requestContext.configMetadata.visitorIdFrom = actualVisitorIdFrom;
         }
       }
       
       // Support header for single flag key
-      const headerFlagKey = requestAdapter.getHeader('X-Optimizely-Flag-Key');
-      // Support both key and flagKey parameters for backward compatibility
-      const flagKey = requestBody?.flagKey || requestBody?.key || urlParams.flagKey || urlParams.key || headerFlagKey;
+      const headerFlagKey = headers['x-optimizely-flag-key']; // Use lowercased map
+      // Support both key and flagKey parameters for backward compatibility with correct precedence (header → query → body)
+      const flagKey = headerFlagKey || urlParams.flagKey || urlParams.key || requestBody?.flagKey || requestBody?.key;
       
-      // If flag key came from header, update metadata
-      if (!requestBody?.flagKey && !requestBody?.key && !urlParams.flagKey && !urlParams.key && headerFlagKey && requestContext?.configMetadata) {
-        requestContext.configMetadata.flagKeysDecided = [headerFlagKey];
-        requestContext.configMetadata.flagKeysFrom = 'header';
+      // Update metadata based on the actual source used according to precedence
+      if (requestContext?.configMetadata) {
+        // Check if the header *exists*, even if its value might be empty
+        if (headers.hasOwnProperty('x-optimizely-flag-key')) { 
+          requestContext.configMetadata.flagKeysDecided = [headerFlagKey || '']; // Use headerFlagKey, default to empty if it was null/undefined but header existed
+          requestContext.configMetadata.flagKeysFrom = 'header';
+        } else if (urlParams.flagKey || urlParams.key) {
+          requestContext.configMetadata.flagKeysDecided = [urlParams.flagKey || urlParams.key];
+          requestContext.configMetadata.flagKeysFrom = 'query';
+        } else if (requestBody?.flagKey || requestBody?.key) {
+          requestContext.configMetadata.flagKeysDecided = [requestBody.flagKey || requestBody.key];
+          requestContext.configMetadata.flagKeysFrom = 'body';
+        }
+        this.logger.debug(`${this.logPrefix} [HANDLE_DECIDE_REQUEST] flagKeysFrom set to: ${requestContext.configMetadata.flagKeysFrom}`);
       }
       
       const attributes = requestBody?.attributes || {};
-      const sdkKey = requestBody?.sdkKey || urlParams.sdkKey || requestAdapter.getHeader('X-Optimizely-SDK-Key');
+      
+      // Determine SDK Key and its source with correct precedence (header > query > body)
+      let sdkKey: string | null = null;
+      let actualSdkKeyFrom: string = '';
+
+      const headerSdkKeyVal = headers['x-optimizely-sdk-key']; // Use lowercased map
+      if (headerSdkKeyVal) {
+        sdkKey = headerSdkKeyVal;
+        actualSdkKeyFrom = 'header';
+      } else if (urlParams.sdkKey) {
+        sdkKey = urlParams.sdkKey;
+        actualSdkKeyFrom = 'query';
+      } else if (requestBody?.sdkKey) {
+        sdkKey = requestBody.sdkKey;
+        actualSdkKeyFrom = 'body';
+      }
+
+      if (requestContext?.configMetadata && actualSdkKeyFrom) {
+        requestContext.configMetadata.sdkKey = sdkKey;
+        requestContext.configMetadata.sdkKeyFrom = actualSdkKeyFrom;
+      } else if (requestContext?.configMetadata && !requestContext.configMetadata.sdkKeyFrom && sdkKey) {
+         requestContext.configMetadata.sdkKey = sdkKey;
+         requestContext.configMetadata.sdkKeyFrom = 'body'; 
+      }
       
       // Check for trimmedDecisions parameter in body, URL, or header
-      const headerTrimmedDecisions = requestAdapter.getHeader('X-Optimizely-Trimmed-Decisions');
+      const headerTrimmedDecisions = headers['x-optimizely-trimmed-decisions']; // Use lowercased map
       const trimmedDecisions = 
         requestBody?.trimmedDecisions === true || 
         urlParams.trimmedDecisions === 'true' || 
@@ -1673,15 +1802,67 @@ export class ApiRouter {
       const requestBody = await this.getRequestBody(requestAdapter);
       const urlParams = this.parseUrlParams(requestAdapter.getUrl().search);
       
-      // Get decision parameters from body or URL, with expanded options for user/visitor ID
-      const userId = requestBody?.userId || urlParams.userId || 
-                     requestBody?.visitorId || urlParams.visitorId || 
-                     requestAdapter.getHeader('X-Optimizely-Visitor-Id');
+      // Determine User ID / Visitor ID and its source with correct precedence (header > query > body)
+      let initialUserId: string | null = null;
+      let actualVisitorIdFrom: string = '';
+
+      const headerVisitorId = requestAdapter.getHeader('X-Optimizely-Visitor-Id'); // Standard header
+      const altHeaderVisitorId = requestAdapter.getHeader('x-optimizely-visitor-id'); // Lowercase variant
+
+      if (headerVisitorId) {
+        initialUserId = headerVisitorId;
+        actualVisitorIdFrom = 'header';
+      } else if (altHeaderVisitorId) {
+        initialUserId = altHeaderVisitorId;
+        actualVisitorIdFrom = 'header';
+      } else if (urlParams.userId) {
+        initialUserId = urlParams.userId;
+        actualVisitorIdFrom = 'query';
+      } else if (urlParams.visitorId) {
+        initialUserId = urlParams.visitorId;
+        actualVisitorIdFrom = 'query';
+      } else if (requestBody?.userId) {
+        initialUserId = requestBody.userId;
+        actualVisitorIdFrom = 'body';
+      } else if (requestBody?.visitorId) {
+        initialUserId = requestBody.visitorId;
+        actualVisitorIdFrom = 'body';
+      }
       
       // Check for auto-generation of visitor ID if requested
-      let finalUserId = userId;
-      const overrideVisitorId = urlParams.overrideVisitorId === 'true' || 
-                              requestAdapter.getHeader('X-Optimizely-Override-Visitor-Id') === 'true';
+      let finalUserId = initialUserId;
+      // Extract with proper precedence (header → query → body) for override flag
+      const rawOverrideVisitorIdHeader = requestAdapter.getHeader('X-Optimizely-Override-Visitor-Id');
+      const overrideVisitorIdHeaderValue = typeof rawOverrideVisitorIdHeader === 'string' ? rawOverrideVisitorIdHeader.toLowerCase() : null;
+
+      const rawOverrideVisitorIdQuery = urlParams.overrideVisitorId;
+      const overrideVisitorIdQueryValue = typeof rawOverrideVisitorIdQuery === 'string' ? rawOverrideVisitorIdQuery.toLowerCase() : null;
+
+      const overrideVisitorIdBodyValue = requestBody?.overrideVisitorId; // boolean or undefined
+
+      let finalOverrideVisitorIdValue = false; // Default to false
+      let actualOverrideVisitorIdFrom = '';
+
+      if (overrideVisitorIdHeaderValue !== null) {
+          finalOverrideVisitorIdValue = overrideVisitorIdHeaderValue === 'true';
+          actualOverrideVisitorIdFrom = 'header';
+      } else if (overrideVisitorIdQueryValue !== null) {
+          finalOverrideVisitorIdValue = overrideVisitorIdQueryValue === 'true';
+          actualOverrideVisitorIdFrom = 'query';
+      } else if (typeof overrideVisitorIdBodyValue === 'boolean') {
+          finalOverrideVisitorIdValue = overrideVisitorIdBodyValue;
+          actualOverrideVisitorIdFrom = 'body';
+      }
+
+      if (requestContext?.configMetadata) {
+          requestContext.configMetadata.overrideVisitorId = finalOverrideVisitorIdValue;
+          if (actualOverrideVisitorIdFrom) { // Only set 'From' if a source was identified
+            requestContext.configMetadata.overrideVisitorIdFrom = actualOverrideVisitorIdFrom;
+          }
+      }
+      
+      // The 'const overrideVisitorId' can now use finalOverrideVisitorIdValue
+      const overrideVisitorId = finalOverrideVisitorIdValue;
                               
       if (overrideVisitorId) {
         finalUserId = this.generateUUID();
@@ -1689,6 +1870,22 @@ export class ApiRouter {
         if (requestContext?.configMetadata) {
           requestContext.configMetadata.visitorId = finalUserId;
           requestContext.configMetadata.visitorIdFrom = 'override';
+          
+          // Track the source of overrideVisitorId in metadata
+          if (overrideVisitorIdHeaderValue !== null) { // Check based on the direct header value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'header';
+          } else if (overrideVisitorIdQueryValue !== null) { // Check based on the direct query value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'query';
+          } else if (typeof overrideVisitorIdBodyValue === 'boolean') { // Check based on the direct body value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'body';
+          }
+          // No direct update to (this.configService as any).metadata
+        }
+      } else {
+        // If not overridden, set the visitorIdFrom based on actual source
+        if (requestContext?.configMetadata && actualVisitorIdFrom) {
+          requestContext.configMetadata.visitorId = finalUserId; // Update value in context
+          requestContext.configMetadata.visitorIdFrom = actualVisitorIdFrom;
         }
       }
       
@@ -1877,8 +2074,38 @@ export class ApiRouter {
       
       // Check for auto-generation of visitor ID if requested
       let finalUserId = userId;
-      const overrideVisitorId = urlParams.overrideVisitorId === 'true' || 
-                              requestAdapter.getHeader('X-Optimizely-Override-Visitor-Id') === 'true';
+      // Extract with proper precedence (header → query → body)
+      const rawOverrideVisitorIdHeader = requestAdapter.getHeader('X-Optimizely-Override-Visitor-Id');
+      const overrideVisitorIdHeaderValue = typeof rawOverrideVisitorIdHeader === 'string' ? rawOverrideVisitorIdHeader.toLowerCase() : null;
+
+      const rawOverrideVisitorIdQuery = urlParams.overrideVisitorId;
+      const overrideVisitorIdQueryValue = typeof rawOverrideVisitorIdQuery === 'string' ? rawOverrideVisitorIdQuery.toLowerCase() : null;
+
+      const overrideVisitorIdBodyValue = requestBody?.overrideVisitorId; // boolean or undefined
+
+      let finalOverrideVisitorIdValue = false; // Default to false
+      let actualOverrideVisitorIdFrom = '';
+
+      if (overrideVisitorIdHeaderValue !== null) {
+          finalOverrideVisitorIdValue = overrideVisitorIdHeaderValue === 'true';
+          actualOverrideVisitorIdFrom = 'header';
+      } else if (overrideVisitorIdQueryValue !== null) {
+          finalOverrideVisitorIdValue = overrideVisitorIdQueryValue === 'true';
+          actualOverrideVisitorIdFrom = 'query';
+      } else if (typeof overrideVisitorIdBodyValue === 'boolean') {
+          finalOverrideVisitorIdValue = overrideVisitorIdBodyValue;
+          actualOverrideVisitorIdFrom = 'body';
+      }
+
+      if (requestContext?.configMetadata) {
+          requestContext.configMetadata.overrideVisitorId = finalOverrideVisitorIdValue;
+          if (actualOverrideVisitorIdFrom) { // Only set 'From' if a source was identified
+            requestContext.configMetadata.overrideVisitorIdFrom = actualOverrideVisitorIdFrom;
+          }
+      }
+      
+      // The 'const overrideVisitorId' can now use finalOverrideVisitorIdValue
+      const overrideVisitorId = finalOverrideVisitorIdValue;
                               
       if (overrideVisitorId) {
         finalUserId = this.generateUUID();
@@ -1886,50 +2113,77 @@ export class ApiRouter {
         if (requestContext?.configMetadata) {
           requestContext.configMetadata.visitorId = finalUserId;
           requestContext.configMetadata.visitorIdFrom = 'override';
+          
+          // Track the source of overrideVisitorId in metadata
+          if (overrideVisitorIdHeaderValue !== null) { // Check based on the direct header value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'header';
+          } else if (overrideVisitorIdQueryValue !== null) { // Check based on the direct query value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'query';
+          } else if (typeof overrideVisitorIdBodyValue === 'boolean') { // Check based on the direct body value read
+            requestContext.configMetadata.overrideVisitorIdFrom = 'body';
+          }
+                                                               
+          // CRITICAL FIX: Ensure metadata value is properly tracked in ConfigService for response generation
+          try {
+            // Try to access metadata directly (internal implementation detail)
+            if ((this.configService as any).metadata) {
+              (this.configService as any).metadata.overrideVisitorIdFrom = overrideVisitorIdHeaderValue ? 'header' : 
+                                                                      (overrideVisitorIdQueryValue ? 'query' : 'body');
+              this.logger.debug(`${this.logPrefix} Updated overrideVisitorIdFrom in ConfigService metadata: ${(this.configService as any).metadata.overrideVisitorIdFrom}`);
+            }
+          } catch (err) {
+            this.logger.warn(`${this.logPrefix} Could not update overrideVisitorIdFrom in ConfigService metadata: ${err}`);
+          }
         }
       }
       
       const attributes = requestBody?.attributes || {};
       const sdkKey = requestBody?.sdkKey || urlParams.sdkKey || requestAdapter.getHeader('X-Optimizely-SDK-Key');
       
-      // Support headers for flag keys
+      // Determine Flag Keys and their source with correct precedence (header > query > body)
+      let flagKeys: string[] = [];
+      let actualFlagKeysFrom: string = '';
+
       const headerFlagKey = requestAdapter.getHeader('X-Optimizely-Flag-Key');
       const headerFlagKeysRaw = requestAdapter.getHeader('X-Optimizely-Flag-Keys');
-      let flagKeysFromHeader: string[] = [];
+      
       if (headerFlagKey) {
-        flagKeysFromHeader = [headerFlagKey];
+        flagKeys = [headerFlagKey];
+        actualFlagKeysFrom = 'header';
       } else if (headerFlagKeysRaw) {
         try {
           const parsed = JSON.parse(headerFlagKeysRaw);
-          flagKeysFromHeader = Array.isArray(parsed) ? parsed : [parsed];
+          flagKeys = Array.isArray(parsed) ? parsed : [parsed];
         } catch (e) {
-          flagKeysFromHeader = headerFlagKeysRaw.split(',').map(k => k.trim());
+          flagKeys = headerFlagKeysRaw.split(',').map(k => k.trim());
         }
+        actualFlagKeysFrom = 'header';
       }
       
-      // Parse flagKeys from URL if they're in comma-separated or array format
       const urlFlagKeysRaw: any = urlParams.flagKeys || urlParams.keys;
-      let flagKeysFromUrlParsed: string[] = [];
-      if (typeof urlFlagKeysRaw === 'string') {
-        flagKeysFromUrlParsed = urlFlagKeysRaw.split(',').map(key => key.trim());
-      } else if (Array.isArray(urlFlagKeysRaw)) {
-        flagKeysFromUrlParsed = urlFlagKeysRaw;
+      if (actualFlagKeysFrom === '' && urlFlagKeysRaw) { // Only check URL if not already sourced from header
+        if (typeof urlFlagKeysRaw === 'string') {
+          flagKeys = urlFlagKeysRaw.split(',').map(key => key.trim());
+        } else if (Array.isArray(urlFlagKeysRaw)) {
+          flagKeys = urlFlagKeysRaw;
+        }
+        if (flagKeys.length > 0) actualFlagKeysFrom = 'query';
+      }
+
+      const bodyFlagKeys = requestBody?.flagKeys || requestBody?.keys;
+      if (actualFlagKeysFrom === '' && Array.isArray(bodyFlagKeys) && bodyFlagKeys.length > 0) { // Only check body if not from header/query
+        flagKeys = bodyFlagKeys;
+        actualFlagKeysFrom = 'body';
       }
       
-      // Combine all sources of flag keys, prioritizing body > header > URL
-      let flagKeys: string[] = [];
-      if (Array.isArray(requestBody?.flagKeys || requestBody?.keys)) {
-        flagKeys = requestBody.flagKeys || requestBody.keys;
-      } else if (flagKeysFromHeader.length > 0) {
-        flagKeys = flagKeysFromHeader;
-      } else if (flagKeysFromUrlParsed.length > 0) {
-        flagKeys = flagKeysFromUrlParsed;
-      }
-      
-      // Update metadata if header supplied the keys
-      if (flagKeysFromHeader.length > 0 && requestContext?.configMetadata) {
+      // Update metadata based on the actual source used for flagKeys
+      if (requestContext?.configMetadata && actualFlagKeysFrom) {
         requestContext.configMetadata.flagKeysDecided = flagKeys;
-        requestContext.configMetadata.flagKeysFrom = 'header';
+        requestContext.configMetadata.flagKeysFrom = actualFlagKeysFrom;
+      } else if (requestContext?.configMetadata && flagKeys.length > 0 && !requestContext.configMetadata.flagKeysFrom) {
+        // If keys were found (e.g. only in body) but no explicit source set yet by getRequestConfig
+        requestContext.configMetadata.flagKeysDecided = flagKeys;
+        requestContext.configMetadata.flagKeysFrom = 'body'; // Default to body if no other more specific source was set
       }
       
       // Check for trimmedDecisions parameter
@@ -2136,7 +2390,17 @@ export class ApiRouter {
     const headers = this.extractHeaders(requestAdapter);
     const queryParams = this.parseUrlParams(requestUrl.search);
     
-    // Initialize metadata
+    // ===== DEBUG: Log critical information about request and metadata =====
+    this.logger.debug(`${this.logPrefix} [REQUEST CONFIG DEBUG] ===== Beginning request config extraction =====`);
+    this.logger.debug(`${this.logPrefix} [REQUEST CONFIG DEBUG] URL: ${requestUrl.toString()}, Method: ${requestMethod}`);
+    this.logger.debug(`${this.logPrefix} [REQUEST CONFIG DEBUG] Critical Headers: sdkKey=${headers['x-optimizely-sdk-key']}, visitorId=${headers['x-optimizely-visitor-id'] || headers['X-Optimizely-Visitor-Id']}`);
+    this.logger.debug(`${this.logPrefix} [REQUEST CONFIG DEBUG] Critical Query Params: sdkKey=${queryParams.sdkKey}, visitorId=${queryParams.visitorId}`);
+    
+    // IMPORTANT: Get the ConfigService metadata to check for inconsistencies
+    const configServiceMetadata = this.configService.getMetadata();
+    this.logger.debug(`${this.logPrefix} [REQUEST CONFIG DEBUG] Existing ConfigService metadata: sdkKeyFrom=${configServiceMetadata.sdkKeyFrom}, visitorIdFrom=${configServiceMetadata.visitorIdFrom}`);
+    
+    // Initialize metadata 
     const configMetadata = this.initializeConfigMetadata();
     
     // Extract SDK Key with source tracking
@@ -2283,6 +2547,47 @@ export class ApiRouter {
 
     this.logger.debug(`${this.logPrefix} Header/Cookie Control: setResponseHeaders=${setResponseHeaders}, setResponseCookies=${setResponseCookies}, setRequestHeaders=${setRequestHeaders}, setRequestCookies=${setRequestCookies}`);
 
+    // Extract enableResponseMetadata with proper precedence (header → query → body)
+    const enableResponseMetadataHeader = headers['x-optimizely-enable-response-metadata'];
+    const enableResponseMetadataQuery = queryParams.enableResponseMetadata;
+    const enableResponseMetadataBody = setResponseHeadersBody?.enableResponseMetadata;
+    
+    // Determine final value with proper precedence
+    let enableResponseMetadata = undefined;
+    let enableResponseMetadataFrom = null;
+    
+    if (enableResponseMetadataHeader !== undefined) {
+      enableResponseMetadata = this.parseBoolean(enableResponseMetadataHeader, true);
+      enableResponseMetadataFrom = 'header';
+    } else if (enableResponseMetadataQuery !== undefined) {
+      enableResponseMetadata = this.parseBoolean(enableResponseMetadataQuery, true);
+      enableResponseMetadataFrom = 'query';
+    } else if (enableResponseMetadataBody !== undefined) {
+      enableResponseMetadata = this.parseBoolean(enableResponseMetadataBody, true);
+      enableResponseMetadataFrom = 'body';
+    }
+    
+    // If a value was determined, update the ConfigurationService
+    if (enableResponseMetadata !== undefined) {
+      this.configService.setValue('enableResponseMetadata', enableResponseMetadata);
+      this.logger.debug(`${this.logPrefix} Setting enableResponseMetadata=${enableResponseMetadata} from ${enableResponseMetadataFrom}`);
+      
+      // Add to metadata
+      configMetadata.enableResponseMetadata = enableResponseMetadata;
+      configMetadata.enableResponseMetadataFrom = enableResponseMetadataFrom;
+      
+      // CRITICAL FIX: Ensure metadata value is properly tracked in ConfigService for response generation
+      try {
+        // Try to access metadata directly (internal implementation detail)
+        if ((this.configService as any).metadata) {
+          (this.configService as any).metadata.enableResponseMetadataFrom = enableResponseMetadataFrom;
+          this.logger.debug(`${this.logPrefix} Updated enableResponseMetadataFrom in ConfigService metadata: ${enableResponseMetadataFrom}`);
+        }
+      } catch (err) {
+        this.logger.warn(`${this.logPrefix} Could not update enableResponseMetadataFrom in ConfigService metadata: ${err}`);
+      }
+    }
+
     // Create a new request config with the extracted data
     const requestConfig: RequestConfig = {
       sdkKey,
@@ -2316,19 +2621,27 @@ export class ApiRouter {
       try {
         const requestBody = await this.getRequestBody(requestAdapter);
         if (requestBody) {
-          // Override with body parameters if present - they take highest precedence
-          if (requestBody.userId || requestBody.visitorId) {
-            // If a body has either userId or visitorId, it takes precedence
-            configMetadata.visitorId = requestBody.visitorId || requestBody.userId || visitorId;
-            configMetadata.visitorIdFrom = 'body';
-            requestConfig.visitorId = configMetadata.visitorId;
-            requestConfig.userId = requestBody.userId || requestBody.visitorId || requestConfig.userId;
-          }
-          
+          // For sdkKey and visitorId, only update source to 'body' if not already set by header/query
           if (requestBody.sdkKey) {
-            configMetadata.sdkKey = requestBody.sdkKey;
-            configMetadata.sdkKeyFrom = 'body';
+            // The actual sdkKey value is taken with body precedence if present.
             requestConfig.sdkKey = requestBody.sdkKey;
+            configMetadata.sdkKey = requestBody.sdkKey;
+            // But the source metadata should only be 'body' if not previously set by header/query.
+            if (!sdkKeyFrom) { // sdkKeyFrom was determined from headers/query earlier
+              configMetadata.sdkKeyFrom = 'body';
+            }
+          }
+
+          if (requestBody.userId || requestBody.visitorId) {
+            const bodyVisitorId = requestBody.visitorId || requestBody.userId;
+            // Actual value takes body precedence if present
+            requestConfig.visitorId = bodyVisitorId;
+            requestConfig.userId = bodyVisitorId; // Assuming userId and visitorId are interchangeable here for value
+            configMetadata.visitorId = bodyVisitorId;
+            // But the source metadata should only be 'body' if not previously set by header/query.
+            if (!visitorIdFrom) { // visitorIdFrom was determined from headers/query earlier
+              configMetadata.visitorIdFrom = 'body';
+            }
           }
           
           // Use extractAttributes to get attributes and their source
@@ -2356,16 +2669,19 @@ export class ApiRouter {
             configMetadata.decideOptions = requestBody.decideOptions || requestBody.options || [];
           }
           
-          // If flag keys are provided in the body - body takes precedence over headers/query
-          if (requestBody.flagKeys && Array.isArray(requestBody.flagKeys)) {
-            configMetadata.flagKeysDecided = requestBody.flagKeys;
-            configMetadata.flagKeysFrom = 'body';
-          } else if (requestBody.flagKey) {
-            configMetadata.flagKeysDecided = [requestBody.flagKey];
-            configMetadata.flagKeysFrom = 'body';
-          } else if (requestBody.key) { // singular 'key' field for /decide
-            configMetadata.flagKeysDecided = [requestBody.key];
-            configMetadata.flagKeysFrom = 'body';
+          // Only use body values for flagKeys if not already set from headers or query
+          // This preserves the header > query > body precedence
+          if (!configMetadata.flagKeysFrom) {
+            if (requestBody.flagKeys && Array.isArray(requestBody.flagKeys)) {
+              configMetadata.flagKeysDecided = requestBody.flagKeys;
+              configMetadata.flagKeysFrom = 'body';
+            } else if (requestBody.flagKey) {
+              configMetadata.flagKeysDecided = [requestBody.flagKey];
+              configMetadata.flagKeysFrom = 'body';
+            } else if (requestBody.key) { // singular 'key' field for /decide
+              configMetadata.flagKeysDecided = [requestBody.key];
+              configMetadata.flagKeysFrom = 'body';
+            }
           }
           
           // If datafileFromKV is set in the body, update the datafile source expectation
@@ -2380,6 +2696,7 @@ export class ApiRouter {
       }
     }
     
+    this.logger.debug(`${this.logPrefix} [REQUEST_CONFIG_RETURN] flagKeysFrom: ${requestConfig.configMetadata?.flagKeysFrom}`);
     return requestConfig;
   }
   
@@ -2584,7 +2901,7 @@ export class ApiRouter {
     // ***** ADD YOUR COMPREHENSIVE HEADER LOGGING STATEMENT HERE *****
     // *******************************************************************
     // This point is after all conditional logic for adding/removing headers
-    // has been processed, and 'headers' contains the final set.
+    // has been processed, and 'header' contains the final set.
 
     this.logger.warn(`${this.logPrefix} FINAL HEADERS FOR REQUEST ${requestId}: ${JSON.stringify(headers)}`);
     // Using logger.warn for high visibility during debugging; change level as needed.
@@ -2626,14 +2943,52 @@ export class ApiRouter {
       return body;
     }
     
-    // Use the existing metadata from the request context if available
-    const metadata = requestContext?.configMetadata || this.initializeConfigMetadata();
+    this.logger.debug(`${this.logPrefix} [META DEBUG] ===== RESPONSE METADATA CREATION =====`);
+    
+    // CRITICAL FIX: Always get the most up-to-date metadata from the ConfigService for source tracking
+    // This ensures that our response metadata always reflects the correct parameter precedence
+    const configServiceMetadata = this.configService.getMetadata();
+    this.logger.debug(`${this.logPrefix} [META DEBUG] Using ConfigService metadata: sdkKeyFrom=${configServiceMetadata.sdkKeyFrom}, visitorIdFrom=${configServiceMetadata.visitorIdFrom}, flagKeysFrom=${configServiceMetadata.flagKeysFrom}`);
+    this.logger.debug(`${this.logPrefix} [META DEBUG] Pre-merge requestContext.configMetadata?.flagKeysFrom: ${requestContext?.configMetadata?.flagKeysFrom}`); // Log for flagKeysFrom
+    
+    // Start with the ConfigService metadata (source of truth)
+    // This ensures the correct source tracking info is always used
+    const metadata = {...configServiceMetadata};
+    
+    if (requestContext?.configMetadata) {
+      this.logger.debug(`${this.logPrefix} [META DEBUG] Merging/overwriting with requestContext.configMetadata. RC sdkKeyFrom=${requestContext.configMetadata.sdkKeyFrom}, RC visitorIdFrom=${requestContext.configMetadata.visitorIdFrom}, RC flagKeysFrom=${requestContext.configMetadata.flagKeysFrom}, RC overrideVisitorId=${requestContext.configMetadata.overrideVisitorId}, RC overrideVisitorIdFrom=${requestContext.configMetadata.overrideVisitorIdFrom}`);
+      Object.keys(requestContext.configMetadata).forEach(key => {
+        const rcValue = requestContext.configMetadata[key];
+        // For specific keys, always prefer the value from requestContext if it exists and is not empty (or is a boolean for overrideVisitorId),
+        // as handlers (handleDecideRequest, etc.) set this authoritatively based on actual precedence for that request.
+        const preferRequestContextKeys = [
+          'flagKeysFrom', 'sdkKeyFrom', 'visitorIdFrom', 
+          'enableResponseMetadataFrom', 'attributesFrom', 
+          'overrideVisitorId', 'overrideVisitorIdFrom'
+        ];
+
+        if (preferRequestContextKeys.includes(key)) {
+          // For boolean overrideVisitorId, allow true/false. For strings, ensure not empty.
+          if ((key === 'overrideVisitorId' && typeof rcValue === 'boolean') || (rcValue && rcValue !== '')) {
+            (metadata as any)[key] = rcValue;
+            this.logger.debug(`${this.logPrefix} [META DEBUG] Updated metadata.${key} using requestContext value: ${rcValue}`);
+          }
+        } else if (metadata[key as keyof typeof metadata] === undefined) { // For other keys, add if missing in configServiceMetadata
+          (metadata as any)[key] = rcValue;
+          this.logger.debug(`${this.logPrefix} [META DEBUG] Added missing metadata.${key} from requestContext value: ${rcValue}`);
+        }
+      });
+    }
     
     // Add decisionFromStorage if it exists
     if (body && body.metadata && body.metadata.decisionFromStorage !== undefined) {
-      metadata.decisionFromStorage = body.metadata.decisionFromStorage;
+      (metadata as any).decisionFromStorage = body.metadata.decisionFromStorage;
       this.logger.debug(`${this.logPrefix} Decision from storage: ${body.metadata.decisionFromStorage}`);
     }
+    
+    // Final metadata check before sending
+    this.logger.debug(`${this.logPrefix} [META DEBUG] FINAL response metadata: sdkKeyFrom=${metadata.sdkKeyFrom}, visitorIdFrom=${metadata.visitorIdFrom}`);
+    this.logger.debug(`${this.logPrefix} [META DEBUG] Post-merge metadata.flagKeysFrom: ${metadata.flagKeysFrom}`);
     
     // If body is already an object, add metadata to it
     if (Array.isArray(body)) {

@@ -118,6 +118,20 @@ export interface ServiceConfigSettings {
   
   // Cookie settings
   cookieExpirationInDays: number;       // Cookie expiration in days
+
+  // Additional header names for previously hardcoded headers
+  flagKeyHeader: string;
+  flagKeysHeader: string;
+  forcedDecisionHeader: string;
+  cdnSettingsHeader: string;
+  serverModeHeader: string;
+  userIdHeader: string;
+  decideAllHeader: string;
+  enabledFlagsOnlyHeader: string;
+  includeReasonsHeader: string;
+  excludeVariablesHeader: string;
+  disableDecisionEventHeader: string;
+  ignoreUserProfileServiceHeader: string;
 }
 
 /**
@@ -160,6 +174,10 @@ export interface ConfigMetadata {
   setRequestHeaders?: boolean;          // Whether to set request headers
   setRequestCookies?: boolean;          // Whether to set request cookies
   
+  // Add missing properties for flagKey and eventKey
+  flagKey?: string;                     // Flag key for decide operations
+  eventKey?: string;                    // Event key for tracking conversions
+
   // Track sources for all boolean parameters
   overrideCacheFrom?: string;           // Source of overrideCache setting
   overrideVisitorIdFrom?: string;       // Source of overrideVisitorId setting
@@ -178,6 +196,14 @@ export interface ConfigMetadata {
   enabledFlagsOnlyFrom?: string;        // Source of enabledFlagsOnly setting
   includeReasonsFrom?: string;          // Source of includeReasons setting
   ignoreUserProfileServiceFrom?: string; // Source of ignoreUserProfileService setting
+  
+  // Additional source tracking fields
+  flagKeyFrom?: string;                 // Source of flagKey setting
+  serverModeFrom?: string;              // Source of serverMode setting
+  datafileAccessTokenFrom?: string;     // Source of datafileAccessToken setting
+  cdnVariationSettingsFrom?: string;    // Source of cdnVariationSettings
+  valueFrom?: string;                   // Source of numeric value field
+  
   precedenceRules?: {                   // Parameter precedence rules used during initialization
     headersOverQueryParams: boolean;    // Whether headers take precedence over query parameters
     queryParamsOverBody: boolean;       // Whether query parameters take precedence over body

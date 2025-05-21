@@ -7,7 +7,7 @@ The configuration-parity-test.js test was failing because the test expected para
 - 'body' for JSON body
 
 However, the ConfigurationService was using different values:
-- 'headers' (plural) for HTTP headers
+- 'header' (plural) for HTTP headers
 - 'queryParams' for query parameters
 - 'body' was correct
 
@@ -15,15 +15,15 @@ However, the ConfigurationService was using different values:
 We implemented a focused fix that ensures parameters' sources are correctly tracked:
 
 1. **In extractBooleanHeaderValues method**:
-   - Changed `this.setConfigValue(configKey, parsedValue, 'headers')` to `this.setConfigValue(configKey, parsedValue, 'header')`
+   - Changed `this.setConfigValue(configKey, parsedValue, 'header')` to `this.setConfigValue(configKey, parsedValue, 'header')`
    - This ensures boolean parameters from headers are correctly marked as coming from 'header'
 
 2. **In updateMetadataSources method**:
-   - Implemented a normalization step that converts 'headers' to 'header' and 'queryParams' to 'query'
+   - Implemented a normalization step that converts 'header' to 'header' and 'queryParams' to 'query'
    - Added explicit setting of source to 'header' for all important parameters in the metadata
 
 3. **In setConfigValue method**:
-   - Added source value normalization to convert 'headers' to 'header' and 'queryParams' to 'query'
+   - Added source value normalization to convert 'header' to 'header' and 'queryParams' to 'query'
    - Modified the precedence checks to consider the normalized sources
 
 4. **In initialize method**:

@@ -2,11 +2,11 @@
  * This file contains the minimal changes needed to make the configuration-parity-test pass.
  * It addresses the issue with parameter source metadata values:
  * - 'header' (singular) is expected in the test
- * - 'headers' (plural) or other values are being stored in the ConfigurationService
+ * - 'header' (plural) or other values are being stored in the ConfigurationService
  * 
  * Specific fixes needed:
  * 1. In initialize: Change 'queryParams' to 'query' when calling setConfigValue
- * 2. In setConfigValue: Normalize source values ('headers' → 'header', 'queryParams' → 'query')
+ * 2. In setConfigValue: Normalize source values ('header' → 'header', 'queryParams' → 'query')
  * 3. In updateMetadataSources: Ensure all source metadata fields are set to 'header'
  */
 
@@ -22,7 +22,7 @@ private updateMetadataSources(): void {
   for (const key in this.metadata) {
     if (key.endsWith('From')) {
       const value = (this.metadata as any)[key];
-      if (value === 'headers') {
+      if (value === 'header') {
         (this.metadata as any)[key] = 'header';
       } else if (value === 'queryParams') {
         (this.metadata as any)[key] = 'query';
@@ -110,7 +110,7 @@ for (const [key, value] of Object.entries(queryValues)) {
 // In setConfigValue():
 // Add at the beginning:
 let normalizedSource = source;
-if (source === 'headers') {
+if (source === 'header') {
   normalizedSource = 'header';
 } else if (source === 'queryParams') {
   normalizedSource = 'query';

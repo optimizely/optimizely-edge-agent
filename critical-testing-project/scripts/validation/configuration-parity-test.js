@@ -11,6 +11,16 @@
  * - Correct precedence (headers > query params > body)
  * - Support for legacy headers (x-optly-*)
  * - Complex object handling
+ * 
+ * IMPORTANT PRECEDENCE TEST NOTES:
+ * The precedence test checks that headers take priority over query parameters,
+ * which take priority over body values. Each test sends different values for 
+ * each source of a parameter:
+ * - Header value will be: "{parameter}-header-value"
+ * - Query value will be: "{parameter}-query-value"
+ * - Body value will be: "{parameter}-body-value"
+ * 
+ * The test passes if the value from the header is used, as this is the highest priority.
  */
 
 const axios = require('axios');
@@ -413,7 +423,10 @@ async function testStandardHeader(param) {
   
   try {
     const headers = {
-      'X-Optimizely-Visitor-Id': testVisitorId,
+      // Don't set default SDK key if we're testing sdkKey parameter
+      ...(param.name !== 'sdkKey' && { 'X-Optimizely-SDK-Key': sdkKey }),
+      // Don't set default visitorId if we're testing visitorId parameter
+      ...(param.name !== 'visitorId' && { 'X-Optimizely-Visitor-Id': testVisitorId }),
       'X-Optimizely-Enable-Response-Metadata': 'true',  // Enable response metadata
       'X-Optimizely-Enable-Debug-Headers': 'true',      // Enable debug headers
       'X-Optimizely-Enable-FEX': 'true'                 // Enable Feature Experimentation (required)
@@ -421,11 +434,6 @@ async function testStandardHeader(param) {
     
     // Add the test parameter
     headers[param.headerName] = param.headerValue;
-    
-    // Add SDK key if we're not testing that parameter
-    if (param.name !== 'sdkKey') {
-      headers['X-Optimizely-SDK-Key'] = sdkKey;
-    }
     
     // Use the specified endpoint if available, otherwise default to /api/decide
     const endpoint = param.endpoint || '/api/decide';
@@ -617,37 +625,42 @@ async function testPrecedence(param) {
     // Set all other options to consistent values
 
     // Create a request that supplies the same parameter via all three methods:
-    // 1. Header - value: "header_value"
-    // 2. Query parameter - value: "query_value"
-    // 3. Body - value: "body_value"
+    // 1. Header - value: "{param.name}-header-value"
+    // 2. Query parameter - value: "{param.name}-query-value"
+    // 3. Body - value: "{param.name}-body-value"
     
     // Basic headers every request needs
     const headers = {
-      'X-Optimizely-SDK-Key': sdkKey,  // Always set SDK key
-      'X-Optimizely-Visitor-Id': testVisitorId,
+      // We ALWAYS need these basic headers
       'X-Optimizely-Enable-Response-Metadata': 'true',  // Enable response metadata
       'X-Optimizely-Enable-Debug-Headers': 'true',      // Enable debug headers
       'X-Optimizely-Enable-FEX': 'true'                 // Enable Feature Experimentation (required)
     };
     
-    // Add the SINGLE test parameter in header with "header_value"
+    // Don't set default values for the parameter we're testing
+    if (param.name !== 'sdkKey') {
+      headers['X-Optimizely-SDK-Key'] = sdkKey;
+    }
+    
+    if (param.name !== 'visitorId') {
+      headers['X-Optimizely-Visitor-Id'] = testVisitorId;
+    }
+    
+    // Add the SINGLE test parameter in header with "{param.name}-header-value"
+    // CRITICAL: This must be added AFTER the defaults to ensure it overrides them
     if (param.headerName) {
       if (param.type === 'object' || param.type === 'array') {
         headers[param.headerName] = param.headerValue;
       } else if (param.type === 'boolean') {
         headers[param.headerName] = 'true';  // Use 'true' for header boolean
       } else {
-        // For sdkKey specifically, make it very distinct to help with debugging
-        if (param.name === 'sdkKey') {
-          headers[param.headerName] = 'HEADER_SDK_KEY_TEST';
-          console.log(`Setting header ${param.headerName} to HEADER_SDK_KEY_TEST`);
-        } else {
-          headers[param.headerName] = 'header_value';
-        }
+        // Make each test parameter's value uniquely identifiable by source
+        headers[param.headerName] = `${param.name}-header-value`;
+        console.log(`Setting header ${param.headerName} to ${param.name}-header-value`);
       }
     }
     
-    // Build query with the SINGLE test parameter with "query_value"
+    // Build query with the SINGLE test parameter with "{param.name}-query-value"
     let url = `${baseUrl}/api/decide?enableResponseMetadata=true&enableDebugHeaders=true&enableFex=true`;
     if (param.queryName) {
       if (param.specialQuery && param.name === 'flagKeys') {
@@ -655,11 +668,16 @@ async function testPrecedence(param) {
       } else if (param.type === 'boolean') {
         url += `&${param.queryName}=false`;  // Use 'false' for query boolean
       } else {
-        url += `&${param.queryName}=query_value`;
+        url += `&${param.queryName}=${param.name}-query-value`;
       }
     }
     
-    // Build body with the SINGLE test parameter with "body_value"
+    // Add SDK key in query if we're not testing it and it isn't already in headers
+    if (param.name !== 'sdkKey' && !headers['X-Optimizely-SDK-Key']) {
+      url += `&sdkKey=${sdkKey}`;
+    }
+    
+    // Build body with the SINGLE test parameter with "{param.name}-body-value"
     const body = {
       flagKey: 'test-flag',  // Always need a flag key for the decision
       enableResponseMetadata: true,
@@ -667,38 +685,58 @@ async function testPrecedence(param) {
       enableFex: true
     };
     
-    if (param.bodyName) {
-      if (param.type === 'object') {
-        body[param.bodyName] = { source: 'body_value' };
-      } else if (param.type === 'array') {
-        body[param.bodyName] = ['body_value1', 'body_value2'];
-      } else if (param.type === 'boolean') {
-        body[param.bodyName] = false;  // Use false for body boolean
-      } else {
-        body[param.bodyName] = 'body_value';
+    // Don't set default values in body for the parameter we're testing
+    if (param.name !== 'visitorId' && param.name !== 'sdkKey') {
+      body.visitorId = testVisitorId;
+      // Only add sdkKey to body if we're not testing it and it's not in headers or query
+      if (param.name !== 'sdkKey' && !headers['X-Optimizely-SDK-Key'] && !url.includes('sdkKey=')) {
+        body.sdkKey = sdkKey;
       }
     }
     
-    console.log(`Testing ${param.name} precedence with:
+    if (param.bodyName) {
+      if (param.type === 'object') {
+        body[param.bodyName] = { source: `${param.name}-body-object` };
+      } else if (param.type === 'array') {
+        body[param.bodyName] = [`${param.name}-body-array-1`, `${param.name}-body-array-2`];
+      } else if (param.type === 'boolean') {
+        body[param.bodyName] = false;  // Use false for body boolean
+      } else {
+        body[param.bodyName] = `${param.name}-body-value`;
+      }
+    }
+    
+    console.log(`\nTesting ${param.name} precedence with:
        * Header: ${param.headerName} = ${headers[param.headerName] || 'not set'}
-       * Query: ${param.queryName} = ${param.type === 'boolean' ? 'false' : 'query_value'}
+       * Query: ${param.queryName} = ${param.name}-query-value
        * Body: ${param.bodyName} = ${JSON.stringify(body[param.bodyName] || 'not set')}
     `);
     
-    const response = await axios.post(url, body, { headers });
+    // Use axios to send the request
+    console.log(`REQUEST DETAILS:
+       * URL: ${url}
+       * Headers: ${JSON.stringify(headers, null, 2)}
+       * Body: ${JSON.stringify(body, null, 2)}
+    `);
+    
+    // Execute the request with all three sources of the parameter
+    const response = await axios.post(url, body, { 
+      headers: headers,
+      validateStatus: status => true // Accept all status codes for debugging
+    });
     
     // Debug output for all parameters
     console.log(`DEBUG - Full Response for ${param.name} precedence test:`, JSON.stringify(response.data, null, 2));
-    console.log(`DEBUG - HEADERS SENT: `, headers);
-    console.log(`DEBUG - URL SENT: `, url);
-    console.log(`DEBUG - BODY SENT: `, JSON.stringify(body, null, 2));
+    console.log(`DEBUG - HEADERS SENT:`, JSON.stringify(headers, null, 2));
+    console.log(`DEBUG - URL SENT: ${url}`);
+    console.log(`DEBUG - BODY SENT:`, JSON.stringify(body, null, 2));
     
     const result = {
       status: response.status,
       statusText: response.statusText,
       parameterDetected: response.data?.metadata ? true : false,
       configMetadata: response.data?.metadata || null,
-      expectedSource: 'headers', // Headers should take precedence
+      expectedSource: 'header', // Headers should take precedence
       detectedSource: null,
       success: true
     };
@@ -724,8 +762,10 @@ async function testPrecedence(param) {
           sourceField = 'eventTagsFrom';
           break;
         case 'flagKeys':
-        case 'flagKey':
           sourceField = 'flagKeysFrom';
+          break;
+        case 'flagKey':
+          sourceField = 'flagKeyFrom';
           break;
         case 'overrideCache':
           sourceField = 'overrideCacheFrom';
@@ -759,16 +799,43 @@ async function testPrecedence(param) {
           sourceField = `${param.name}From`;
       }
       
+      // Enhanced source detection logging
+      const valueField = param.name;
+      console.log(`DEBUG - Checking for parameter: ${param.name}`);
+      console.log(`DEBUG - Value field to check: ${valueField}, value: ${result.configMetadata[valueField]}`);
+      console.log(`DEBUG - Source field to check: ${sourceField}, source: ${result.configMetadata[sourceField]}`);
+      
       if (result.configMetadata[sourceField]) {
         result.detectedSource = result.configMetadata[sourceField];
+        result.success = result.detectedSource === result.expectedSource;
+        
+        // Log detailed validation results
+        console.log(`VALIDATION - Parameter: ${param.name}`);
+        console.log(`VALIDATION - Expected Source: ${result.expectedSource}`);
+        console.log(`VALIDATION - Detected Source: ${result.detectedSource}`);
+        console.log(`VALIDATION - Success: ${result.success ? 'YES ✓' : 'NO ✗'}`);
+        
+        // If test failed, log more detailed debug info
+        if (!result.success) {
+          console.log(`DEBUG - TEST FAILED for ${param.name}! Detailed analysis:`);
+          console.log(`DEBUG - Header value sent: ${headers[param.headerName]}`);
+          console.log(`DEBUG - Query value sent: ${param.name}-query-value`);
+          console.log(`DEBUG - Body value sent: ${JSON.stringify(body[param.bodyName])}`);
+          console.log(`DEBUG - Detected metadata value: ${result.configMetadata[valueField]}`);
+          console.log(`DEBUG - Detected source: ${result.detectedSource}`);
+        }
+      } else {
+        console.log(`WARNING - Source field ${sourceField} not found in metadata for ${param.name}`);
+        result.success = false;
       }
-      
-      // Log what we're looking for and what we found
-      console.log(`Looking for source in metadata.${sourceField}: ${result.configMetadata[sourceField] || 'not found'}`);
+    } else {
+      console.log(`ERROR - No metadata found in response for ${param.name}`);
+      result.success = false;
     }
     
     return result;
   } catch (error) {
+    console.error(`ERROR in precedence test for ${param.name}:`, error.message);
     return {
       success: false,
       error: error.message,
@@ -818,10 +885,13 @@ async function runTests() {
   console.log(`Test Visitor ID: ${testVisitorId}`);
   console.log('--------------------------------------------------');
   
-  // For debugging, just test a single parameter precedence
-  console.log("RUNNING SIMPLIFIED TEST FOR DEBUGGING");
-  const sdkKeyParam = testParameters[0];
-  testResults.precedence[sdkKeyParam.name] = await testPrecedence(sdkKeyParam);
+  // Run the full test suite
+  console.log("RUNNING FULL TEST SUITE");
+  
+  // Test each parameter
+  for (const param of testParameters) {
+    await testParameter(param);
+  }
   
   // Write results to file
   fs.writeFileSync(logFile, JSON.stringify(testResults, null, 2));
@@ -861,7 +931,8 @@ function generateSummary() {
                     testResults.jsonBody[param.name]?.skipped ? '➖' : '❌';
                     
     const precedence = testResults.precedence[param.name]?.skipped ? '➖' :
-                      testResults.precedence[param.name]?.detectedSource === 'headers' ? '✅' : '❌';
+                      (testResults.precedence[param.name]?.detectedSource === 'header' || 
+                       testResults.precedence[param.name]?.detectedSource === 'header') ? '✅' : '❌';
     
     summary += `| ${param.name} | ${standardHeader} | ${legacyHeader} | ${queryParam} | ${jsonBody} | ${precedence} |\n`;
   }
@@ -875,9 +946,9 @@ function generateSummary() {
   for (const [paramName, result] of Object.entries(testResults.precedence)) {
     if (result.success && !result.skipped && 
         result.detectedSource !== 'header' && 
-        result.detectedSource !== 'headers') {
+        result.detectedSource !== 'header') {
       issuesFound = true;
-      summary += `- **Precedence Issue**: Parameter \`${paramName}\` used source \`${result.detectedSource}\` instead of \`header\`\n`;
+      summary += `- **Precedence Issue**: Parameter \`${paramName}\` used source \`${result.detectedSource}\` instead of \`header\` or \`headers\`\n`;
     }
   }
   
@@ -929,7 +1000,7 @@ function generateSummary() {
     for (const [paramName, result] of Object.entries(testResults.precedence)) {
       if (result.success && !result.skipped && 
           result.detectedSource !== 'header' && 
-          result.detectedSource !== 'headers') {
+          result.detectedSource !== 'header') {
         precedenceIssues = true;
         break;
       }

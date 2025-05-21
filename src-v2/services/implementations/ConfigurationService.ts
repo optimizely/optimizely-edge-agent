@@ -13,6 +13,9 @@ import { IRequestAdapter } from '../../adapters/interfaces/IRequestAdapter';
 import { ILoggerAdapter } from '../../adapters/interfaces/ILoggerAdapter';
 import { IDatafileService } from '../interfaces/IDatafileService';
 
+// Define the metadata source type
+type MetadataSource = 'header' | 'query' | 'body' | 'default' | 'cookie' | 'localstorage';
+
 /**
  * Implementation of IConfigurationService that extracts and prioritizes configuration settings
  * from headers, query parameters, and request body.
@@ -90,9 +93,13 @@ export class ConfigurationService implements IConfigurationService {
 		}
 		this.datafileService = datafileService;
 		this.logger = logger;
-		this.metadata = this.initializeConfigMetadata();
+		
+		// First initialize settings, then metadata to ensure proper dependencies
 		this.settings = this.initializeSettings();
+		this.metadata = this.initializeConfigMetadata();
+		
 		this.logger.info(`${this.logPrefix} Initialized with default settings`);
+		
 		// Initialize v1 compatibility properties with defaults
 		this.attributesHeaderName = undefined;
 		this.eventTagsHeaderName = undefined;
@@ -100,8 +107,57 @@ export class ConfigurationService implements IConfigurationService {
 		this.enableFex = false;
 		this.overrideCache = false;
 		this.enableResponseMetadata = true;
+		this.enableDebugHeaders = false;
 		this.enableFlagsFromKV = false;
 		this.enableDatafileFromKV = false;
+	}
+
+	/**
+	 * Resets the configuration object with initialized properties.
+	 * This ensures that all properties exist with empty/default values
+	 * before applying the OR pattern for configuration precedence.
+	 */
+	private resetConfig(): void {
+		this.config = {
+			// String properties
+			sdkKey: '',
+			visitorId: '',
+			eventKey: '',
+			flagKey: '',
+			serverMode: '',
+			datafileAccessToken: '',
+			value: undefined,
+			
+			// Object properties
+			attributes: {},
+			eventTags: {},
+			forcedDecisions: {},
+			cdnVariationSettings: {},
+			
+			// Array properties
+			decideOptions: [],
+			flagKeys: [],
+			
+			// Boolean properties with defaults
+			trimmedDecisions: this.settings.defaultTrimmedDecisions,
+			overrideCache: this.settings.defaultOverrideCache,
+			overrideVisitorId: this.settings.defaultOverrideVisitorId,
+			setResponseHeaders: this.settings.defaultSetResponseHeaders,
+			setResponseCookies: this.settings.defaultSetResponseCookies,
+			setRequestHeaders: this.settings.defaultSetRequestHeaders,
+			setRequestCookies: this.settings.defaultSetRequestCookies,
+			enableFlagsFromKV: this.settings.flagsFromKV,
+			datafileFromKV: this.settings.datafileFromKV,
+			enableResponseMetadata: this.settings.enableResponseMetadata,
+			enableDebugHeaders: false,
+			decideAll: false,
+			enabledFlagsOnly: false,
+			includeReasons: false,
+			excludeVariables: false,
+			disableDecisionEvent: false,
+			ignoreUserProfileService: false,
+			enableFex: this.enableFex, // Copy class property for backward compatibility
+		};
 	}
 
 	/**
@@ -110,63 +166,1067 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns A promise resolving to the configuration options.
 	 */
 	async initialize(request: IRequestAdapter): Promise<OptimizelyConfigOptions> {
-		this.logger.debug(`${this.logPrefix} Initializing configuration from request`);
+		const requestId = Math.random().toString(36).substring(2, 10);
+		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] ===== INITIALIZE DEBUG - Starting configuration initialization from request =====`);
 
-		// Reset config for new request
-		this.config = {};
+		// Reset config for new request with all properties initialized to empty values or defaults
+		this.resetConfig();
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] INITIALIZE DEBUG - Reset config to defaults`);
+		
+		// Re-initialize metadata to ensure clean state
 		this.metadata = this.initializeConfigMetadata();
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] INITIALIZE DEBUG - Reset metadata to initial state`);
 
-		// Initialize configuration from different sources with proper precedence
-		// First from headers (highest priority)
-		await this.initializeFromHeaders(request);
+		// CRITICAL: First collect ALL values from ALL sources WITHOUT setting metadata
+		// This is essential for proper precedence ordering
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] INITIALIZE DEBUG - Beginning to extract values from all sources`);
+		
+		// Extract parameters from each source with setSource=false to prevent premature source setting
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== EXTRACTION PHASE - HEADERS =====`);
+		const headerValues = await this.extractHeaderValues(request, false, requestId);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EXTRACTION SUMMARY - HEADERS - Found ${Object.keys(headerValues).length} values: ${this.safeStringify(headerValues)}`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAMS - Header values extracted: sdkKey=${headerValues.sdkKey}, visitorId=${headerValues.visitorId}, flagKey=${headerValues.flagKey}`);
+		
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== EXTRACTION PHASE - QUERY PARAMETERS =====`);
+		const queryValues = await this.extractQueryValues(request, false, requestId);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EXTRACTION SUMMARY - QUERY - Found ${Object.keys(queryValues).length} values: ${this.safeStringify(queryValues)}`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAMS - Query values extracted: sdkKey=${queryValues.sdkKey}, visitorId=${queryValues.visitorId}, flagKey=${queryValues.flagKey}`);
+		
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== EXTRACTION PHASE - BODY =====`);
+		const bodyValues = await this.extractBodyValues(request, false, requestId);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EXTRACTION SUMMARY - BODY - Found ${Object.keys(bodyValues).length} values: ${this.safeStringify(bodyValues)}`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAMS - Body values extracted: sdkKey=${bodyValues.sdkKey}, visitorId=${bodyValues.visitorId}, flagKey=${bodyValues.flagKey}`);
 
-		// Then from query parameters (overrides if headers didn't set a value)
-		await this.initializeFromQueryParams(request);
-
-		// Finally from request body (lowest priority except for defaults)
-		await this.initializeFromBody(request);
+		// Apply values in strict precedence order (Headers > Query > Body > Defaults)
+		// This will set the metadata sources as part of the application process
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - Starting precedence application =====`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION ORDER: Headers > Query > Body > Defaults`);
+		
+		// First, individually apply each extracted value set with its correct source type
+		// This ensures each set gets the correct source type and precedence is respected
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - APPLYING HEADER VALUES =====`);
+		if (Object.keys(headerValues).length > 0) {
+			this.applyIndividualSourceValues(headerValues, 'header', requestId);
+		} else {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION PHASE - No header values to apply`);
+		}
+		
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] STATUS CHECK - After HEADER application: sdkKey=${this.config.sdkKey}(from: ${this.metadata.sdkKeyFrom}), visitorId=${this.config.visitorId}(from: ${this.metadata.visitorIdFrom})`);
+		
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - APPLYING QUERY VALUES =====`);
+		if (Object.keys(queryValues).length > 0) {
+			this.applyIndividualSourceValues(queryValues, 'query', requestId);
+		} else {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION PHASE - No query values to apply`);
+		}
+		
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] STATUS CHECK - After QUERY application: sdkKey=${this.config.sdkKey}(from: ${this.metadata.sdkKeyFrom}), visitorId=${this.config.visitorId}(from: ${this.metadata.visitorIdFrom})`);
+		
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - APPLYING BODY VALUES =====`);
+		if (Object.keys(bodyValues).length > 0) {
+			this.applyIndividualSourceValues(bodyValues, 'body', requestId);
+		} else {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION PHASE - No body values to apply`);
+		}
+		
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] STATUS CHECK - After BODY application: sdkKey=${this.config.sdkKey}(from: ${this.metadata.sdkKeyFrom}), visitorId=${this.config.visitorId}(from: ${this.metadata.visitorIdFrom})`);
+		
+		// Check resulting config and metadata after precedence application
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE COMPLETE =====`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FINAL STATUS - sdkKey: ${this.config.sdkKey}, sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FINAL STATUS - visitorId: ${this.config.visitorId}, visitorIdFrom: ${this.metadata.visitorIdFrom}`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FINAL STATUS - flagKey: ${this.config.flagKey}, flagKeyFrom: ${this.metadata.flagKeyFrom}`);
 
 		// Apply remaining defaults and computed values
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== DEFAULTS PHASE =====`);
 		this.applyDefaults();
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] DEFAULTS APPLIED - Final sdkKey: ${this.config.sdkKey}, visitorId: ${this.config.visitorId}`);
 
-		// Update metadata
+		// Update metadata - should be done after all sources processed
 		this.updateMetadata();
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] METADATA UPDATED - sdkKeyFrom: ${this.metadata.sdkKeyFrom}, visitorIdFrom: ${this.metadata.visitorIdFrom}`);
 
 		// Validate the configuration
 		const validationResult = this.validate();
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] VALIDATION COMPLETE - Valid: ${validationResult.valid}, Errors: ${validationResult.hasErrors}, Warnings: ${validationResult.hasWarnings}`);
 
 		// Log validation issues
 		if (validationResult.hasErrors) {
 			this.logger.warn(
-				`${this.logPrefix} Configuration has ${
+				`${this.logPrefix} [REQUEST:${requestId}] Configuration has ${
 					validationResult.issues.filter((i) => i.severity === ValidationSeverity.ERROR).length
 				} error(s)`
 			);
-			for (const issue of validationResult.issues.filter((i) => i.severity === ValidationSeverity.ERROR)) {
-				this.logger.warn(`${this.logPrefix} Validation error: ${issue.message}`, issue);
+			
+			// Try to automatically fix validation issues
+			if (validationResult.issues.length > 0) {
+				const fixedCount = this.fixValidationIssues(validationResult.issues);
+				if (fixedCount > 0) {
+					this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Fixed ${fixedCount} validation issue(s)`);
+					
+					// Update metadata again after fixes
+					this.updateMetadata();
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] METADATA UPDATED AFTER FIXES`);
+				}
 			}
 		}
 
-		if (validationResult.hasWarnings) {
-			this.logger.debug(
-				`${this.logPrefix} Configuration has ${
-					validationResult.issues.filter((i) => i.severity === ValidationSeverity.WARNING).length
-				} warning(s)`
-			);
-			for (const issue of validationResult.issues.filter((i) => i.severity === ValidationSeverity.WARNING)) {
-				this.logger.debug(`${this.logPrefix} Validation warning: ${issue.message}`, issue);
-			}
-		}
-
-		// Store validation result in metadata
-		if (this.config.enableResponseMetadata) {
-			this.metadata.validationResult = validationResult;
-		}
-
+		// Set initialization flag
 		this.isInitialized = true;
+		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] ===== INITIALIZATION COMPLETE =====`);
+		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] FINAL CONFIG - sdkKey: ${this.config.sdkKey} (from: ${this.metadata.sdkKeyFrom}), visitorId: ${this.config.visitorId} (from: ${this.metadata.visitorIdFrom})`);
+		
+		// Final source validation for debugging
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] PRECEDENCE CHECK - Final config:
+			sdkKey: ${this.config.sdkKey} (from: ${this.metadata.sdkKeyFrom || 'unknown'})
+			visitorId: ${this.config.visitorId} (from: ${this.metadata.visitorIdFrom || 'unknown'})
+			flagKey: ${this.config.flagKey} (from: ${this.metadata.flagKeyFrom || 'unknown'})
+			Original headers had: sdkKey=${headerValues.sdkKey}, visitorId=${headerValues.visitorId}, flagKey=${headerValues.flagKey}
+			Original query had: sdkKey=${queryValues.sdkKey}, visitorId=${queryValues.visitorId}, flagKey=${queryValues.flagKey}
+			Original body had: sdkKey=${bodyValues.sdkKey}, visitorId=${bodyValues.visitorId}, flagKey=${bodyValues.flagKey}
+		`);
 
-		this.logger.debug(`${this.logPrefix} Configuration initialized:`, this.config);
+		// Return the configuration
 		return this.config;
+	}
+
+	/**
+	 * Helper method to safely stringify objects for logging
+	 * @param obj - Object to stringify
+	 * @returns A string representation of the object that's safe for logging
+	 */
+	private safeStringify(obj: any): string {
+		try {
+			return JSON.stringify(obj);
+		} catch (e) {
+			return '[Object cannot be stringified]';
+		}
+	}
+
+	/**
+	 * Simple, bulletproof header extraction
+	 * @param request - The request adapter
+	 * @param headerName - The header name to look for
+	 * @returns The header value or null if not found
+	 */
+	private getHeader(request: IRequestAdapter, headerName: string, requestId?: string): string | null {
+		const headers = request.getHeaders();
+		const headerNameLower = headerName.toLowerCase();
+		
+		this.logger.debug(`${this.logPrefix} [HEADER DEBUG] [REQUEST:${requestId || 'unknown'}] Looking for header '${headerName}' (lowercase: '${headerNameLower}')`);
+		
+		// Log all available headers for debugging
+		if (requestId) {
+			try {
+				const allHeaderNames: string[] = [];
+				if (typeof headers.forEach === 'function') {
+					headers.forEach((value, key) => {
+						allHeaderNames.push(`${key}=${value}`);
+					});
+					this.logger.debug(`${this.logPrefix} [HEADER DEBUG] [REQUEST:${requestId}] Available headers: ${allHeaderNames.join(', ')}`);
+				}
+			} catch (e) {
+				this.logger.debug(`${this.logPrefix} [HEADER DEBUG] [REQUEST:${requestId}] Could not list all headers: ${e}`);
+			}
+		}
+		
+		// One pass, lowercase everything, single comparison
+		let value = null;
+		let matchedHeaderName = null;
+		
+		headers.forEach((headerValue, key) => {
+			const keyLower = key.toLowerCase();
+			if (keyLower === headerNameLower) {
+				value = headerValue;
+				matchedHeaderName = key;
+				if (requestId) {
+					this.logger.debug(`${this.logPrefix} [HEADER DEBUG] [REQUEST:${requestId}] MATCH FOUND - Original: '${key}', Lowercase: '${keyLower}', Value: '${headerValue}'`);
+				}
+			} else if (requestId && keyLower.includes(headerNameLower.replace(/^x-/, ''))) {
+				// Log near-matches for debugging
+				this.logger.debug(`${this.logPrefix} [HEADER DEBUG] [REQUEST:${requestId}] NEAR MATCH - Found related header '${key}' (${keyLower}) when looking for '${headerNameLower}'`);
+			}
+		});
+		
+		// Log failure to find header
+		if (value === null && requestId) {
+			this.logger.debug(`${this.logPrefix} [HEADER DEBUG] [REQUEST:${requestId}] HEADER NOT FOUND - '${headerName}' not present in request`);
+		} else if (requestId) {
+			this.logger.debug(`${this.logPrefix} [HEADER DEBUG] [REQUEST:${requestId}] HEADER EXTRACTED - Using '${matchedHeaderName}' = '${value}'`);
+		}
+		
+		return value;
+	}
+
+	/**
+	 * Extracts configuration values from request headers without applying them
+	 * @param request - The request adapter
+	 * @returns A partial configuration object with values from headers
+	 */
+	private async extractHeaderValues(request: IRequestAdapter, setSource: boolean, requestId: string): Promise<Partial<OptimizelyConfigOptions>> {
+		const values: Partial<OptimizelyConfigOptions> = {};
+		const headers = request.getHeaders();
+		
+		// DEBUG LOG: Log available headers
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] HEADERS DEBUG - Starting header extraction`);
+		
+		// Log all available header names for debugging
+		try {
+			const allHeaderKeys: string[] = [];
+			// Only works if Headers implementation supports forEach
+			if (typeof headers.forEach === 'function') {
+				headers.forEach((_, key) => {
+					allHeaderKeys.push(key);
+				});
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] HEADERS DEBUG - Headers present: ${allHeaderKeys.join(', ')}`);
+			}
+		} catch (e) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] HEADERS DEBUG - Could not list all headers: ${e}`);
+		}
+
+		// Helper function to parse boolean header values
+		const parseHeaderBool = (value: string | null): boolean | null => {
+			if (value === null) return null;
+			
+			if (value === '') return true; // Empty value means enabled
+			
+			try {
+				// Try parsing as JSON
+				const parsed = JSON.parse(value.toLowerCase());
+				if (typeof parsed === 'boolean') return parsed;
+				return Boolean(parsed); // Fallback to truthiness
+			} catch (e) {
+				// If JSON parsing failed, check string values
+				const str = value.toLowerCase();
+				if (str === 'true' || str === '1') return true;
+				if (str === 'false' || str === '0') return false;
+				return true; // Default to true for any other string value
+			}
+		};
+
+		// === String Parameters - SIMPLIFIED HEADER EXTRACTION ===
+		
+		// SDK Key - just get it directly
+		const sdkKeyHeader = this.getHeader(request, 'x-optimizely-sdk-key', requestId);
+		if (sdkKeyHeader) {
+			values.sdkKey = String(sdkKeyHeader).trim();
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SDK KEY FOUND - Setting to: ${values.sdkKey}`);
+			if (setSource) {
+				this.setMetadataSourceField('sdkKey', 'header');
+			}
+		}
+		
+		// Visitor ID
+		const visitorIdHeader = this.getHeader(request, 'x-optimizely-visitor-id', requestId);
+		if (visitorIdHeader) {
+			values.visitorId = String(visitorIdHeader).trim();
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] VISITOR ID FOUND - Setting to: ${values.visitorId}`);
+			if (setSource) {
+				this.setMetadataSourceField('visitorId', 'header');
+			}
+		}
+		
+		// User ID (as alias for visitor ID)
+		if (!values.visitorId) {
+			const userIdHeader = this.getHeader(request, 'x-optimizely-user-id', requestId);
+			if (userIdHeader) {
+				values.visitorId = String(userIdHeader).trim();
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] USER ID FOUND - Using as visitorId: ${values.visitorId}`);
+				if (setSource) {
+					this.setMetadataSourceField('visitorId', 'header');
+				}
+			}
+		}
+		
+		// Event Key
+		const eventKeyHeader = this.getHeader(request, 'x-optimizely-event-key', requestId);
+		if (eventKeyHeader) {
+			values.eventKey = String(eventKeyHeader).trim();
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EVENT KEY FOUND - Setting to: ${values.eventKey}`);
+			if (setSource) {
+				this.setMetadataSourceField('eventKey', 'header');
+			}
+		}
+		
+		// Flag Key
+		const flagKeyHeader = this.getHeader(request, 'x-optimizely-flag-key', requestId);
+		if (flagKeyHeader) {
+			values.flagKey = String(flagKeyHeader).trim();
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FLAG KEY FOUND - Setting to: ${values.flagKey}`);
+			if (setSource) {
+				this.setMetadataSourceField('flagKey', 'header');
+			}
+		}
+		
+		// Server Mode
+		const serverModeHeader = this.getHeader(request, 'x-optimizely-server-mode', requestId);
+		if (serverModeHeader) {
+			values.serverMode = String(serverModeHeader).trim();
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SERVER MODE FOUND - Setting to: ${values.serverMode}`);
+			if (setSource) this.setMetadataSourceField('serverMode', 'header');
+		}
+		
+		// Datafile Access Token
+		const datafileAccessTokenHeader = this.getHeader(request, 'x-optimizely-datafile-access-token', requestId);
+		if (datafileAccessTokenHeader) {
+			values.datafileAccessToken = String(datafileAccessTokenHeader).trim();
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] DATAFILE ACCESS TOKEN FOUND - Setting to: ${values.datafileAccessToken}`);
+			if (setSource) this.setMetadataSourceField('datafileAccessToken', 'header');
+		}
+		
+		// === Object Parameters ===
+		// Attributes
+		try {
+			const attributesHeader = this.getHeader(request, 'x-optimizely-attributes', requestId);
+			if (attributesHeader) {
+				const parsedAttributes = JSON.parse(attributesHeader);
+				if (typeof parsedAttributes === 'object' && parsedAttributes !== null) {
+					values.attributes = parsedAttributes;
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ATTRIBUTES FOUND - Parsed and set`);
+					if (setSource) this.setMetadataSourceField('attributes', 'header');
+				}
+			}
+		} catch (e) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse attributes header: ${e}`);
+		}
+		
+		// === Boolean Parameters ===
+		// Feature Experimentation (FEX)
+		const fexHeader = this.getHeader(request, 'x-optimizely-enable-fex', requestId);
+		if (fexHeader !== null) {
+			values.enableFex = parseHeaderBool(fexHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ENABLE FEX FOUND - Setting to: ${values.enableFex}`);
+			if (setSource) this.setMetadataSourceField('enableFex', 'header');
+		}
+		
+		// Cache Override
+		const overrideCacheHeader = this.getHeader(request, 'x-optimizely-override-cache', requestId);
+		if (overrideCacheHeader !== null) {
+			values.overrideCache = parseHeaderBool(overrideCacheHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] OVERRIDE CACHE FOUND - Setting to: ${values.overrideCache}`);
+			if (setSource) this.setMetadataSourceField('overrideCache', 'header');
+		}
+		
+		// Response Metadata - already handled above with standard header x-optimizely-enable-response-metadata
+		
+		// Debug Headers - already handled above with standard header x-optimizely-enable-debug-headers
+		
+		// Trimmed Decisions
+		const trimmedDecisionsHeader = this.getHeader(request, 'x-optimizely-trimmed-decisions', requestId);
+		if (trimmedDecisionsHeader !== null) {
+			values.trimmedDecisions = parseHeaderBool(trimmedDecisionsHeader) ?? this.settings.defaultTrimmedDecisions;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TRIMMED DECISIONS FOUND - Setting to: ${values.trimmedDecisions}`);
+			if (setSource) this.setMetadataSourceField('trimmedDecisions', 'header');
+		}
+		
+		// Decide All
+		const decideAllHeader = this.getHeader(request, 'x-optimizely-decide-all', requestId);
+		if (decideAllHeader !== null) {
+			values.decideAll = parseHeaderBool(decideAllHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] DECIDE ALL FOUND - Setting to: ${values.decideAll}`);
+			if (setSource) this.setMetadataSourceField('decideAll', 'header');
+		}
+		
+		// Enabled Flags Only
+		const enabledFlagsOnlyHeader = this.getHeader(request, 'x-optimizely-enabled-flags-only', requestId);
+		if (enabledFlagsOnlyHeader !== null) {
+			values.enabledFlagsOnly = parseHeaderBool(enabledFlagsOnlyHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ENABLED FLAGS ONLY FOUND - Setting to: ${values.enabledFlagsOnly}`);
+			if (setSource) this.setMetadataSourceField('enabledFlagsOnly', 'header');
+		}
+		
+		// Include Reasons
+		const includeReasonsHeader = this.getHeader(request, 'x-optimizely-include-reasons', requestId);
+		if (includeReasonsHeader !== null) {
+			values.includeReasons = parseHeaderBool(includeReasonsHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] INCLUDE REASONS FOUND - Setting to: ${values.includeReasons}`);
+			if (setSource) this.setMetadataSourceField('includeReasons', 'header');
+		}
+		
+		// Exclude Variables
+		const excludeVariablesHeader = this.getHeader(request, 'x-optimizely-exclude-variables', requestId);
+		if (excludeVariablesHeader !== null) {
+			values.excludeVariables = parseHeaderBool(excludeVariablesHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EXCLUDE VARIABLES FOUND - Setting to: ${values.excludeVariables}`);
+			if (setSource) this.setMetadataSourceField('excludeVariables', 'header');
+		}
+		
+		// Disable Decision Event
+		const disableDecisionEventHeader = this.getHeader(request, 'x-optimizely-disable-decision-event', requestId);
+		if (disableDecisionEventHeader !== null) {
+			values.disableDecisionEvent = parseHeaderBool(disableDecisionEventHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] DISABLE DECISION EVENT FOUND - Setting to: ${values.disableDecisionEvent}`);
+			if (setSource) this.setMetadataSourceField('disableDecisionEvent', 'header');
+		}
+		
+		// Response Headers/Cookies
+		const setRespHeadersHeader = this.getHeader(request, 'x-optimizely-set-response-headers', requestId);
+		if (setRespHeadersHeader !== null) {
+			values.setResponseHeaders = parseHeaderBool(setRespHeadersHeader) ?? this.settings.defaultSetResponseHeaders;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SET RESPONSE HEADERS FOUND - Setting to: ${values.setResponseHeaders}`);
+			if (setSource) this.setMetadataSourceField('setResponseHeaders', 'header');
+		}
+		
+		const setRespCookiesHeader = this.getHeader(request, 'x-optimizely-set-response-cookies', requestId);
+		if (setRespCookiesHeader !== null) {
+			values.setResponseCookies = parseHeaderBool(setRespCookiesHeader) ?? this.settings.defaultSetResponseCookies;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SET RESPONSE COOKIES FOUND - Setting to: ${values.setResponseCookies}`);
+			if (setSource) this.setMetadataSourceField('setResponseCookies', 'header');
+		}
+		
+		const setReqHeadersHeader = this.getHeader(request, 'x-optimizely-set-request-headers', requestId);
+		if (setReqHeadersHeader !== null) {
+			values.setRequestHeaders = parseHeaderBool(setReqHeadersHeader) ?? this.settings.defaultSetRequestHeaders;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SET REQUEST HEADERS FOUND - Setting to: ${values.setRequestHeaders}`);
+			if (setSource) this.setMetadataSourceField('setRequestHeaders', 'header');
+		}
+		
+		const setReqCookiesHeader = this.getHeader(request, 'x-optimizely-set-request-cookies', requestId);
+		if (setReqCookiesHeader !== null) {
+			values.setRequestCookies = parseHeaderBool(setReqCookiesHeader) ?? this.settings.defaultSetRequestCookies;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SET REQUEST COOKIES FOUND - Setting to: ${values.setRequestCookies}`);
+			if (setSource) this.setMetadataSourceField('setRequestCookies', 'header');
+		}
+		
+		// Storage settings
+		const flagsFromKVHeader = this.getHeader(request, 'x-optimizely-flags-from-kv', requestId);
+		if (flagsFromKVHeader !== null) {
+			values.enableFlagsFromKV = parseHeaderBool(flagsFromKVHeader) ?? this.settings.flagsFromKV;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FLAGS FROM KV FOUND - Setting to: ${values.enableFlagsFromKV}`);
+			if (setSource) this.setMetadataSourceField('enableFlagsFromKV', 'header');
+		}
+		
+		const datafileFromKVHeader = this.getHeader(request, 'x-optimizely-datafile-from-kv', requestId);
+		if (datafileFromKVHeader !== null) {
+			values.datafileFromKV = parseHeaderBool(datafileFromKVHeader) ?? this.settings.datafileFromKV;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] DATAFILE FROM KV FOUND - Setting to: ${values.datafileFromKV}`);
+			if (setSource) this.setMetadataSourceField('datafileFromKV', 'header');
+		}
+		
+		return values;
+	}
+	
+	/**
+	 * Extracts configuration values from query parameters without applying them
+	 * @param request - The request adapter
+	 * @returns A partial configuration object with values from query parameters
+	 */
+	private async extractQueryValues(request: IRequestAdapter, setSource: boolean, requestId: string): Promise<Partial<OptimizelyConfigOptions>> {
+		const values: Partial<OptimizelyConfigOptions> = {};
+		const url = request.getUrl();
+		const searchParams = new URL(url).searchParams;
+		
+		// Helper for case-insensitive parameter lookup
+		const getParamCaseInsensitive = (baseName: string): string | null => {
+			// Try common param name variations
+			const variations = [
+				baseName,                  // Original
+				baseName.toLowerCase(),    // lowercase
+				baseName.replace(/_/g, ''),// no underscores
+				// Convert from snake_case to camelCase
+				baseName.replace(/_([a-z])/g, (_, char) => char.toUpperCase())
+			];
+			
+			for (const variation of variations) {
+				if (searchParams.has(variation)) {
+					return searchParams.get(variation);
+				}
+			}
+			
+			return null;
+		};
+		
+		// Helper for parsing boolean params
+		const parseBoolParam = (value: string | null): boolean | null => {
+			if (value === null) return null;
+			
+			if (value === '') return true; // Empty value means enabled
+			
+			try {
+				const parsed = JSON.parse(value.toLowerCase());
+				if (typeof parsed === 'boolean') return parsed;
+				return Boolean(parsed); // Fallback to truthiness
+			} catch (e) {
+				// If JSON parsing failed, check string values
+				const str = value.toLowerCase();
+				if (str === 'true' || str === '1') return true;
+				if (str === 'false' || str === '0') return false;
+				return true; // Default to true for any other string value
+			}
+		};
+		
+		// === String Parameters ===
+		// SDK Key
+		const sdkKeyParam = getParamCaseInsensitive('sdk_key');
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SDK KEY QUERY DEBUG - sdkKeyParam value: ${sdkKeyParam}`);
+		
+		if (sdkKeyParam) {
+			values.sdkKey = sdkKeyParam.trim();
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SDK KEY QUERY DEBUG - Setting values.sdkKey to: ${values.sdkKey}`);
+			if (setSource) {
+				this.setMetadataSourceField('sdkKey', 'query');
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SDK KEY QUERY DEBUG - Setting metadata source to 'query'`);
+			}
+		}
+		
+		// Visitor ID
+		const visitorIdParam = getParamCaseInsensitive('visitor_id');
+		if (visitorIdParam) {
+			values.visitorId = visitorIdParam.trim();
+			if (setSource) this.setMetadataSourceField('visitorId', 'query');
+		}
+		
+		// User ID (as alias for visitor ID)
+		if (!values.visitorId) {
+			const userIdParam = getParamCaseInsensitive('user_id');
+			if (userIdParam) {
+				values.visitorId = userIdParam.trim();
+				if (setSource) this.setMetadataSourceField('userId', 'query');
+			}
+		}
+		
+		// Event Key
+		const eventKeyParam = getParamCaseInsensitive('event_key');
+		if (eventKeyParam) {
+			values.eventKey = eventKeyParam.trim();
+			if (setSource) this.setMetadataSourceField('eventKey', 'query');
+		}
+		
+		// Flag Key
+		const flagKeyParam = getParamCaseInsensitive('flag_key');
+		if (flagKeyParam) {
+			values.flagKey = flagKeyParam.trim();
+			if (setSource) this.setMetadataSourceField('flagKey', 'query');
+		}
+		
+		// Server Mode
+		const serverModeParam = getParamCaseInsensitive('server_mode');
+		if (serverModeParam) {
+			values.serverMode = serverModeParam.trim();
+			if (setSource) this.setMetadataSourceField('serverMode', 'query');
+		}
+		
+		// Datafile Access Token
+		const datafileAccessTokenParam = getParamCaseInsensitive('datafile_access_token');
+		if (datafileAccessTokenParam) {
+			values.datafileAccessToken = datafileAccessTokenParam.trim();
+			if (setSource) this.setMetadataSourceField('datafileAccessToken', 'query');
+		}
+		
+		// === JSON Object Parameters ===
+		// Attributes
+		try {
+			const attributesParam = getParamCaseInsensitive('attributes');
+			if (attributesParam) {
+				const parsedAttributes = JSON.parse(attributesParam);
+				if (typeof parsedAttributes === 'object' && parsedAttributes !== null) {
+					values.attributes = parsedAttributes;
+					if (setSource) this.setMetadataSourceField('attributes', 'query');
+				}
+			}
+		} catch (e) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse attributes from query params: ${e}`);
+		}
+		
+		// === Boolean parameters ===
+		const setQueryBoolParam = (paramName: keyof OptimizelyConfigOptions, queryName: string) => {
+			const queryValue = getParamCaseInsensitive(queryName);
+			if (queryValue !== null) {
+				const boolValue = parseBoolParam(queryValue) ?? false;
+				
+				// Only set boolean parameters - TypeScript enforces this with the constraint
+				this.setBooleanProperty(values, paramName, boolValue);
+				if (setSource) this.setMetadataSourceField(paramName, 'query');
+			}
+		};
+		
+		// Boolean parameters
+		setQueryBoolParam('enableFex', 'enable_fex');
+		setQueryBoolParam('overrideCache', 'override_cache');
+		setQueryBoolParam('enableResponseMetadata', 'enable_response_metadata');
+		setQueryBoolParam('enableDebugHeaders', 'enable_debug_headers');
+		setQueryBoolParam('trimmedDecisions', 'trimmed_decisions');
+		setQueryBoolParam('decideAll', 'decide_all');
+		setQueryBoolParam('enabledFlagsOnly', 'enabled_flags_only');
+		setQueryBoolParam('includeReasons', 'include_reasons');
+		setQueryBoolParam('excludeVariables', 'exclude_variables');
+		setQueryBoolParam('disableDecisionEvent', 'disable_decision_event');
+		setQueryBoolParam('setResponseHeaders', 'set_response_headers');
+		setQueryBoolParam('setResponseCookies', 'set_response_cookies');
+		setQueryBoolParam('setRequestHeaders', 'set_request_headers');
+		setQueryBoolParam('setRequestCookies', 'set_request_cookies');
+		setQueryBoolParam('enableFlagsFromKV', 'flags_from_kv');
+		setQueryBoolParam('datafileFromKV', 'datafile_from_kv');
+		
+		return values;
+	}
+	
+	/**
+	 * Extracts configuration values from request body without applying them
+	 * @param request - The request adapter
+	 * @returns A partial configuration object with values from body
+	 */
+	private async extractBodyValues(request: IRequestAdapter, setSource: boolean, requestId: string): Promise<Partial<OptimizelyConfigOptions>> {
+		const values: Partial<OptimizelyConfigOptions> = {};
+		
+		try {
+			// Get body as JSON from the request adapter
+			const body = await request.getBodyJson<Record<string, any>>();
+			
+			if (!body || typeof body !== 'object') {
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] No JSON body found or body is not an object, skipping body initialization`);
+				return values;
+			}
+
+			// Helper for case-insensitive body property lookup
+			const getBodyPropCaseInsensitive = (baseName: string): any => {
+				// Try common property name variations
+				const variations = [
+					baseName,                  // Original
+					baseName.toLowerCase(),    // lowercase
+					baseName.toUpperCase(),    // UPPERCASE
+					// Convert from snake_case to camelCase
+					baseName.replace(/_([a-z])/g, (_, char) => char.toUpperCase()),
+					// Convert from camelCase to snake_case
+					baseName.replace(/([A-Z])/g, '_$1').toLowerCase()
+				];
+				
+				for (const variation of variations) {
+					if (variation in body) {
+						return body[variation];
+					}
+				}
+				
+				return undefined;
+			};
+			
+			// === String Parameters ===
+			// SDK Key
+			const sdkKeyValue = getBodyPropCaseInsensitive('sdk_key');
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SDK KEY BODY DEBUG - sdkKeyValue: ${JSON.stringify(sdkKeyValue)}, type: ${typeof sdkKeyValue}`);
+			
+			if (sdkKeyValue !== undefined && typeof sdkKeyValue === 'string') {
+				values.sdkKey = sdkKeyValue.trim();
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SDK KEY BODY DEBUG - Setting values.sdkKey to: ${values.sdkKey}`);
+				if (setSource) {
+					this.setMetadataSourceField('sdkKey', 'body');
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SDK KEY BODY DEBUG - Setting metadata source to 'body'`);
+				}
+			}
+			
+			// Visitor ID
+			const visitorIdValue = getBodyPropCaseInsensitive('visitor_id');
+			if (visitorIdValue !== undefined && typeof visitorIdValue === 'string') {
+				values.visitorId = visitorIdValue.trim();
+				if (setSource) this.setMetadataSourceField('visitorId', 'body');
+			}
+			
+			// User ID (as alias for Visitor ID)
+			if (!values.visitorId) {
+				const userIdValue = getBodyPropCaseInsensitive('user_id');
+				if (userIdValue !== undefined && typeof userIdValue === 'string') {
+					values.visitorId = userIdValue.trim();
+					if (setSource) this.setMetadataSourceField('userId', 'body');
+				}
+			}
+			
+			// Event Key
+			const eventKeyValue = getBodyPropCaseInsensitive('event_key');
+			if (eventKeyValue !== undefined && typeof eventKeyValue === 'string') {
+				values.eventKey = eventKeyValue.trim();
+				if (setSource) this.setMetadataSourceField('eventKey', 'body');
+			}
+			
+			// Flag Key
+			const flagKeyValue = getBodyPropCaseInsensitive('flag_key');
+			if (flagKeyValue !== undefined && typeof flagKeyValue === 'string') {
+				values.flagKey = flagKeyValue.trim();
+				if (setSource) this.setMetadataSourceField('flagKey', 'body');
+			}
+			
+			// Server Mode
+			const serverModeValue = getBodyPropCaseInsensitive('server_mode');
+			if (serverModeValue !== undefined && typeof serverModeValue === 'string') {
+				values.serverMode = serverModeValue.trim();
+				if (setSource) this.setMetadataSourceField('serverMode', 'body');
+			}
+			
+			// Datafile Access Token
+			const tokenValue = getBodyPropCaseInsensitive('datafile_access_token');
+			if (tokenValue !== undefined && typeof tokenValue === 'string') {
+				values.datafileAccessToken = tokenValue.trim();
+				if (setSource) this.setMetadataSourceField('datafileAccessToken', 'body');
+			}
+			
+			// === Object Parameters ===
+			// Attributes
+			const attributesValue = getBodyPropCaseInsensitive('attributes');
+			if (attributesValue !== undefined && typeof attributesValue === 'object' && attributesValue !== null) {
+				values.attributes = attributesValue;
+				if (setSource) this.setMetadataSourceField('attributes', 'body');
+			}
+			
+			// === Boolean Parameters ===
+			// Helper for processing boolean body parameters
+			const processBodyBoolParam = (paramName: keyof OptimizelyConfigOptions, bodyKey: string): void => {
+				const bodyValue = getBodyPropCaseInsensitive(bodyKey);
+				if (bodyValue !== undefined) {
+					// Allow various boolean representations
+					let boolValue: boolean;
+					
+					if (typeof bodyValue === 'boolean') {
+						boolValue = bodyValue;
+					} else if (typeof bodyValue === 'string') {
+						// Handle string representations of booleans
+						const strValue = bodyValue.toLowerCase();
+						boolValue = strValue === 'true' || strValue === '1' || strValue === '';
+					} else if (typeof bodyValue === 'number') {
+						// Handle numeric representations of booleans
+						boolValue = bodyValue !== 0;
+					} else {
+						// Default to presence = true
+						boolValue = true;
+					}
+					
+					// Use type-safe property setting
+					this.setBooleanProperty(values, paramName, boolValue);
+					if (setSource) this.setMetadataSourceField(paramName, 'body');
+				}
+			};
+			
+			// Apply all boolean parameters
+			processBodyBoolParam('enableFex', 'enable_fex');
+			
+			processBodyBoolParam('overrideCache', 'override_cache');
+			processBodyBoolParam('enableResponseMetadata', 'enable_response_metadata');
+			
+			processBodyBoolParam('enableDebugHeaders', 'enable_debug_headers');
+			processBodyBoolParam('trimmedDecisions', 'trimmed_decisions');
+			processBodyBoolParam('decideAll', 'decide_all');
+			processBodyBoolParam('enabledFlagsOnly', 'enabled_flags_only');
+			processBodyBoolParam('includeReasons', 'include_reasons');
+			processBodyBoolParam('excludeVariables', 'exclude_variables');
+			processBodyBoolParam('disableDecisionEvent', 'disable_decision_event');
+			processBodyBoolParam('setResponseHeaders', 'set_response_headers');
+			processBodyBoolParam('setResponseCookies', 'set_response_cookies');
+			processBodyBoolParam('setRequestHeaders', 'set_request_headers');
+			processBodyBoolParam('setRequestCookies', 'set_request_cookies');
+			processBodyBoolParam('enableFlagsFromKV', 'flags_from_kv');
+			processBodyBoolParam('datafileFromKV', 'datafile_from_kv');
+			
+		} catch (e) {
+			this.logger.warn(`${this.logPrefix} [REQUEST:${requestId}] Failed to initialize from body: ${e}`);
+		}
+		
+		return values;
+	}
+	
+	/**
+	 * Applies configuration values from a single source
+	 * @param values - Configuration values to apply
+	 * @param source - Source of the values (header, query, body)
+	 * @param requestId - Request ID for logging
+	 */
+	private applyIndividualSourceValues(
+		values: Partial<OptimizelyConfigOptions>,
+		source: MetadataSource,
+		requestId: string
+	): void {
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SOURCE APPLY DEBUG - Starting to apply ${Object.keys(values).length} values from source: ${source}`);
+		
+		// Process each key in the values object
+		Object.keys(values).forEach(key => {
+			const typedKey = key as keyof OptimizelyConfigOptions;
+			const value = values[typedKey];
+			
+			// Get current source for this key (if any)
+			const currentSource = this.getMetadataSourceField(typedKey);
+			
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] VALUE CHECK - Key: '${String(typedKey)}', Current value: '${this.safeStringify(this.config[typedKey])}', Current source: '${currentSource || "none"}', New value: '${this.safeStringify(value)}', New source: '${source}'`);
+			
+			// Only apply if the new source has higher precedence
+			if (value !== undefined && this.shouldOverrideValue(currentSource, source)) {
+				// Log before changing
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] OVERRIDE APPROVED - Will override '${String(typedKey)}' value from source '${currentSource || "none"}' with value from '${source}'`);
+				
+				// Type-safe assignment to ensure type compatibility
+				(this.config[typedKey] as any) = value;
+				this.setMetadataSourceField(typedKey, source);
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLIED - '${String(typedKey)}'='${this.safeStringify(value)}' from '${source}', metadata source updated`);
+			} else if (value !== undefined) {
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SKIPPED - Did NOT apply '${String(typedKey)}'='${this.safeStringify(value)}' from '${source}' because current source '${currentSource}' has higher precedence`);
+			}
+		});
+		
+		// Log critical parameters after application
+		const criticalParams = ['sdkKey', 'visitorId', 'flagKey'];
+		criticalParams.forEach(param => {
+			const typedParam = param as keyof OptimizelyConfigOptions;
+			const source = this.getMetadataSourceField(typedParam);
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAM STATUS - After applying '${source}' values: ${param}='${this.safeStringify(this.config[typedParam])}', source='${source || "none"}'`);
+		});
+	}
+	
+	/**
+	 * Applies configuration values from different sources with proper precedence
+	 * This method is maintained for backward compatibility but delegates to applyIndividualSourceValues
+	 * @param headerValues - Values from headers (highest priority)
+	 * @param queryValues - Values from query parameters (medium priority)
+	 * @param bodyValues - Values from request body (lowest priority)
+	 */
+	private applyConfigValues(
+		headerValues: Partial<OptimizelyConfigOptions>,
+		queryValues: Partial<OptimizelyConfigOptions>,
+		bodyValues: Partial<OptimizelyConfigOptions>,
+		requestId: string
+	): void {
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLY_CONFIG DEBUG - Starting to apply all values with precedence (delegating to individual source methods)`);
+		
+		// Apply each source in proper precedence order (header > query > body)
+		// This ensures higher priority sources are applied first and lower priority ones don't override
+		if (Object.keys(headerValues).length > 0) {
+			this.applyIndividualSourceValues(headerValues, 'header', requestId);
+		}
+		
+		if (Object.keys(queryValues).length > 0) {
+			this.applyIndividualSourceValues(queryValues, 'query', requestId);
+		}
+		
+		if (Object.keys(bodyValues).length > 0) {
+			this.applyIndividualSourceValues(bodyValues, 'body', requestId);
+		}
+		
+		// Log the result of applying all values with precedence
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] PRECEDENCE CHECK - Final config:`);
+		
+		// Special case logging for important values to help debug precedence issues
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] PRECEDENCE CHECK - sdkKey: ${this.config.sdkKey} (from: ${this.metadata.sdkKeyFrom || 'unknown'})`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] PRECEDENCE CHECK - visitorId: ${this.config.visitorId} (from: ${this.metadata.visitorIdFrom || 'unknown'})`);
+		
+		if (this.config.flagKey) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] PRECEDENCE CHECK - flagKey: ${this.config.flagKey} (from: ${this.metadata.flagKeyFrom || 'unknown'})`);
+		}
+		
+		if (this.config.eventKey) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] PRECEDENCE CHECK - eventKey: ${this.config.eventKey} (from: ${this.metadata.eventKeyFrom || 'unknown'})`);
+		}
+	}
+
+	/**
+	 * Assigns a value to a specific config property in a type-safe manner while maintaining source information.
+	 * @param key - The configuration key to assign to
+	 * @param headerValue - Value from headers (highest priority)
+	 * @param queryValue - Value from query params (medium priority)
+	 * @param bodyValue - Value from body (lowest priority)
+	 */
+	private typeSafeAssign<K extends keyof OptimizelyConfigOptions>(
+		key: K,
+		headerValue: OptimizelyConfigOptions[K] | undefined,
+		queryValue: OptimizelyConfigOptions[K] | undefined,
+		bodyValue: OptimizelyConfigOptions[K] | undefined,
+		requestId: string
+	): void {
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - Processing key '${String(key)}'`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - Values - Header: ${this.safeStringify(headerValue)}, Query: ${this.safeStringify(queryValue)}, Body: ${this.safeStringify(bodyValue)}, Current: ${this.safeStringify(this.config[key])}`);
+	
+		// Get current source for this key (if any)
+		const currentSource = this.getMetadataSourceField(key);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - Current source for '${String(key)}': ${currentSource || 'none'}`);
+	
+		// STRICT precedence handling: headers > query params > body > defaults
+		// Only override if new source has higher precedence than current source
+		if (headerValue !== undefined) {
+			// Header values have highest precedence
+			if (this.shouldOverrideValue(currentSource, 'header')) {
+				this.config[key] = headerValue;
+				this.setMetadataSourceField(key, 'header');
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - Used HEADER value for '${String(key)}': ${this.safeStringify(headerValue)}`);
+			} else {
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - NOT using HEADER value for '${String(key)}' because current source ${currentSource} has higher precedence`);
+			}
+		} else if (queryValue !== undefined) {
+			// Query parameters have second precedence
+			if (this.shouldOverrideValue(currentSource, 'query')) {
+				this.config[key] = queryValue;
+				this.setMetadataSourceField(key, 'query');
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - Used QUERY value for '${String(key)}': ${this.safeStringify(queryValue)}`);
+			} else {
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - NOT using QUERY value for '${String(key)}' because current source ${currentSource} has higher precedence`);
+			}
+		} else if (bodyValue !== undefined) {
+			// Body values have third precedence
+			if (this.shouldOverrideValue(currentSource, 'body')) {
+				this.config[key] = bodyValue;
+				this.setMetadataSourceField(key, 'body');
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - Used BODY value for '${String(key)}': ${this.safeStringify(bodyValue)}`);
+			} else {
+				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - NOT using BODY value for '${String(key)}' because current source ${currentSource} has higher precedence`);
+			}
+		} else {
+			// If no source has a value, we don't need to change anything
+			// We're keeping the existing default value
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - No source had a value for '${String(key)}', keeping default: ${this.safeStringify(this.config[key])}`);
+		}
+		
+		// Final verification - the metadata should always match the actual value used
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] TYPESAFE_ASSIGN DEBUG - Final value for '${String(key)}': ${this.safeStringify(this.config[key])}`);
+	}
+	
+	/**
+	 * Determines if a value should be overridden based on source precedence
+	 * @param currentSource - The current source of the value (if any)
+	 * @param newSource - The new source trying to set the value
+	 * @returns True if the new source has higher or equal precedence
+	 */
+	private shouldOverrideValue(currentSource: MetadataSource | null, newSource: MetadataSource): boolean {
+		const logPrefix = `${this.logPrefix} [PRECEDENCE DEBUG]`;
+		this.logger.debug(`${logPrefix} OVERRIDE CHECK - currentSource: '${currentSource}', newSource: '${newSource}'`);
+		
+		// If no current source, always apply the new value
+		if (currentSource === null) {
+			this.logger.debug(`${logPrefix} DECISION: TRUE - No current source, will apply new value from '${newSource}'`);
+			return true;
+		}
+		
+		// Define precedence order (highest to lowest)
+		const precedence: MetadataSource[] = [
+			'header',
+			'query',
+			'body',
+			'default',
+			'cookie',
+			'localstorage'
+		];
+		
+		this.logger.debug(`${logPrefix} Precedence order (highest to lowest): ${precedence.join(' > ')}`);
+		
+		// Get precedence indices (lower index = higher precedence)
+		const currentIndex = precedence.indexOf(currentSource);
+		const newIndex = precedence.indexOf(newSource);
+		
+		this.logger.debug(`${logPrefix} Precedence indices - currentSource: '${currentSource}' = ${currentIndex}, newSource: '${newSource}' = ${newIndex}`);
+		
+		// Handle unknown sources (should never happen)
+		if (currentIndex === -1 || newIndex === -1) {
+			this.logger.debug(`${logPrefix} DECISION: TRUE - Unknown source detected. currentIndex: ${currentIndex}, newIndex: ${newIndex}`);
+			return true; // Default to overriding if we can't determine precedence
+		}
+		
+		// Return true if new source has higher or equal precedence (lower or equal index)
+		// Equal precedence means we still want to overwrite (e.g. multiple header values)
+		const shouldOverride = newIndex <= currentIndex;
+		this.logger.debug(`${logPrefix} DECISION: ${shouldOverride} - ${newSource} ${shouldOverride ? 'has higher or equal precedence than' : 'has lower precedence than'} ${currentSource}`);
+		return shouldOverride;
+	}
+	
+	
+	/**
+	 * Gets the metadata source field for a given parameter
+	 * @param paramName - The parameter name to check
+	 * @returns The source of the parameter or null if not set
+	 */
+	private getMetadataSourceField(paramName: keyof OptimizelyConfigOptions): MetadataSource | null {
+		let source: MetadataSource | null = null;
+		
+		// Handle special cases for known parameters with explicit source fields
+		switch (paramName) {
+			case 'visitorId':
+				source = this.metadata.visitorIdFrom as MetadataSource || null;
+				break;
+			case 'sdkKey':
+				source = this.metadata.sdkKeyFrom as MetadataSource || null;
+				break;
+			case 'attributes':
+				source = this.metadata.attributesFrom as MetadataSource || null;
+				break;
+			case 'eventTags':
+				source = this.metadata.eventTagsFrom as MetadataSource || null;
+				break;
+			case 'decideOptions':
+				source = this.metadata.decideOptionsFrom as MetadataSource || null;
+				break;
+			case 'flagKey':
+				source = this.metadata.flagKeyFrom as MetadataSource || null;
+				break;
+			case 'flagKeys':
+				source = this.metadata.flagKeysFrom as MetadataSource || null;
+				break;
+			case 'forcedDecisions':
+				source = this.metadata.forcedDecisionsFrom as MetadataSource || null;
+				break;
+			case 'serverMode':
+				source = this.metadata.serverModeFrom as MetadataSource || null;
+				break;
+			case 'cdnVariationSettings':
+				source = this.metadata.cdnVariationSettingsFrom as MetadataSource || null;
+				break;
+			case 'datafileAccessToken':
+				source = this.metadata.datafileAccessTokenFrom as MetadataSource || null;
+				break;
+			case 'decideAll':
+				source = this.metadata.decideAllFrom as MetadataSource || null;
+				break;
+			case 'eventKey':
+				source = this.metadata.eventKeyFrom as MetadataSource || null;
+				break;
+			
+			// Boolean parameters
+			case 'trimmedDecisions':
+				source = this.metadata.trimmedDecisionsFrom as MetadataSource || null;
+				break;
+			case 'overrideCache':
+				source = this.metadata.overrideCacheFrom as MetadataSource || null;
+				break;
+			case 'overrideVisitorId':
+				source = this.metadata.overrideVisitorIdFrom as MetadataSource || null;
+				break;
+			case 'setResponseHeaders':
+				source = this.metadata.setResponseHeadersFrom as MetadataSource || null;
+				break;
+			case 'setResponseCookies':
+				source = this.metadata.setResponseCookiesFrom as MetadataSource || null;
+				break;
+			case 'setRequestHeaders':
+				source = this.metadata.setRequestHeadersFrom as MetadataSource || null;
+				break;
+			case 'setRequestCookies':
+				source = this.metadata.setRequestCookiesFrom as MetadataSource || null;
+				break;
+			case 'enableFex':
+				source = this.metadata.enableFexFrom as MetadataSource || null;
+				break;
+			case 'enableFlagsFromKV':
+				source = this.metadata.enableFlagsFromKVFrom as MetadataSource || null;
+				break;
+			case 'datafileFromKV':
+				source = this.metadata.datafileFromKVFrom as MetadataSource || null;
+				break;
+			case 'enableResponseMetadata':
+				source = this.metadata.enableResponseMetadataFrom as MetadataSource || null;
+				break;
+			case 'excludeVariables':
+				source = this.metadata.excludeVariablesFrom as MetadataSource || null;
+				break;
+			case 'enabledFlagsOnly':
+				source = this.metadata.enabledFlagsOnlyFrom as MetadataSource || null;
+				break;
+			case 'includeReasons':
+				source = this.metadata.includeReasonsFrom as MetadataSource || null;
+				break;
+			case 'disableDecisionEvent':
+				source = this.metadata.disableDecisionEventFrom as MetadataSource || null;
+				break;
+			case 'ignoreUserProfileService':
+				source = this.metadata.ignoreUserProfileServiceFrom as MetadataSource || null;
+				break;
+			
+			default:
+				// For other parameters without explicit tracking, default to null
+				source = null;
+		}
+		
+		this.logger.debug(`${this.logPrefix} [METADATA SOURCE] - Parameter '${String(paramName)}' current source: '${source || "none"}'`);
+		return source;
 	}
 
 	/**
@@ -281,745 +1341,89 @@ export class ConfigurationService implements IConfigurationService {
 	}
 
 	/**
-	 * Initializes configuration settings from HTTP headers.
-	 * @param request - The request adapter.
-	 */
-	private async initializeFromHeaders(request: IRequestAdapter): Promise<void> {
-		this.logger.debug(`${this.logPrefix} Initializing from headers`);
-		const headers = request.getHeaders();
-
-		// Log all headers for debugging
-		const headerEntries: string[] = [];
-		headers.forEach((value, key) => {
-			headerEntries.push(`${key}=${value}`);
-			console.log(`[HEADER_DEBUG] ${key}=${value}`);
-		});
-		this.logger.debug(`${this.logPrefix} Request headers: ${headerEntries.join(', ')}`);
-
-		// EXTRA SPECIAL CASE FOR DEBUGGING: Check for SDK Key header explicitly
-		if (headers.has('X-Optimizely-SDK-Key')) {
-			const sdkKeyValue = headers.get('X-Optimizely-SDK-Key');
-			console.log(`[HEADER_DEBUG] Found X-Optimizely-SDK-Key in headers: '${sdkKeyValue}'`);
-			this.setConfigValue('sdkKey', sdkKeyValue, 'headers');
-			console.log(`[HEADER_DEBUG] Set sdkKey to ${sdkKeyValue} from headers`);
-		}
-
-		// Process headers to extract configuration values
-		headers.forEach((value, key) => {
-			// Handle both x-optly-* and X-Optimizely-* headers
-			if (key.toLowerCase().startsWith('x-optly-') || key.toLowerCase().startsWith('x-optimizely-')) {
-				// Convert header name to camelCase config key
-				let configKey = '';
-
-				if (key.toLowerCase().startsWith('x-optly-')) {
-					// Handle x-optly- prefix (legacy)
-					configKey = this.convertHeaderToCamelCase(key.replace(/^x-optly-/i, ''));
-				} else {
-					// Handle X-Optimizely- prefix (standard)
-					configKey = this.convertHeaderToCamelCase(key.replace(/^x-optimizely-/i, ''));
-
-					// Special case mappings
-					configKey = this.mapSpecialHeaderKeys(configKey);
-				}
-
-				// Extract value
-				const configValue = this.parseHeaderValue(value, key);
-
-				// Store in config
-				this.setConfigValue(configKey as keyof OptimizelyConfigOptions, configValue, 'headers');
-				this.logger.debug(
-					`${this.logPrefix} Extracted header config: ${key} -> ${configKey} = ${JSON.stringify(configValue)}`
-				);
-
-				// [AI-AUTO-DOC] X-Optimizely-Enable-FEX explicit behavior:
-				// If the X-Optimizely-Enable-FEX header exists and is enabled (true),
-				// the worker proceeds with normal routing/processing as if there was no SDK installed,
-				// no sdkKey provided, or the SDK was not installed. No special logic, override, or error is applied.
-				// All other scenarios are out of scope for this implementation.
-			}
-		});
-
-		// Handle special headers with direct mapping
-		if (headers.has('X-Optimizely-Visitor-Id') && !this.config.userId) {
-			this.setConfigValue('userId', headers.get('X-Optimizely-Visitor-Id'), 'headers');
-			this.logger.debug(`${this.logPrefix} Extracted User-Id from header: ${headers.get('X-Optimizely-Visitor-Id')}`);
-		}
-
-		// SDK Key header has direct mapping
-		if (headers.has(this.settings.sdkKeyHeader)) {
-			const sdkKeyValue = headers.get(this.settings.sdkKeyHeader);
-			this.logger.debug(`${this.logPrefix} Found SDK Key in header '${this.settings.sdkKeyHeader}': '${sdkKeyValue}'`);
-			this.setConfigValue('sdkKey', sdkKeyValue, 'headers');
-			
-			// Extra logging for debugging
-			console.log(`[HEADER_DEBUG] SDK key from header: ${sdkKeyValue}, source: headers`);
-			console.log(`[HEADER_DEBUG] Metadata sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
-		} else {
-			this.logger.debug(`${this.logPrefix} No SDK Key found in headers. Looking for: '${this.settings.sdkKeyHeader}'`);
-		}
-
-		// Extract boolean values from headers
-		this.extractBooleanHeaderValues(headers);
-
-		// Extract complex objects from headers
-		this.extractComplexHeaderValues(headers);
-	}
-
-	/**
-	 * Maps special header keys to their corresponding config keys.
-	 * @param key - The header key.
-	 * @returns The mapped config key.
-	 */
-	private mapSpecialHeaderKeys(key: string): string {
-		// Convert standard header names to expected config format
-		switch (key.toLowerCase()) {
-			case 'sdkkey':
-				return 'sdkKey';
-			case 'flagkey':
-				return 'flagKey';
-			case 'userid':
-				return 'userId';
-			case 'eventkey':
-				return 'eventKey';
-			default:
-				return key;
-		}
-	}
-
-	/**
-	 * Converts a header name to camelCase.
-	 * @param header - The header name.
-	 * @returns The camelCase version of the header name.
-	 */
-	private convertHeaderToCamelCase(header: string): string {
-		return header.replace(/-([a-z])/g, (_: string, char: string) => char.toUpperCase());
-	}
-
-	/**
-	 * Extracts boolean values from headers.
-	 * @param headers - The headers.
-	 */
-	private extractBooleanHeaderValues(headers: Headers): void {
-		// Add debug logging for header processing
-		this.logger.info(`${this.logPrefix} Processing boolean headers with values:`);
-		headers.forEach((value, name) => {
-			if (name.toLowerCase().startsWith('x-optim')) {
-				this.logger.info(`${this.logPrefix} Header: ${name} = ${value}`);
-			}
-		});
-
-		// Extract boolean config values from headers
-		const booleanHeaderMappings: Record<string, keyof OptimizelyConfigOptions> = {
-			[this.settings.overrideCacheHeader]: 'overrideCache',
-			[this.settings.overrideVisitorIdHeader]: 'overrideVisitorId',
-			[this.settings.setResponseHeadersHeader]: 'setResponseHeaders', // Fixed: Use correct property name
-			[this.settings.setResponseCookiesHeader]: 'setResponseCookies', // Fixed: Use correct property name
-			[this.settings.setRequestHeadersHeader]: 'setRequestHeaders',
-			[this.settings.setRequestCookiesHeader]: 'setRequestCookies',
-			[this.settings.enableFlagsFromKVHeader]: 'enableFlagsFromKV',
-			[this.settings.enableDatafileFromKVHeader]: 'datafileFromKV',
-			[this.settings.enableRespMetadataHeader]: 'enableResponseMetadata',
-			[this.settings.enableDebugHeadersHeader]: 'enableDebugHeaders',
-			[this.settings.trimmedDecisionsHeader]: 'trimmedDecisions',
-		};
-
-		// Process each boolean header
-		for (const [headerName, configKey] of Object.entries(booleanHeaderMappings)) {
-			if (headers.has(headerName)) {
-				const headerValue = headers.get(headerName);
-				const parsedValue = this.parseBoolean(headerValue);
-				this.setConfigValue(configKey, parsedValue, 'headers');
-				this.logger.info(
-					`${this.logPrefix} Mapped header ${headerName} -> config.${String(configKey)} = ${parsedValue}`
-				);
-			}
-		}
-	}
-
-	/**
-	 * Extracts complex object values from headers.
-	 * @param headers - The headers.
-	 */
-	private extractComplexHeaderValues(headers: Headers): void {
-		// Extract and parse more complex header values that may need special handling
-		this.extractHeaderValue(headers, 'X-Optimizely-Attributes', 'attributes');
-		this.extractHeaderValue(headers, 'X-Optimizely-Event-Tags', 'eventTags');
-		this.extractHeaderValue(headers, 'X-Optimizely-Decide-Options', 'decideOptions');
-
-		// Special handling for forced decisions
-		const forcedDecisionHeader = headers.get('X-Optimizely-Forced-Decision');
-		if (forcedDecisionHeader) {
-			console.log('[HEADER_DEBUG] Found X-Optimizely-Forced-Decision header:', forcedDecisionHeader);
-
-			try {
-				// Parse the header value
-				const forcedDecisions = JSON.parse(forcedDecisionHeader);
-				console.log('[HEADER_DEBUG] Parsed forcedDecisions:', JSON.stringify(forcedDecisions));
-
-				// Set directly on the configuration
-				this.setValue('forcedDecisions', forcedDecisions);
-				this.setConfigValue('forcedDecisions', forcedDecisions, 'Header: X-Optimizely-Forced-Decision');
-
-				// Also set it explicitly in the userContext.attributes to ensure it's passed to the SDK
-				if (!this.config.attributes) {
-					this.config.attributes = {};
-				}
-
-				if (typeof this.config.attributes === 'object' && this.config.attributes !== null) {
-					this.config.attributes.forcedDecisions = forcedDecisions;
-					console.log('[HEADER_DEBUG] Added forcedDecisions to attributes:', JSON.stringify(this.config.attributes));
-				}
-			} catch (error) {
-				this.logger.error(`${this.logPrefix} Error parsing X-Optimizely-Forced-Decision header`, error);
-				console.log('[HEADER_DEBUG] Error parsing X-Optimizely-Forced-Decision header:', error);
-			}
-		}
-
-		// Extract CDN variation settings if present
-		this.extractHeaderValue(headers, 'X-Optimizely-CDN-Settings', 'cdnVariationSettings');
-	}
-
-	/**
-	 * Parses a header value, attempting JSON parsing if possible.
-	 * @param value - The header value.
-	 * @param headerName - The header name (for logging).
-	 * @returns The parsed value.
-	 */
-	private parseHeaderValue(value: string, headerName: string): any {
-		if (!value) return value;
-
-		try {
-			// Try to parse as JSON
-			return JSON.parse(value);
-		} catch (error) {
-			// If not valid JSON, use as string
-			this.logger.debug(`${this.logPrefix} Header ${headerName} is not valid JSON, using as string`);
-			return value;
-		}
-	}
-
-	/**
-	 * Initializes configuration settings from URL query parameters.
-	 * @param request - The request adapter.
-	 */
-	private async initializeFromQueryParams(request: IRequestAdapter): Promise<void> {
-		this.logger.debug(`${this.logPrefix} Initializing from query parameters`);
-		const url = request.getUrl();
-		const queryParams = url.searchParams;
-
-		// Log all query parameters for debugging
-		this.logger.debug(
-			`${this.logPrefix} Query parameters: ${Array.from(queryParams.entries())
-				.map(([k, v]) => `${k}=${v}`)
-				.join(', ')}`
-		);
-
-		// Map of query parameter names to config keys
-		const queryParamMapping = this.getQueryParamMapping();
-
-		// Process each query parameter and update config if allowed by precedence rules
-		for (const [paramName, configKey] of Object.entries(queryParamMapping)) {
-			if (queryParams.has(paramName)) {
-				const paramValue = queryParams.get(paramName);
-				
-				// Check if we should apply this value based on precedence rules
-				if (this.shouldApplyValueFromSource(configKey as keyof OptimizelyConfigOptions, 'queryParams')) {
-					// Try to parse as complex type if applicable
-					if (['attributes', 'eventTags', 'forcedDecisions', 'cdnVariationSettings'].includes(configKey)) {
-						try {
-							const parsedValue = paramValue ? JSON.parse(paramValue) : null;
-							if (parsedValue !== null) {
-								this.setConfigValue(configKey as keyof OptimizelyConfigOptions, parsedValue, 'queryParams');
-								this.logger.debug(
-									`${this.logPrefix} Extracted complex query param: ${paramName} -> ${configKey} = ${JSON.stringify(
-										parsedValue
-									)}`
-								);
-							}
-						} catch (error) {
-							this.logger.debug(`${this.logPrefix} Failed to parse ${paramName} as JSON:`, error);
-						}
-					} else if (configKey === 'decideOptions' && paramValue) {
-						// Handle decide options as comma-separated list
-						const decideOptions = paramValue.split(',').map((s) => s.trim());
-						this.setConfigValue('decideOptions', decideOptions, 'queryParams');
-						this.logger.debug(
-							`${this.logPrefix} Extracted decide options from query param: ${paramName} = ${decideOptions.join(', ')}`
-						);
-					} else if (['true', 'false'].includes(paramValue?.toLowerCase() || '')) {
-						// Handle boolean values
-						const boolValue = paramValue?.toLowerCase() === 'true';
-						this.setConfigValue(configKey as keyof OptimizelyConfigOptions, boolValue, 'queryParams');
-						this.logger.debug(
-							`${this.logPrefix} Extracted boolean query param: ${paramName} -> ${configKey} = ${boolValue}`
-						);
-					} else {
-						// Handle regular values
-						this.setConfigValue(configKey as keyof OptimizelyConfigOptions, paramValue, 'queryParams');
-						this.logger.debug(`${this.logPrefix} Extracted query param: ${paramName} -> ${configKey} = ${paramValue}`);
-
-						// Special logging for sdkKey
-						if (configKey === 'sdkKey') {
-							this.logger.debug(`${this.logPrefix} Found SDK Key in query parameter '${paramName}': '${paramValue}'`);
-						}
-					}
-				} else {
-					// Log that we're skipping due to precedence
-					this.logger.debug(
-						`${this.logPrefix} Skipping ${paramName} from query params due to precedence. Current source: ${
-							(this.metadata as any)[`${configKey}From`]
-						}`
-					);
-				}
-			}
-		}
-
-		// Log current SDK key after query param processing
-		this.logger.debug(`${this.logPrefix} Current SDK Key after query params: '${this.config.sdkKey}'`);
-
-		// Special handling for flag keys (can have multiple values)
-		if (queryParams.has('keys') && this.shouldApplyValueFromSource('flagKeys', 'queryParams')) {
-			const flagKeys = queryParams.getAll('keys');
-			this.setConfigValue('flagKeys', flagKeys, 'queryParams');
-		}
-
-		// Special handling for trimmedDecisions
-		const trimmedDecisionsParam = queryParams.get('trimmedDecisions');
-		if (trimmedDecisionsParam !== null && this.shouldApplyValueFromSource('trimmedDecisions', 'queryParams')) {
-			this.setConfigValue('trimmedDecisions', trimmedDecisionsParam === 'true', 'queryParams');
-		}
-	}
-
-	/**
-	 * Gets the mapping of query parameter names to config keys.
-	 * @returns The mapping of query parameter names to config keys.
-	 */
-	private getQueryParamMapping(): Record<string, keyof OptimizelyConfigOptions> {
-		return {
-			serverMode: 'serverMode',
-			visitorId: 'visitorId',
-			userId: 'userId',
-			sdkKey: 'sdkKey',
-			decideAll: 'decideAll',
-			trimmedDecisions: 'trimmedDecisions',
-			setRequestHeaders: 'setRequestHeaders',
-			setResponseHeaders: 'setResponseHeaders',
-			setRequestCookies: 'setRequestCookies',
-			setResponseCookies: 'setResponseCookies',
-			disableDecisionEvent: 'disableDecisionEvent',
-			enabledFlagsOnly: 'enabledFlagsOnly',
-			includeReasons: 'includeReasons',
-			ignoreUserProfileService: 'ignoreUserProfileService',
-			excludeVariables: 'excludeVariables',
-			overrideVisitorId: 'overrideVisitorId',
-			enableResponseMetadata: 'enableResponseMetadata',
-			enableDatafileFromKV: 'datafileFromKV',
-			enableFlagsFromKV: 'enableFlagsFromKV',
-			eventKey: 'eventKey',
-			overrideCache: 'overrideCache',
-			flagKey: 'flagKey',
-			attributes: 'attributes',
-			eventTags: 'eventTags',
-			forcedDecisions: 'forcedDecisions',
-			value: 'value',
-		};
-	}
-
-	/**
-	 * Initializes configuration settings from the request body if available.
-	 * @param request - The request adapter.
-	 */
-	/**
-	 * Checks if a new value from the given source should be applied based on precedence rules.
-	 * Headers take precedence over query parameters, which take precedence over body.
-	 * 
-	 * @param key - The configuration key
-	 * @param source - The source of the new value ('headers', 'queryParams', or 'body')
-	 * @returns True if the value should be applied, false otherwise
-	 */
-	private shouldApplyValueFromSource(key: keyof OptimizelyConfigOptions, source: string): boolean {
-		const sourceField = `${String(key)}From`;
-		const currentSource = (this.metadata as any)[sourceField];
-		
-		// If we don't have an existing source, always apply the new value
-		if (!currentSource) {
-			return true;
-		}
-		
-		// Check precedence: headers > queryParams > body
-		if (currentSource === 'headers') {
-			// Headers have highest precedence, never override
-			return false;
-		}
-		
-		if (currentSource === 'queryParams' && source === 'body') {
-			// Don't override query params with body values
-			return false;
-		}
-		
-		// In all other cases, apply the new value
-		return true;
-	}
-
-	private async initializeFromBody(request: IRequestAdapter): Promise<void> {
-		// Log all the values at the beginning
-		console.log(`[BODY_DEBUG] Starting body processing with current metadata/config state:`);
-		console.log(`[BODY_DEBUG] Current sdkKey: ${this.config.sdkKey}`);
-		console.log(`[BODY_DEBUG] Current sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
-		
-		this.logger.debug(`${this.logPrefix} Initializing from body`);
-
-		// Only process body for POST/PUT methods
-		const method = request.getMethod();
-		if (!['POST', 'PUT'].includes(method)) {
-			this.logger.debug(`${this.logPrefix} Skipping body processing for ${method} request`);
-			return;
-		}
-
-		// Check content type
-		const contentType = request.getHeaders().get('content-type');
-		if (!contentType || !contentType.includes('application/json')) {
-			this.logger.debug(`${this.logPrefix} Skipping body processing for non-JSON content-type: ${contentType}`);
-			return;
-		}
-
-		// Try to parse body as JSON
-		try {
-			const body = await request.getBodyJson<Record<string, any>>();
-			if (!body) {
-				this.logger.debug(`${this.logPrefix} No body found or body is empty`);
-				return;
-			}
-
-			console.log(`[BODY_DEBUG] Request body: ${JSON.stringify(body)}`);
-			this.logger.debug(`${this.logPrefix} Request body: ${JSON.stringify(body)}`);
-
-			// SPECIAL DEBUGGING FOR SDK KEY
-			if (body.sdkKey) {
-				console.log(`[BODY_DEBUG] Found sdkKey in body: ${body.sdkKey}`);
-				console.log(`[BODY_DEBUG] Current sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
-				console.log(`[BODY_DEBUG] Should apply? ${this.shouldApplyValueFromSource('sdkKey', 'body')}`);
-			}
-
-			// Process each property in the body
-			for (const [key, value] of Object.entries(body)) {
-				// Only apply if allowed by precedence rules (bodies have lowest precedence)
-				if (this.shouldApplyValueFromSource(key as keyof OptimizelyConfigOptions, 'body')) {
-					console.log(`[BODY_DEBUG] Setting ${key} from body: ${JSON.stringify(value)}`);
-					this.setConfigValue(key as keyof OptimizelyConfigOptions, value, 'body');
-					this.logger.debug(`${this.logPrefix} Extracted from body: ${key} = ${JSON.stringify(value)}`);
-
-					// Special logging for sdkKey
-					if (key === 'sdkKey') {
-						this.logger.debug(`${this.logPrefix} Found SDK Key in request body: '${value}'`);
-					}
-				} else {
-					// Log that we're skipping due to precedence
-					console.log(`[BODY_DEBUG] SKIPPING ${key} from body due to precedence. Current source: ${
-						(this.metadata as any)[`${key}From`]
-					}`);
-					this.logger.debug(
-						`${this.logPrefix} Skipping ${key} from body due to precedence. Current source: ${
-							(this.metadata as any)[`${key}From`]
-						}`
-					);
-				}
-			}
-
-			// Special handling for userId/visitorId (aliases)
-			if (body.userId && this.shouldApplyValueFromSource('visitorId', 'body')) {
-				this.setConfigValue('visitorId', body.userId, 'body');
-				this.logger.debug(`${this.logPrefix} Using userId from body as visitorId: ${body.userId}`);
-			}
-
-			// Ensure flagKeys is an array
-			if (body.flagKeys && this.shouldApplyValueFromSource('flagKeys', 'body')) {
-				this.setConfigValue('flagKeys', Array.isArray(body.flagKeys) ? body.flagKeys : [body.flagKeys], 'body');
-				this.logger.debug(`${this.logPrefix} Converted flagKeys to array: ${JSON.stringify(this.config.flagKeys)}`);
-			}
-		} catch (error) {
-			this.logger.debug(`${this.logPrefix} Failed to parse request body as JSON:`, error);
-		}
-
-		// Log current SDK key after body processing
-		console.log(`[BODY_DEBUG] AFTER BODY PROCESSING: sdkKey = ${this.config.sdkKey}, sdkKeyFrom = ${this.metadata.sdkKeyFrom}`);
-		this.logger.debug(`${this.logPrefix} Current SDK Key after body processing: '${this.config.sdkKey}'`);
-	}
-
-	/**
-	 * Applies default values to configuration options that are not set.
-	 */
-	private applyDefaults(): void {
-		this.logger.debug(`${this.logPrefix} Applying defaults`);
-
-		// Apply default values from settings
-		if (this.config.trimmedDecisions === undefined) {
-			this.config.trimmedDecisions = this.settings.defaultTrimmedDecisions;
-		}
-
-		if (this.config.setResponseCookies === undefined) {
-			this.config.setResponseCookies = this.settings.defaultSetResponseCookies;
-		}
-
-		if (this.config.setResponseHeaders === undefined) {
-			this.config.setResponseHeaders = this.settings.defaultSetResponseHeaders;
-		}
-
-		if (this.config.setRequestCookies === undefined) {
-			this.config.setRequestCookies = this.settings.defaultSetRequestCookies;
-		}
-
-		if (this.config.setRequestHeaders === undefined) {
-			this.config.setRequestHeaders = this.settings.defaultSetRequestHeaders;
-		}
-
-		if (this.config.overrideCache === undefined) {
-			// If not set by request, check environment variable as fallback
-			// Safely check if process.env exists (for Node.js environments)
-			let envOverride = false;
-			try {
-				envOverride =
-					typeof process !== 'undefined' &&
-					process &&
-					process.env &&
-					process.env.OPTIMIZELY_OVERRIDE_CACHE?.toLowerCase() === 'true';
-			} catch (e) {
-				// In environments without process.env (like Cloudflare Workers)
-				this.logger.debug(`${this.logPrefix} process.env not available in this environment`);
-			}
-
-			this.config.overrideCache = envOverride;
-			this.logger.debug(
-				`${this.logPrefix} overrideCache not set by request, falling back to ENV OPTIMIZELY_OVERRIDE_CACHE: ${envOverride}`
-			);
-		} else {
-			// If already set by request, use the request value (which takes precedence)
-			this.logger.debug(
-				`${this.logPrefix} overrideCache was set by request to: ${this.config.overrideCache}, ignoring environment variable.`
-			);
-		}
-
-		if (this.config.overrideVisitorId === undefined) {
-			this.config.overrideVisitorId = this.settings.defaultOverrideVisitorId;
-		}
-
-		if (this.config.enableFlagsFromKV === undefined) {
-			this.config.enableFlagsFromKV = this.settings.flagsFromKV;
-		}
-
-		if (this.config.datafileFromKV === undefined) {
-			this.config.datafileFromKV = this.settings.datafileFromKV;
-		}
-
-		if (this.config.enableResponseMetadata === undefined) {
-			this.config.enableResponseMetadata = this.settings.enableResponseMetadata;
-		}
-
-		// Handle enableDebugHeaders config and update the class property
-		if (this.config.enableDebugHeaders !== undefined) {
-			this.enableDebugHeaders = !!this.config.enableDebugHeaders;
-			this.logger.debug(`${this.logPrefix} enableDebugHeaders set by request to: ${this.enableDebugHeaders}`);
-		} else {
-			// Check environment variable as fallback
-			try {
-				const envEnableDebug =
-					typeof process !== 'undefined' &&
-					process &&
-					process.env &&
-					process.env.OPTIMIZELY_ENABLE_DEBUG_HEADERS?.toLowerCase() === 'true';
-				if (envEnableDebug) {
-					this.enableDebugHeaders = true;
-					this.logger.debug(
-						`${this.logPrefix} enableDebugHeaders set from environment variable: ${this.enableDebugHeaders}`
-					);
-				}
-			} catch (e) {
-				// In environments without process.env (like Cloudflare Workers)
-				this.logger.debug(
-					`${this.logPrefix} process.env not available, using default for enableDebugHeaders: ${this.enableDebugHeaders}`
-				);
-			}
-		}
-
-		// Ensure flagKeys is an array
-		if (this.config.flagKeys && !Array.isArray(this.config.flagKeys)) {
-			this.config.flagKeys = [this.config.flagKeys as unknown as string];
-		}
-
-		// If single flagKey is provided but not flagKeys array
-		if (this.config.flagKey && (!this.config.flagKeys || this.config.flagKeys.length === 0)) {
-			this.config.flagKeys = [this.config.flagKey];
-		}
-
-		// Ensure attributes and eventTags are objects
-		if (!this.config.attributes) {
-			this.config.attributes = {};
-		}
-
-		if (!this.config.eventTags) {
-			this.config.eventTags = {};
-		}
-
-		// Ensure decideOptions is an array
-		if (!this.config.decideOptions) {
-			this.config.decideOptions = [];
-		}
-
-		// Add decide options based on boolean flags
-		this.config.decideOptions = this.getDecideOptions();
-	}
-
-	/**
-	 * Updates configuration metadata based on current config.
-	 */
-	private updateMetadata(): void {
-		// Extra debug logging
-		console.log(`[META_DEBUG] Updating metadata, enableResponseMetadata: ${this.config.enableResponseMetadata}`);
-		
-		// Update metadata if enableResponseMetadata is true
-		if (this.config.enableResponseMetadata) {
-			// Update metadata with current config values
-			if (this.config.sdkKey) {
-				console.log(`[META_DEBUG] Setting metadata.sdkKey to ${this.config.sdkKey}`);
-				this.metadata.sdkKey = this.config.sdkKey;
-				console.log(`[META_DEBUG] Current metadata.sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
-			}
-
-			if (this.config.visitorId) {
-				this.metadata.visitorId = this.config.visitorId;
-			}
-
-			this.metadata.decideOptions = this.getDecideOptions();
-			this.metadata.attributes = this.config.attributes || {};
-			this.metadata.eventTags = this.config.eventTags || {};
-			this.metadata.trimmedDecisions = !!this.config.trimmedDecisions;
-			this.metadata.decideAll = !!this.config.decideAll;
-
-			if (this.config.flagKeys) {
-				this.metadata.flagKeysDecided = Array.isArray(this.config.flagKeys)
-					? this.config.flagKeys
-					: [this.config.flagKeys as unknown as string];
-			}
-			
-			// DEBUG: Log all metadata fields and values
-			console.log('[META_DEBUG] Final metadata after update:');
-			for (const [key, value] of Object.entries(this.metadata)) {
-				console.log(`[META_DEBUG]   ${key}: ${JSON.stringify(value)}`);
-			}
-		}
-	}
-
-	/**
-	 * Sets a configuration value and updates metadata about its source.
-	 * @param key - The configuration key.
-	 * @param value - The value to set.
-	 * @param source - The source of the value.
-	 */
-	private setConfigValue<T>(key: keyof OptimizelyConfigOptions, value: T, source: string): void {
-		if (value === null || value === undefined) {
-			return;
-		}
-
-		// ===== DEBUG LOGGING FOR PRECEDENCE TESTING =====
-		console.log(`[DEBUG] setConfigValue called: key=${key}, value=${JSON.stringify(value)}, source=${source}`);
-		
-		// Check for existing value and prioritize based on source
-		const sourceField = `${String(key)}From`;
-		const currentSource = (this.metadata as any)[sourceField];
-		
-		console.log(`[DEBUG] Current source for ${key}: ${currentSource || 'none'}`);
-		
-		// Implement precedence: headers > queryParams > body
-		// Always check source precedence regardless of whether a value exists or not
-		if (currentSource === 'headers') {
-			// Headers always win, don't override with any other source
-			console.log(`[DEBUG] Not overriding ${key} from 'headers' with value from '${source}'`);
-			this.logger.debug(`${this.logPrefix} Not overriding ${key} from 'headers' with value from '${source}'`);
-			return;
-		}
-		if (currentSource === 'queryParams' && source === 'body') {
-			// queryParams win over body
-			console.log(`[DEBUG] Not overriding ${key} from 'queryParams' with value from 'body'`);
-			this.logger.debug(`${this.logPrefix} Not overriding ${key} from 'queryParams' with value from 'body'`);
-			return;
-		}
-
-		// Log what we're setting and from where
-		console.log(`[DEBUG] SETTING ${key} = ${JSON.stringify(value)} from source: ${source}`);
-		this.logger.debug(`${this.logPrefix} Setting ${String(key)} = ${JSON.stringify(value)} from source: ${source}`);
-		
-		// Set the value in the config
-		(this.config[key] as T) = value;
-
-		// Track source for all parameters, not just the specific ones listed
-		if (this.config.enableResponseMetadata !== false) {
-			(this.metadata as any)[sourceField] = source;
-			
-			// Debug logging for source tracking
-			console.log(`[DEBUG] Tracked source for ${key} as ${source} in metadata.${sourceField}`);
-			this.logger.debug(`${this.logPrefix} Tracked source for ${key} as ${source} in metadata.${sourceField}`);
-		}
-	}
-
-	/**
-	 * Initializes metadata configuration for logging and debugging purposes.
-	 * @returns The initial metadata configuration object.
+	 * Initializes configuration metadata with empty values.
+	 * @returns The initialized metadata.
 	 */
 	private initializeConfigMetadata(): ConfigMetadata {
-		console.log(`[META_DEBUG] Initializing empty metadata object`);
-		const newMetadata = {
+		return {
 			visitorId: '',
 			visitorIdFrom: '',
-			decideOptions: [],
+			sdkKey: '',
+			sdkKeyFrom: '',
 			attributes: {},
 			attributesFrom: '',
 			eventTags: {},
 			eventTagsFrom: '',
-			sdkKey: '',
-			sdkKeyFrom: '',
+			decideOptions: [],
+			decideOptionsFrom: '',
 			datafileFrom: '',
-			trimmedDecisions: true,
-			decideAll: false,
-			flagKeysDecided: [],
-			flagKeysFrom: '',
+			trimmedDecisions: this.settings.defaultTrimmedDecisions,
+			trimmedDecisionsFrom: 'default',
 			storedDecisionsFound: false,
 			storedCookieDecisions: [],
+			flagKeysDecided: [],
+			flagKeysFrom: '',
 			forcedDecisions: [],
+			forcedDecisionsFrom: '',
 			agentServerMode: false,
 			pathName: '',
 			cdnVariationSettings: {},
+			decideAll: false,
+			decideAllFrom: '',
+			
+			// Boolean parameter tracking
+			overrideCache: this.settings.defaultOverrideCache,
+			overrideCacheFrom: 'default',
+			overrideVisitorId: this.settings.defaultOverrideVisitorId,
+			overrideVisitorIdFrom: 'default',
+			setResponseHeaders: this.settings.defaultSetResponseHeaders,
+			setResponseHeadersFrom: 'default',
+			setResponseCookies: this.settings.defaultSetResponseCookies,
+			setResponseCookiesFrom: 'default',
+			setRequestHeaders: this.settings.defaultSetRequestHeaders,
+			setRequestHeadersFrom: 'default',
+			setRequestCookies: this.settings.defaultSetRequestCookies,
+			setRequestCookiesFrom: 'default',
+			enableFex: this.enableFex,
+			enableFexFrom: 'default',
+			enableFlagsFromKVFrom: 'default',
+			datafileFromKVFrom: 'default',
+			enableResponseMetadata: this.settings.enableResponseMetadata,
+			enableResponseMetadataFrom: 'default',
+			excludeVariablesFrom: '',
+			eventKeyFrom: '',
+			disableDecisionEventFrom: '',
+			enabledFlagsOnlyFrom: '',
+			includeReasonsFrom: '',
+			ignoreUserProfileServiceFrom: '',
+			
+			// Additional source tracking fields
+			flagKeyFrom: '',
+			serverModeFrom: '',
+			datafileAccessTokenFrom: '',
+			cdnVariationSettingsFrom: '',
+			valueFrom: '',
+			
+			precedenceRules: {
+				headersOverQueryParams: this.settings.prioritizeHeadersOverQueryParams,
+				queryParamsOverBody: true,
+				order: 'Headers > Query Params > Body > Defaults'
+			}
 		};
-		
-		console.log(`[META_DEBUG] Initial metadata:`, newMetadata);
-		return newMetadata;
 	}
 
 	/**
-	 * Initializes the service's default settings.
-	 * @returns The default settings.
+	 * Initializes configuration settings.
+	 * @returns The initialized settings.
 	 */
 	private initializeSettings(): ServiceConfigSettings {
-		// Load configurable header/cookie names from environment variables if present
-		try {
-			const envAdapter = (this as any).datafileService?.getEnvironmentAdapter?.();
-			if (envAdapter) {
-				this.decisionsCookieName = envAdapter.getVariable('EDGE_DECISIONS_COOKIE_NAME') || this.decisionsCookieName;
-				this.visitorIdCookieName = envAdapter.getVariable('EDGE_VISITOR_ID_COOKIE_NAME') || this.visitorIdCookieName;
-				this.decisionsHeaderName = envAdapter.getVariable('EDGE_DECISIONS_HEADER_NAME') || this.decisionsHeaderName;
-				this.visitorIdHeaderName = envAdapter.getVariable('EDGE_VISITOR_ID_HEADER_NAME') || this.visitorIdHeaderName;
-			}
-		} catch (e) {
-			this.logger?.warn?.(`${this.logPrefix} Could not load header/cookie names from environment:`, e);
-		}
 		return {
 			cdnProvider: 'cloudflare',
 			responseJsonKeyName: 'decisions',
 			apiPathPrefix: '/api/',
-
 			enableResponseMetadata: true,
-			flagsFromKV: false,
-			datafileFromKV: false,
-
+			flagsFromKV: this.enableFlagsFromKV,
+			datafileFromKV: this.enableDatafileFromKV,
 			defaultTrimmedDecisions: true,
 			defaultSetResponseCookies: true,
 			defaultSetResponseHeaders: true,
@@ -1028,162 +1432,333 @@ export class ConfigurationService implements IConfigurationService {
 			defaultResponseHeadersAndCookies: true,
 			defaultOverrideCache: false,
 			defaultOverrideVisitorId: false,
-
-			decisionsKeyName: 'decisions',
+			decisionsKeyName: 'optimizely_decisions',
 			decisionsCookieName: this.decisionsCookieName,
 			visitorIdCookieName: this.visitorIdCookieName,
 			decisionsHeaderName: this.decisionsHeaderName,
 			visitorIdsHeaderName: this.visitorIdHeaderName,
-
 			prioritizeHeadersOverQueryParams: true,
-
-			sdkKeyHeader: 'X-Optimizely-SDK-Key',
-			setResponseHeadersHeader: 'X-Optimizely-Set-Response-Headers',
-			setResponseCookiesHeader: 'X-Optimizely-Set-Response-Cookies',
-			setRequestHeadersHeader: 'X-Optimizely-Set-Request-Headers',
-			setRequestCookiesHeader: 'X-Optimizely-Set-Request-Cookies',
-			overrideVisitorIdHeader: 'X-Optimizely-Override-Visitor-Id',
-			attributesHeader: 'X-Optimizely-Attributes',
-			eventTagsHeader: 'X-Optimizely-Event-Tags',
-			datafileAccessTokenHeader: 'X-Optimizely-Datafile-Access-Token',
-			enableOptimizelyHeader: 'X-Optimizely-Enable-FEX',
-			decideOptionsHeader: 'X-Optimizely-Decide-Options',
-			visitorIdHeader: 'X-Optimizely-Visitor-Id',
-			trimmedDecisionsHeader: 'X-Optimizely-Trimmed-Decisions',
-			enableFlagsFromKVHeader: 'X-Optimizely-Flags-KV',
-			enableDatafileFromKVHeader: 'X-Optimizely-Datafile-KV',
-			enableRespMetadataHeader: 'X-Optimizely-Enable-Response-Metadata',
-			enableDebugHeadersHeader: 'X-Optimizely-Enable-Debug-Headers',
-			overrideCacheHeader: 'X-Optimizely-Override-Cache',
-			eventKeyHeader: 'X-Optimizely-Event-Key',
-			implementationVersionHeader: 'X-Optimizely-Edge-Agent-Version',
-			kvFlagKeyName: 'optly_flagKeys',
-			kvDatafileKeyName: 'optly_sdk_datafile',
-
-			cookieExpirationInDays: 400,
+			sdkKeyHeader: 'x-optimizely-sdk-key',
+			setResponseHeadersHeader: 'x-optimizely-set-response-headers',
+			setResponseCookiesHeader: 'x-optimizely-set-response-cookies',
+			setRequestHeadersHeader: 'x-optimizely-set-request-headers',
+			setRequestCookiesHeader: 'x-optimizely-set-request-cookies',
+			overrideVisitorIdHeader: 'x-optimizely-override-visitor-id',
+			attributesHeader: 'x-optimizely-attributes',
+			eventTagsHeader: 'x-optimizely-event-tags',
+			datafileAccessTokenHeader: 'x-optimizely-datafile-access-token',
+			enableOptimizelyHeader: 'x-optimizely-enable',
+			decideOptionsHeader: 'x-optimizely-decide-options',
+			visitorIdHeader: 'x-optimizely-visitor-id',
+			trimmedDecisionsHeader: 'x-optimizely-trimmed-decisions',
+			enableFlagsFromKVHeader: 'x-optimizely-flags-from-kv',
+			enableDatafileFromKVHeader: 'x-optimizely-datafile-from-kv',
+			enableRespMetadataHeader: 'x-optimizely-response-metadata',
+			enableDebugHeadersHeader: 'x-optimizely-debug-headers',
+			overrideCacheHeader: 'x-optimizely-override-cache',
+			eventKeyHeader: 'x-optimizely-event-key',
+			implementationVersionHeader: 'x-optimizely-implementation-version',
+			kvFlagKeyName: 'optimizely_flags',
+			kvDatafileKeyName: 'optimizely_datafile',
+			cookieExpirationInDays: 365,
+			
+			// Additional header names
+			flagKeyHeader: 'x-optimizely-flag-key',
+			flagKeysHeader: 'x-optimizely-flag-keys',
+			forcedDecisionHeader: 'x-optimizely-forced-decisions',
+			cdnSettingsHeader: 'x-optimizely-cdn-settings',
+			serverModeHeader: 'x-optimizely-server-mode',
+			userIdHeader: 'x-optimizely-user-id',
+			decideAllHeader: 'x-optimizely-decide-all',
+			enabledFlagsOnlyHeader: 'x-optimizely-enabled-flags-only',
+			includeReasonsHeader: 'x-optimizely-include-reasons',
+			excludeVariablesHeader: 'x-optimizely-exclude-variables',
+			disableDecisionEventHeader: 'x-optimizely-disable-decision-event',
+			ignoreUserProfileServiceHeader: 'x-optimizely-ignore-user-profile-service'
 		};
 	}
 
 	/**
-	 * Converts a string value to a boolean. Returns a default value if the input is null.
-	 * @param value - The string value to convert.
-	 * @param defaultValue - The default value to return if the input is null.
-	 * @returns The boolean value of the string, or the default value.
+	 * Sets a metadata source field and optionally the corresponding value field.
+	 * @param paramName - The parameter name.
+	 * @param source - The source of the parameter value ('header', 'query', 'body', etc.).
 	 */
-	private parseBoolean(value: string | null, defaultValue: boolean = false): boolean {
-		if (value === null) return defaultValue;
-		return value.toLowerCase() === 'true';
+	
+	private setMetadataSourceField(paramName: keyof OptimizelyConfigOptions, source: MetadataSource): void {
+		this.logger.debug(`${this.logPrefix} SOURCE_FIELD DEBUG - Setting metadata source for '${String(paramName)}' to '${source}'`);
+		
+		// CRITICAL: We must ALWAYS set the source tracking fields
+		// This ensures the internal state is always consistent with the actual source used
+		
+		// Set the appropriate metadata field based on the parameter name
+		switch (paramName) {
+			case 'sdkKey':
+				this.metadata.sdkKeyFrom = source;
+				break;
+			case 'visitorId':
+				this.metadata.visitorIdFrom = source;
+				break;
+			case 'decideOptions':
+				this.metadata.decideOptionsFrom = source;
+				break;
+			case 'attributes':
+				this.metadata.attributesFrom = source;
+				break;
+			case 'eventTags':
+				this.metadata.eventTagsFrom = source;
+				break;
+			case 'trimmedDecisions':
+				this.metadata.trimmedDecisionsFrom = source;
+				break;
+			case 'flagKey':
+				this.metadata.flagKeyFrom = source;
+				break;
+			case 'eventKey':
+				this.metadata.eventKeyFrom = source;
+				break;
+			default:
+				// For any other fields, we still want to track the source
+				// Use type assertion to add dynamic property if needed
+				(this.metadata as Record<string, any>)[`${String(paramName)}From`] = source;
+		}
 	}
 
 	/**
-	 * Validates the structure of attributes for potential issues like circular references,
-	 * deeply nested objects, or extremely large values which could cause performance issues.
-	 * @param attributes - The attributes object to validate
-	 * @returns A validation issue if problems are found, or null if valid
+	 * Updates configuration metadata.
 	 */
-	private validateAttributesStructure(attributes: Record<string, any>): ValidationIssue | null {
-		// Skip validation if attributes is null or undefined
-		if (!attributes) return null;
+	private updateMetadata(): void {
+		this.logger.debug(`${this.logPrefix} UPDATE_METADATA DEBUG - Starting updateMetadata, current sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
+		
+		// CRITICAL: ONLY update value fields in metadata, NEVER touch any "From" fields
+		// Source tracking is solely managed by setMetadataSourceField
+		
+		// String fields
+		this.metadata.visitorId = this.config.visitorId || '';
+		this.metadata.sdkKey = this.config.sdkKey || '';
+		
+		// Log to verify source fields are preserved
+		this.logger.debug(`${this.logPrefix} UPDATE_METADATA DEBUG - After updating, sdkKeyFrom is still: ${this.metadata.sdkKeyFrom}`);
+		
+		// Object fields (only update the values, not the source tracking)
+		if (this.config.attributes && typeof this.config.attributes === 'object') {
+			this.metadata.attributes = this.config.attributes;
+		}
+		
+		if (this.config.eventTags && typeof this.config.eventTags === 'object') {
+			this.metadata.eventTags = this.config.eventTags;
+		}
+		
+		if (this.config.cdnVariationSettings && typeof this.config.cdnVariationSettings === 'object') {
+			this.metadata.cdnVariationSettings = this.config.cdnVariationSettings;
+		}
+		
+		// Handle forcedDecisions - it's an object in config but array in metadata
+		if (this.config.forcedDecisions && typeof this.config.forcedDecisions === 'object') {
+			// Keep metadata.forcedDecisions as an empty array to maintain type compatibility
+			// The actual config data is stored in the config object
+			this.metadata.forcedDecisions = [];
+		}
+		
+		// Array fields
+		if (Array.isArray(this.config.decideOptions)) {
+			this.metadata.decideOptions = [...this.config.decideOptions];
+		}
+		
+		// Ensure flagKeysDecided is initialized
+		if (!Array.isArray(this.metadata.flagKeysDecided)) {
+			this.metadata.flagKeysDecided = [];
+		}
+		
+		// Boolean fields - check for explicit null/undefined to avoid overwriting
+		if (this.config.trimmedDecisions !== undefined && this.config.trimmedDecisions !== null) {
+			this.metadata.trimmedDecisions = !!this.config.trimmedDecisions;
+		}
+		
+		if (this.config.decideAll !== undefined && this.config.decideAll !== null) {
+			this.metadata.decideAll = !!this.config.decideAll;
+		}
+		
+		if (this.config.overrideCache !== undefined && this.config.overrideCache !== null) {
+			this.metadata.overrideCache = !!this.config.overrideCache;
+		}
+		
+		if (this.config.overrideVisitorId !== undefined && this.config.overrideVisitorId !== null) {
+			this.metadata.overrideVisitorId = !!this.config.overrideVisitorId;
+		}
+		
+		if (this.config.setResponseHeaders !== undefined && this.config.setResponseHeaders !== null) {
+			this.metadata.setResponseHeaders = !!this.config.setResponseHeaders;
+		}
+		
+		if (this.config.setResponseCookies !== undefined && this.config.setResponseCookies !== null) {
+			this.metadata.setResponseCookies = !!this.config.setResponseCookies;
+		}
+		
+		if (this.config.setRequestHeaders !== undefined && this.config.setRequestHeaders !== null) {
+			this.metadata.setRequestHeaders = !!this.config.setRequestHeaders;
+		}
+		
+		if (this.config.setRequestCookies !== undefined && this.config.setRequestCookies !== null) {
+			this.metadata.setRequestCookies = !!this.config.setRequestCookies;
+		}
+		
+		if (this.config.enableFex !== undefined && this.config.enableFex !== null) {
+			this.metadata.enableFex = !!this.config.enableFex;
+		}
+		
+		if (this.config.enableResponseMetadata !== undefined && this.config.enableResponseMetadata !== null) {
+			this.metadata.enableResponseMetadata = !!this.config.enableResponseMetadata;
+		}
+		
+		// Set an updated timestamp
+		this.metadata.updatedAt = new Date().toISOString();
+		
+		// Final verification log to ensure source fields were not modified
+		this.logger.debug(`${this.logPrefix} UPDATE_METADATA DEBUG - After all updates, source fields: sdkKeyFrom=${this.metadata.sdkKeyFrom}, visitorIdFrom=${this.metadata.visitorIdFrom}`);
+	}
 
-		// Check for nested objects that are too deep (potential DoS or complexity issues)
-		const maxDepth = 5;
-		let hasCircularRef = false;
+	/**
+	 * Applies default values to configuration.
+	 */
+	private applyDefaults(): void {
+		// Apply default values for any missing properties
+		if (!this.config.visitorId) {
+			this.config.visitorId = '';
+		}
+		if (!this.config.sdkKey) {
+			this.config.sdkKey = '';
+		}
+		if (!this.config.flagKey) {
+			this.config.flagKey = '';
+		}
+		if (!this.config.serverMode) {
+			this.config.serverMode = '';
+		}
+		if (!this.config.datafileAccessToken) {
+			this.config.datafileAccessToken = '';
+		}
+					if (!this.config.attributes) {
+						this.config.attributes = {};
+					}
+		if (!this.config.eventTags) {
+			this.config.eventTags = {};
+		}
+		if (!this.config.forcedDecisions) {
+			this.config.forcedDecisions = {};
+		}
+		if (!this.config.cdnVariationSettings) {
+			this.config.cdnVariationSettings = {};
+		}
+		if (!this.config.decideOptions) {
+			this.config.decideOptions = [];
+		}
+		if (!this.config.flagKeys) {
+			this.config.flagKeys = [];
+		}
+		if (this.config.trimmedDecisions === null || this.config.trimmedDecisions === undefined) {
+			this.config.trimmedDecisions = this.settings.defaultTrimmedDecisions;
+		}
+		if (this.config.overrideCache === null || this.config.overrideCache === undefined) {
+			this.config.overrideCache = this.settings.defaultOverrideCache;
+		}
+		if (this.config.overrideVisitorId === null || this.config.overrideVisitorId === undefined) {
+			this.config.overrideVisitorId = this.settings.defaultOverrideVisitorId;
+		}
+		if (this.config.setResponseHeaders === null || this.config.setResponseHeaders === undefined) {
+			this.config.setResponseHeaders = this.settings.defaultSetResponseHeaders;
+		}
+		if (this.config.setResponseCookies === null || this.config.setResponseCookies === undefined) {
+			this.config.setResponseCookies = this.settings.defaultSetResponseCookies;
+		}
+		if (this.config.setRequestHeaders === null || this.config.setRequestHeaders === undefined) {
+			this.config.setRequestHeaders = this.settings.defaultSetRequestHeaders;
+		}
+		if (this.config.setRequestCookies === null || this.config.setRequestCookies === undefined) {
+			this.config.setRequestCookies = this.settings.defaultSetRequestCookies;
+		}
+		if (this.config.enableFlagsFromKV === null || this.config.enableFlagsFromKV === undefined) {
+			this.config.enableFlagsFromKV = this.settings.flagsFromKV;
+		}
+		if (this.config.datafileFromKV === null || this.config.datafileFromKV === undefined) {
+			this.config.datafileFromKV = this.settings.datafileFromKV;
+		}
+		if (this.config.enableResponseMetadata === null || this.config.enableResponseMetadata === undefined) {
+			this.config.enableResponseMetadata = this.settings.enableResponseMetadata;
+		}
+		if (this.config.enableDebugHeaders === null || this.config.enableDebugHeaders === undefined) {
+			this.config.enableDebugHeaders = false;
+		}
+		if (this.config.decideAll === null || this.config.decideAll === undefined) {
+			this.config.decideAll = false;
+		}
+		if (this.config.enabledFlagsOnly === null || this.config.enabledFlagsOnly === undefined) {
+			this.config.enabledFlagsOnly = false;
+		}
+		if (this.config.includeReasons === null || this.config.includeReasons === undefined) {
+			this.config.includeReasons = false;
+		}
+		if (this.config.excludeVariables === null || this.config.excludeVariables === undefined) {
+			this.config.excludeVariables = false;
+		}
+		if (this.config.disableDecisionEvent === null || this.config.disableDecisionEvent === undefined) {
+			this.config.disableDecisionEvent = false;
+		}
+		if (this.config.ignoreUserProfileService === null || this.config.ignoreUserProfileService === undefined) {
+			this.config.ignoreUserProfileService = false;
+		}
+		if (this.config.enableFex === null || this.config.enableFex === undefined) {
+			this.config.enableFex = this.enableFex;
+		}
+	}
 
-		// Use a WeakSet to track visited objects for circular reference detection
-		const visitedObjects = new WeakSet();
+	/**
+	 * Validates the configuration.
+	 * @returns The validation result.
+	 */
+	public validate(): ValidationResult {
+		const issues: ValidationIssue[] = [];
+		
+		// Get validation rules and apply them
+		const rules = this.getValidationRules();
 
-		const checkDepth = (obj: any, currentDepth: number): boolean => {
-			// Stop if we've reached max depth
-			if (currentDepth > maxDepth) return true;
+		for (const rule of rules) {
+			const key = rule.field;
+			const value = this.config[key];
 
-			// Only check objects
-			if (typeof obj !== 'object' || obj === null || Array.isArray(obj)) return false;
-
-			// Check for circular references
-			if (visitedObjects.has(obj)) {
-				hasCircularRef = true;
-				return true;
+			// Check if required field is missing
+			if (rule.required && (value === undefined || value === null || value === '')) {
+				issues.push({
+					type: ValidationIssueType.REQUIRED_FIELD_MISSING,
+					field: key,
+					message: `Required field '${key}' is missing`,
+					severity: ValidationSeverity.ERROR
+				});
+				continue;
 			}
 
-			visitedObjects.add(obj);
-
-			// Check all properties recursively
-			for (const key of Object.keys(obj)) {
-				if (checkDepth(obj[key], currentDepth + 1)) return true;
+			// Skip validation of undefined optional fields
+			if (value === undefined || value === null) {
+				continue;
 			}
 
-			return false;
+			// Apply custom validator if provided
+			if (rule.validator) {
+				const issue = rule.validator(value, this.config);
+				if (issue) {
+					issues.push(issue);
+				}
+			}
+		}
+		
+		const hasErrors = issues.some(issue => issue.severity === ValidationSeverity.ERROR);
+		const hasWarnings = issues.some(issue => issue.severity === ValidationSeverity.WARNING);
+
+		return {
+			valid: !hasErrors,
+			issues,
+			hasErrors,
+			hasWarnings
 		};
-
-		const tooDeep = checkDepth(attributes, 0);
-
-		if (tooDeep) {
-			return {
-				type: ValidationIssueType.INVALID_VALUE,
-				field: 'attributes',
-				message: hasCircularRef
-					? 'Attributes contain circular references, which are not supported'
-					: `Attributes are nested too deeply (max depth: ${maxDepth})`,
-				severity: ValidationSeverity.ERROR,
-				value: attributes,
-			};
-		}
-
-		// Check for extremely large attribute values (potential DoS)
-		const maxValueLength = 10000; // 10KB per value
-		let largeValueFound = '';
-
-		const checkValueSize = (obj: any): boolean => {
-			if (typeof obj !== 'object' || obj === null) {
-				// Check string length
-				if (typeof obj === 'string' && obj.length > maxValueLength) {
-					return true;
-				}
-				return false;
-			}
-
-			// Check arrays and objects
-			for (const key of Object.keys(obj)) {
-				if (typeof obj[key] === 'string' && obj[key].length > maxValueLength) {
-					largeValueFound = key;
-					return true;
-				}
-				if (typeof obj[key] === 'object' && obj[key] !== null) {
-					if (checkValueSize(obj[key])) return true;
-				}
-			}
-
-			return false;
-		};
-
-		if (checkValueSize(attributes)) {
-			return {
-				type: ValidationIssueType.INVALID_VALUE,
-				field: 'attributes',
-				message: `Attribute value for '${largeValueFound}' exceeds maximum allowed size (${maxValueLength} chars)`,
-				severity: ValidationSeverity.ERROR,
-				value: attributes,
-			};
-		}
-
-		// Check for potentially problematic attribute names (e.g., reserved names)
-		const reservedNames = ['$opt_', '$optly_', 'optimizely', 'system'];
-		const problematicKeys = Object.keys(attributes).filter((key) =>
-			reservedNames.some((prefix) => key.toLowerCase().startsWith(prefix))
-		);
-
-		if (problematicKeys.length > 0) {
-			return {
-				type: ValidationIssueType.INVALID_VALUE,
-				field: 'attributes',
-				message: `Attributes contain potentially reserved names: ${problematicKeys.join(', ')}`,
-				severity: ValidationSeverity.WARNING,
-				value: attributes,
-				context: { problematicKeys },
-			};
-		}
-
-		return null;
 	}
 
 	/**
@@ -1191,759 +1766,10 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns An array of validation rules.
 	 */
 	getValidationRules(): ValidationRule[] {
+		// Return basic validation rules - this will be expanded in future PRs
 		return [
-			// Core configuration rules
-			{
-				field: 'sdkKey',
-				type: 'string',
-				required: true,
-				minLength: 3,
-				pattern: /^[a-zA-Z0-9_-]+$/,
-				validator: (value) => {
-					if (!value || typeof value !== 'string') {
-						return {
-							type: ValidationIssueType.REQUIRED_FIELD_MISSING,
-							field: 'sdkKey',
-							message: 'SDK key is required and must be a string',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					// Check for common mistakes in SDK keys
-					if (value.includes(' ')) {
-						return {
-							type: ValidationIssueType.INVALID_VALUE,
-							field: 'sdkKey',
-							message: 'SDK key contains spaces, which are not allowed',
-							severity: ValidationSeverity.ERROR,
-							value,
-							suggestedValue: value.replace(/\s+/g, ''),
-						};
-					}
-
-					if (value.length < 8) {
-						return {
-							type: ValidationIssueType.INVALID_VALUE,
-							field: 'sdkKey',
-							message: 'SDK key is suspiciously short (standard keys are at least 8 characters)',
-							severity: ValidationSeverity.WARNING,
-							value,
-						};
-					}
-
-					return null;
-				},
-			},
-			{
-				field: 'visitorId',
-				type: 'string',
-				minLength: 1,
-				validator: (value, config) => {
-					// Allow null/undefined since visitor ID can be generated
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'string') {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'visitorId',
-							message: 'Visitor ID must be a string if provided',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-					return null;
-				},
-			},
-			{
-				field: 'userId',
-				type: 'string',
-				validator: (value, config) => {
-					// userId is an alias for visitorId
-					if (value && typeof value === 'string' && !config.visitorId) {
-						// This is not an error, but we'll set visitorId from userId
-						// during initialization, so this is just an informational message
-						return {
-							type: ValidationIssueType.DEPRECATED,
-							field: 'userId',
-							message: 'userId is deprecated, use visitorId instead',
-							severity: ValidationSeverity.INFO,
-							value,
-							suggestedValue: { visitorId: value, userId: undefined },
-						};
-					}
-					return null;
-				},
-			},
-
-			// Flag key rules
-			{
-				field: 'flagKey',
-				type: 'string',
-				validator: (value, config) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'string' || value.trim().length === 0) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'flagKey',
-							message: 'Flag key must be a non-empty string if provided',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					// Check if both flagKey and flagKeys are provided
-					if (config.flagKeys && Array.isArray(config.flagKeys) && config.flagKeys.length > 0) {
-						return {
-							type: ValidationIssueType.INCOMPATIBLE_OPTIONS,
-							field: 'flagKey',
-							message: 'Both flagKey and flagKeys are provided. flagKey will be ignored.',
-							severity: ValidationSeverity.WARNING,
-							value,
-							context: { flagKeys: config.flagKeys },
-						};
-					}
-
-					return null;
-				},
-			},
-			{
-				field: 'flagKeys',
-				type: 'array',
-				validator: (value, config) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (!Array.isArray(value)) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'flagKeys',
-							message: 'Flag keys must be an array',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					// Check if any flag key is not a string
-					const nonStringKeys = value.filter((key) => typeof key !== 'string');
-					if (nonStringKeys.length > 0) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'flagKeys',
-							message: 'All flag keys must be strings',
-							severity: ValidationSeverity.ERROR,
-							value,
-							context: { nonStringKeys },
-						};
-					}
-
-					return null;
-				},
-			},
-
-			// Attributes and event tags
-			{
-				field: 'attributes',
-				type: 'object',
-				validator: (value) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'object' || Array.isArray(value)) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'attributes',
-							message: 'Attributes must be an object',
-							severity: ValidationSeverity.ERROR,
-							value,
-							suggestedValue: {},
-						};
-					}
-
-					// Use the enhanced attributes structure validation
-					return this.validateAttributesStructure(value);
-				},
-			},
-			{
-				field: 'eventTags',
-				type: 'object',
-				validator: (value) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'object' || Array.isArray(value)) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'eventTags',
-							message: 'Event tags must be an object',
-							severity: ValidationSeverity.ERROR,
-							value,
-							suggestedValue: {},
-						};
-					}
-
-					// Check for 'revenue' or 'value' tags and ensure they're numbers
-					if ('revenue' in value && typeof value.revenue !== 'number') {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'eventTags',
-							message: "Event tag 'revenue' must be a number",
-							severity: ValidationSeverity.ERROR,
-							value,
-							context: { problematicTag: 'revenue', actualType: typeof value.revenue },
-						};
-					}
-
-					if ('value' in value && typeof value.value !== 'number') {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'eventTags',
-							message: "Event tag 'value' must be a number",
-							severity: ValidationSeverity.ERROR,
-							value,
-							context: { problematicTag: 'value', actualType: typeof value.value },
-						};
-					}
-
-					return null;
-				},
-			},
-
-			// Event key and value
-			{
-				field: 'eventKey',
-				type: 'string',
-				validator: (value) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'string' || value.trim().length === 0) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'eventKey',
-							message: 'Event key must be a non-empty string if provided',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					return null;
-				},
-			},
-			{
-				field: 'value',
-				type: 'number',
-				validator: (value) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'number' || isNaN(value)) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'value',
-							message: 'Value must be a number if provided',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					return null;
-				},
-			},
-
-			// Decide options
-			{
-				field: 'decideOptions',
-				type: 'array',
-				validator: (value) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (!Array.isArray(value)) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'decideOptions',
-							message: 'Decide options must be an array',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					// Validate each decide option
-					const validOptions = [
-						'DISABLE_DECISION_EVENT',
-						'ENABLED_FLAGS_ONLY',
-						'INCLUDE_REASONS',
-						'EXCLUDE_VARIABLES',
-						'IGNORE_USER_PROFILE_SERVICE',
-					];
-
-					const invalidOptions = value.filter((opt) => !validOptions.includes(opt));
-					if (invalidOptions.length > 0) {
-						return {
-							type: ValidationIssueType.INVALID_VALUE,
-							field: 'decideOptions',
-							message: `Invalid decide options: ${invalidOptions.join(', ')}`,
-							severity: ValidationSeverity.WARNING,
-							value,
-							context: { validOptions, invalidOptions },
-						};
-					}
-
-					return null;
-				},
-			},
-
-			// Boolean flags
-			{
-				field: 'overrideVisitorId',
-				type: 'boolean',
-			},
-			{
-				field: 'overrideCache',
-				type: 'boolean',
-			},
-			{
-				field: 'enableFlagsFromKV',
-				type: 'boolean',
-				validator: (value) => {
-					if (value !== undefined && typeof value !== 'boolean') {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'enableFlagsFromKV',
-							message: 'enableFlagsFromKV must be a boolean',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-					return null;
-				},
-			},
-			{
-				field: 'datafileFromKV',
-				type: 'boolean',
-				validator: (value) => {
-					if (value !== undefined && typeof value !== 'boolean') {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'datafileFromKV',
-							message: 'datafileFromKV must be a boolean',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-					return null;
-				},
-			},
-			{
-				field: 'enableResponseMetadata',
-				type: 'boolean',
-			},
-			{
-				field: 'decideAll',
-				type: 'boolean',
-			},
-			{
-				field: 'trimmedDecisions',
-				type: 'boolean',
-				validator: (value) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'boolean') {
-						const boolValue = value === 'true' || value === '1' || value === 1;
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'trimmedDecisions',
-							message: 'trimmedDecisions must be a boolean value',
-							severity: ValidationSeverity.WARNING,
-							value,
-							suggestedValue: boolValue, // Try to convert to proper boolean
-							context: {
-								note: "Non-boolean values are automatically converted to boolean, but it's better to use proper boolean values",
-							},
-						};
-					}
-
-					return null;
-				},
-			},
-			{
-				field: 'disableDecisionEvent',
-				type: 'boolean',
-			},
-			{
-				field: 'enabledFlagsOnly',
-				type: 'boolean',
-			},
-			{
-				field: 'includeReasons',
-				type: 'boolean',
-			},
-			{
-				field: 'excludeVariables',
-				type: 'boolean',
-			},
-			{
-				field: 'setResponseHeaders',
-				type: 'boolean',
-			},
-			{
-				field: 'setResponseCookies',
-				type: 'boolean',
-			},
-			{
-				field: 'setRequestHeaders',
-				type: 'boolean',
-			},
-			{
-				field: 'setRequestCookies',
-				type: 'boolean',
-			},
-
-			// Advanced options
-			{
-				field: 'datafileAccessToken',
-				type: 'string',
-			},
-			{
-				field: 'serverMode',
-				type: 'string',
-				allowedValues: ['edge', 'agent'],
-			},
-			{
-				field: 'forcedDecisions',
-				type: 'object',
-				validator: (value, config) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'object' || Array.isArray(value)) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'forcedDecisions',
-							message: 'Forced decisions must be an object',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					// Check the structure of forcedDecisions
-					// Expected format: { "flag-key": { "variationKey": "variation-key" } }
-					for (const [flagKey, decision] of Object.entries(value)) {
-						if (typeof decision !== 'object' || decision === null || Array.isArray(decision)) {
-							return {
-								type: ValidationIssueType.INVALID_VALUE,
-								field: 'forcedDecisions',
-								message: `Forced decision for flag '${flagKey}' must be an object with a variationKey property`,
-								severity: ValidationSeverity.ERROR,
-								value,
-								context: { flagKey, invalidDecision: decision },
-							};
-						}
-
-						if (!('variationKey' in decision) || typeof decision.variationKey !== 'string') {
-							return {
-								type: ValidationIssueType.INVALID_VALUE,
-								field: 'forcedDecisions',
-								message: `Forced decision for flag '${flagKey}' must include a string variationKey`,
-								severity: ValidationSeverity.ERROR,
-								value,
-								context: { flagKey, invalidDecision: decision },
-							};
-						}
-					}
-
-					// Add debug logging to see what's coming in
-					console.log('[FORCED_DECISIONS_DEBUG] Validated forcedDecisions:', JSON.stringify(value));
-					return null;
-				},
-			},
-			{
-				field: 'cdnVariationSettings',
-				type: 'object',
-				validator: (value, config) => {
-					if (value === null || value === undefined) {
-						return null;
-					}
-
-					if (typeof value !== 'object' || Array.isArray(value)) {
-						return {
-							type: ValidationIssueType.INVALID_TYPE,
-							field: 'cdnVariationSettings',
-							message: 'CDN variation settings must be an object',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					// Check for required CDN variation settings
-					if (!value.cdnExperimentURL && !value.cdnResponseURL) {
-						return {
-							type: ValidationIssueType.INVALID_VALUE,
-							field: 'cdnVariationSettings',
-							message: 'CDN variation settings must include at least cdnExperimentURL or cdnResponseURL',
-							severity: ValidationSeverity.ERROR,
-							value,
-						};
-					}
-
-					// Validate URLs if present
-					if (value.cdnExperimentURL && typeof value.cdnExperimentURL === 'string') {
-						try {
-							new URL(value.cdnExperimentURL);
-						} catch (error) {
-							return {
-								type: ValidationIssueType.INVALID_VALUE,
-								field: 'cdnVariationSettings',
-								message: 'cdnExperimentURL must be a valid URL',
-								severity: ValidationSeverity.ERROR,
-								value,
-								context: { invalidUrl: value.cdnExperimentURL },
-							};
-						}
-					}
-
-					if (value.cdnResponseURL && typeof value.cdnResponseURL === 'string') {
-						try {
-							new URL(value.cdnResponseURL);
-						} catch (error) {
-							return {
-								type: ValidationIssueType.INVALID_VALUE,
-								field: 'cdnVariationSettings',
-								message: 'cdnResponseURL must be a valid URL',
-								severity: ValidationSeverity.ERROR,
-								value,
-								context: { invalidUrl: value.cdnResponseURL },
-							};
-						}
-					}
-
-					return null;
-				},
-			},
+			{ field: 'sdkKey', type: 'string', required: true }
 		];
-	}
-
-	/**
-	 * Validates the current configuration.
-	 * @returns A validation result with any issues found.
-	 */
-	validate(): ValidationResult {
-		const issues: ValidationIssue[] = [];
-		const rules = this.getValidationRules();
-
-		// Validate each field according to its rules
-		for (const rule of rules) {
-			const value = this.config[rule.field];
-
-			// Check if required field is missing
-			if (rule.required && (value === undefined || value === null)) {
-				issues.push({
-					type: ValidationIssueType.REQUIRED_FIELD_MISSING,
-					field: String(rule.field),
-					message: `Required field ${String(rule.field)} is missing`,
-					severity: ValidationSeverity.ERROR,
-					value,
-				});
-				continue;
-			}
-
-			// Skip validation for undefined/null values if not required
-			if (value === undefined || value === null) {
-				continue;
-			}
-
-			// Check type
-			if (rule.type) {
-				const types = Array.isArray(rule.type) ? rule.type : [rule.type];
-				let typeValid = false;
-
-				for (const type of types) {
-					switch (type) {
-						case 'string':
-							typeValid = typeof value === 'string';
-							break;
-						case 'number':
-							typeValid = typeof value === 'number';
-							break;
-						case 'boolean':
-							typeValid = typeof value === 'boolean';
-							break;
-						case 'object':
-							typeValid = typeof value === 'object' && !Array.isArray(value);
-							break;
-						case 'array':
-							typeValid = Array.isArray(value);
-							break;
-						default:
-							typeValid = false;
-					}
-
-					if (typeValid) break;
-				}
-
-				if (!typeValid) {
-					issues.push({
-						type: ValidationIssueType.INVALID_TYPE,
-						field: String(rule.field),
-						message: `Field ${String(rule.field)} must be of type ${types.join(' or ')}`,
-						severity: ValidationSeverity.ERROR,
-						value,
-					});
-					continue;
-				}
-			}
-
-			// Check allowed values
-			if (rule.allowedValues && !rule.allowedValues.includes(value)) {
-				issues.push({
-					type: ValidationIssueType.INVALID_VALUE,
-					field: String(rule.field),
-					message: `Field ${String(rule.field)} must be one of: ${rule.allowedValues.join(', ')}`,
-					severity: ValidationSeverity.ERROR,
-					value,
-					suggestedValue: rule.allowedValues[0],
-				});
-			}
-
-			// Check min/max value
-			if (typeof value === 'number') {
-				if (rule.minValue !== undefined && value < rule.minValue) {
-					issues.push({
-						type: ValidationIssueType.INVALID_VALUE,
-						field: String(rule.field),
-						message: `Field ${String(rule.field)} must be at least ${rule.minValue}`,
-						severity: ValidationSeverity.ERROR,
-						value,
-						suggestedValue: rule.minValue,
-					});
-				}
-
-				if (rule.maxValue !== undefined && value > rule.maxValue) {
-					issues.push({
-						type: ValidationIssueType.INVALID_VALUE,
-						field: String(rule.field),
-						message: `Field ${String(rule.field)} must be at most ${rule.maxValue}`,
-						severity: ValidationSeverity.ERROR,
-						value,
-						suggestedValue: rule.maxValue,
-					});
-				}
-			}
-
-			// Check min/max length
-			if (typeof value === 'string' || Array.isArray(value)) {
-				if (rule.minLength !== undefined && value.length < rule.minLength) {
-					issues.push({
-						type: ValidationIssueType.INVALID_VALUE,
-						field: String(rule.field),
-						message: `Field ${String(rule.field)} must have at least ${rule.minLength} characters/items`,
-						severity: ValidationSeverity.ERROR,
-						value,
-					});
-				}
-
-				if (rule.maxLength !== undefined && value.length > rule.maxLength) {
-					issues.push({
-						type: ValidationIssueType.INVALID_VALUE,
-						field: String(rule.field),
-						message: `Field ${String(rule.field)} must have at most ${rule.maxLength} characters/items`,
-						severity: ValidationSeverity.ERROR,
-						value,
-					});
-				}
-			}
-
-			// Check pattern
-			if (typeof value === 'string' && rule.pattern && !rule.pattern.test(value)) {
-				issues.push({
-					type: ValidationIssueType.INVALID_VALUE,
-					field: String(rule.field),
-					message: `Field ${String(rule.field)} must match pattern ${rule.pattern}`,
-					severity: ValidationSeverity.ERROR,
-					value,
-				});
-			}
-
-			// Check incompatible options
-			if (rule.incompatibleWith) {
-				for (const incompatibleField of rule.incompatibleWith) {
-					if (this.config[incompatibleField] !== undefined) {
-						issues.push({
-							type: ValidationIssueType.INCOMPATIBLE_OPTIONS,
-							field: String(rule.field),
-							message: `Field ${String(rule.field)} is incompatible with ${String(incompatibleField)}`,
-							severity: ValidationSeverity.WARNING,
-							value,
-							context: { incompatibleField, incompatibleValue: this.config[incompatibleField] },
-						});
-					}
-				}
-			}
-
-			// Check required with options
-			if (rule.requiredWith) {
-				for (const requiredField of rule.requiredWith) {
-					if (this.config[requiredField] !== undefined && this.config[rule.field] === undefined) {
-						issues.push({
-							type: ValidationIssueType.REQUIRED_FIELD_MISSING,
-							field: String(rule.field),
-							message: `Field ${String(rule.field)} is required when ${String(requiredField)} is provided`,
-							severity: ValidationSeverity.ERROR,
-							value: undefined,
-							context: { requiredField, requiredValue: this.config[requiredField] },
-						});
-					}
-				}
-			}
-
-			// Run custom validator if provided
-			if (rule.validator) {
-				const validationIssue = rule.validator(value, this.config);
-				if (validationIssue) {
-					issues.push(validationIssue);
-				}
-			}
-		}
-
-		// Check for unknown options
-		const knownFields = rules.map((rule) => rule.field);
-		for (const field of Object.keys(this.config)) {
-			if (!knownFields.includes(field as keyof OptimizelyConfigOptions)) {
-				issues.push({
-					type: ValidationIssueType.UNKNOWN_OPTION,
-					field,
-					message: `Unknown configuration option: ${field}`,
-					severity: ValidationSeverity.WARNING,
-					value: this.config[field as keyof OptimizelyConfigOptions],
-				});
-			}
-		}
-
-		// Calculate has errors/warnings
-		const hasErrors = issues.some((issue) => issue.severity === ValidationSeverity.ERROR);
-		const hasWarnings = issues.some((issue) => issue.severity === ValidationSeverity.WARNING);
-
-		return {
-			valid: !hasErrors,
-			issues,
-			hasErrors,
-			hasWarnings,
-		};
 	}
 
 	/**
@@ -1953,66 +1779,16 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns A validation issue or null if valid.
 	 */
 	validateValue<T>(key: keyof OptimizelyConfigOptions, value: T): ValidationIssue | null {
-		const rules = this.getValidationRules();
-		const rule = rules.find((r) => r.field === key);
-
-		if (!rule) {
-			return {
-				type: ValidationIssueType.UNKNOWN_OPTION,
-				field: String(key),
-				message: `Unknown configuration option: ${String(key)}`,
-				severity: ValidationSeverity.WARNING,
-				value,
-			};
-		}
-
-		// Check type
-		if (rule.type && value !== null && value !== undefined) {
-			const types = Array.isArray(rule.type) ? rule.type : [rule.type];
-			let typeValid = false;
-
-			for (const type of types) {
-				switch (type) {
-					case 'string':
-						typeValid = typeof value === 'string';
-						break;
-					case 'number':
-						typeValid = typeof value === 'number';
-						break;
-					case 'boolean':
-						typeValid = typeof value === 'boolean';
-						break;
-					case 'object':
-						typeValid = typeof value === 'object' && !Array.isArray(value);
-						break;
-					case 'array':
-						typeValid = Array.isArray(value);
-						break;
-					default:
-						typeValid = false;
-				}
-
-				if (typeValid) break;
-			}
-
-			if (!typeValid) {
+		// Basic validation implementation - will be expanded in future PRs
+		if (key === 'sdkKey' && (!value || typeof value !== 'string')) {
 				return {
 					type: ValidationIssueType.INVALID_TYPE,
-					field: String(key),
-					message: `Field ${String(key)} must be of type ${types.join(' or ')}`,
+				field: key,
+				message: 'SDK Key must be a non-empty string',
 					severity: ValidationSeverity.ERROR,
-					value,
-				};
-			}
+				value
+			};
 		}
-
-		// Run custom validator if provided
-		if (rule.validator) {
-			// Create a temporary config with this value for context
-			const tempConfig = { ...this.config, [key]: value };
-			return rule.validator(value as any, tempConfig);
-		}
-
 		return null;
 	}
 
@@ -2022,275 +1798,117 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns The number of issues fixed.
 	 */
 	fixValidationIssues(issues: ValidationIssue[]): number {
-		let fixedCount = 0;
-
+		// Basic implementation - will be expanded in future PRs
+		let fixed = 0;
 		for (const issue of issues) {
-			// Skip issues that can't be fixed automatically
-			if (issue.suggestedValue === undefined && issue.type !== ValidationIssueType.UNKNOWN_OPTION) {
-				continue;
-			}
-
-			switch (issue.type) {
-				case ValidationIssueType.INVALID_TYPE:
-				case ValidationIssueType.INVALID_VALUE:
-				case ValidationIssueType.DEPRECATED:
-					// Apply suggested value if available
-					if (issue.suggestedValue !== undefined) {
-						if (typeof issue.suggestedValue === 'object' && issue.suggestedValue !== null) {
-							// Handle complex suggestions (multiple fields)
-							for (const [key, value] of Object.entries(issue.suggestedValue)) {
-								this.setValue(key as keyof OptimizelyConfigOptions, value);
+			if (issue.type === ValidationIssueType.INVALID_TYPE && issue.suggestedValue !== undefined) {
+				// Safe property access
+				const fieldName = issue.field as keyof OptimizelyConfigOptions;
+				if (fieldName in this.config) {
+					// We need to manually check field types
+					switch(fieldName) {
+						case 'sdkKey':
+						case 'visitorId':
+						case 'userId':
+						case 'flagKey':
+						case 'eventKey':
+						case 'serverMode':
+						case 'datafileAccessToken':
+							if (typeof issue.suggestedValue === 'string') {
+								this.config[fieldName] = issue.suggestedValue;
+								fixed++;
 							}
-						} else {
-							// Handle simple suggestion (single value)
-							this.setValue(issue.field as keyof OptimizelyConfigOptions, issue.suggestedValue);
-						}
-						fixedCount++;
+							break;
+						
+						case 'attributes':
+						case 'eventTags':
+						case 'forcedDecisions':
+						case 'cdnVariationSettings':
+							if (typeof issue.suggestedValue === 'object') {
+								this.config[fieldName] = issue.suggestedValue;
+								fixed++;
+							}
+							break;
+						
+						case 'decideOptions':
+						case 'flagKeys':
+							if (Array.isArray(issue.suggestedValue)) {
+								this.config[fieldName] = issue.suggestedValue;
+								fixed++;
+							}
+							break;
+						
+						case 'value':
+							if (typeof issue.suggestedValue === 'number') {
+								this.config[fieldName] = issue.suggestedValue;
+								fixed++;
+							}
+							break;
+						
+						// For boolean properties
+						case 'trimmedDecisions':
+						case 'overrideCache':
+						case 'overrideVisitorId':
+						case 'setResponseHeaders':
+						case 'setResponseCookies':
+						case 'setRequestHeaders':
+						case 'setRequestCookies':
+						case 'enableFlagsFromKV':
+						case 'datafileFromKV':
+						case 'enableResponseMetadata':
+						case 'enableDebugHeaders':
+						case 'decideAll':
+						case 'enabledFlagsOnly':
+						case 'includeReasons':
+						case 'excludeVariables':
+						case 'disableDecisionEvent':
+						case 'ignoreUserProfileService':
+						case 'enableFex':
+							if (typeof issue.suggestedValue === 'boolean') {
+								this.config[fieldName] = issue.suggestedValue;
+								fixed++;
+							}
+							break;
 					}
-					break;
-
-				case ValidationIssueType.UNKNOWN_OPTION:
-					// Remove unknown option
-					delete this.config[issue.field as keyof OptimizelyConfigOptions];
-					fixedCount++;
-					break;
-
-				case ValidationIssueType.INCOMPATIBLE_OPTIONS:
-					// If we can determine which option to remove from context, do so
-					if (issue.context?.incompatibleField) {
-						delete this.config[issue.context.incompatibleField as keyof OptimizelyConfigOptions];
-						fixedCount++;
-					}
-					break;
-			}
-		}
-
-		return fixedCount;
-	}
-
-	/**
-	 * Extract a header value from Headers, parse it if it's JSON, and set it on the config.
-	 * @param headers - The headers object
-	 * @param headerName - The name of the header
-	 * @param configKey - The configuration key to set
-	 */
-	private extractHeaderValue(headers: Headers, headerName: string, configKey: keyof OptimizelyConfigOptions): void {
-		if (headers.has(headerName)) {
-			const headerValue = headers.get(headerName);
-			try {
-				// Try to parse as JSON
-				const parsedValue = headerValue ? JSON.parse(headerValue) : null;
-				if (parsedValue !== null) {
-					this.setConfigValue(configKey, parsedValue, 'headers');
-				}
-			} catch (error) {
-				this.logger.debug(`${this.logPrefix} Failed to parse ${headerName} as JSON:`, error);
-				// For decideOptions, treat as comma-separated list if JSON parse fails
-				if (configKey === 'decideOptions' && headerValue) {
-					this.setConfigValue(
-						configKey,
-						headerValue.split(',').map((s) => s.trim()),
-						'headers'
-					);
 				}
 			}
 		}
+		return fixed;
 	}
 
 	/**
-	 * Gets the configured header name for user attributes
-	 */
-	getAttributesHeaderName(): string | undefined {
-		return this.attributesHeaderName || 'X-Optimizely-Attributes-Header';
-	}
-	/**
-	 * Gets the configured header name for event tags
-	 */
-	getEventTagsHeaderName(): string | undefined {
-		return this.eventTagsHeaderName || 'X-Optimizely-Event-Tags-Header';
-	}
-	/**
-	 * Gets the configured header name for event key
-	 */
-	getEventKeyHeaderName(): string | undefined {
-		return this.eventKeyHeaderName || 'X-Optimizely-Event-Key';
-	}
-	/**
-	 * Returns true if Feature Experimentation (FEX) is enabled
-	 * Checks if the "X-Optimizely-Enable-FEX" header is enabled.
-	 */
-	getEnableFex(): boolean {
-		// Check the configuration first, then fall back to the class property
-		return this.enableFex;
-	}
-	/**
-	 * Returns true if cache override is enabled
-	 */
-	getOverrideCache(): boolean {
-		return this.overrideCache;
-	}
-	/**
-	 * Returns true if response metadata should be included
-	 */
-	getEnableResponseMetadata(): boolean {
-		return this.enableResponseMetadata;
-	}
-	/**
-	 * Returns true if debug headers should be included in responses
-	 */
-	getEnableDebugHeaders(): boolean {
-		return this.enableDebugHeaders;
-	}
-	/**
-	 * Returns true if flags should be loaded from KV storage
-	 */
-	getEnableFlagsFromKV(): boolean {
-		return this.enableFlagsFromKV;
-	}
-	/**
-	 * Returns true if datafile should be loaded from KV storage
-	 */
-	getEnableDatafileFromKV(): boolean {
-		return this.enableDatafileFromKV;
-	}
-
-	/**
-	 * Validates the current configuration against the schema.
-	 * @returns True if the configuration is valid, false otherwise.
-	 */
-	validateConfiguration(): boolean {
-		// Placeholder for actual validation logic
-		this.logger.debug('Configuration validation not yet implemented.');
-		return true;
-	}
-
-	/**
-	 * Fetches the Optimizely configuration datafile for a given SDK key.
-	 * First attempts to get from KV storage, then falls back to fetching from CDN if not found.
-	 *
-	 * @param sdkKey - The SDK key.
-	 * @returns A promise resolving to the OptimizelyDatafile or null.
-	 */
-	async getDatafile(sdkKey?: string): Promise<any> {
-		if (!sdkKey) {
-			this.logger.error(`${this.logPrefix} getDatafile: SDK key is required.`);
-			return null;
-		}
-		this.logger.debug(`${this.logPrefix} Attempting to fetch datafile for key '${sdkKey}'`);
-		try {
-			// First try to get from storage
-			let datafileJson = await this.datafileService.getDatafile(sdkKey);
-			// If not found in storage, try to fetch from CDN
-			if (!datafileJson) {
-				this.logger.debug(`${this.logPrefix} Datafile not found in storage for '${sdkKey}', fetching from CDN.`);
-				datafileJson = await this.datafileService.refreshDatafile(sdkKey);
-				if (!datafileJson) {
-					this.logger.warn(`${this.logPrefix} Datafile not found for SDK key '${sdkKey}'.`);
-					return null;
-				}
-			}
-			// Parse the JSON string to an object
-			const datafile = JSON.parse(datafileJson);
-			// Try to get revision for logging, handle potential errors if structure is unexpected
-			let revision = 'unknown';
-			if (datafile && typeof datafile === 'object' && 'revision' in datafile) {
-				revision = String((datafile as any).revision);
-			}
-			this.logger.info(
-				`${this.logPrefix} Successfully fetched datafile for SDK key '${sdkKey}', revision '${revision}'.`
-			);
-			return datafile;
-		} catch (error) {
-			this.logger.error(`${this.logPrefix} Failed to fetch or parse datafile for SDK key '${sdkKey}'.`, error);
-			return null;
-		}
-	}
-
-	/**
-	 * Gets the Edge Agent version.
-	 * @returns The Edge Agent version string or the default if not available.
+	 * Gets the edge agent version, if any.
+	 * @returns The edge agent version string or null.
 	 */
 	getEdgeAgentVersion(): string | null {
-		if (this.cachedVersion) {
-			return this.cachedVersion;
-		}
-		// Safely check if process.env exists (for Node.js environments)
-		try {
-			if (typeof process !== 'undefined' && process && process.env) {
-				this.cachedVersion = process.env.npm_package_version || process.env.EDGE_AGENT_VERSION || '2.0.0';
-			} else {
-				// In environments without process.env (like Cloudflare Workers)
-				this.cachedVersion = '2.0.0'; // Default version
-			}
-		} catch (e) {
-			// Handle any errors accessing process.env
-			this.logger.debug(`${this.logPrefix} process.env not available in this environment, using default version`);
-			this.cachedVersion = '2.0.0';
-		}
-		return this.cachedVersion;
+		// This will be implemented in future PRs
+		return null;
 	}
 
 	/**
-	 * Gets the current environment (e.g., 'production', 'development').
-	 * @returns The environment string or the default if not available.
-	 */
-	getEnvironment(): string | null {
-		if (!this.cachedEnvironment) {
-			// Use the environment adapter instead of process.env
-			try {
-				const envAdapter = this.datafileService.getEnvironmentAdapter();
-				this.cachedEnvironment = envAdapter.getVariable('ENVIRONMENT') || 'production';
-			} catch (error) {
-				this.logger.error('Error getting environment:', error);
-				this.cachedEnvironment = 'production';
-			}
-		}
-		return this.cachedEnvironment;
-	}
-
-	/**
-	 * Gets the CDN provider (e.g., 'cloudflare', 'vercel', 'fastly').
-	 * @returns The CDN provider string or the default if not available.
-	 */
-	getCdnProvider(): string | null {
-		if (!this.cachedCdnProvider) {
-			try {
-				const envAdapter = this.datafileService.getEnvironmentAdapter();
-				this.cachedCdnProvider = envAdapter.getVariable('CDN_PROVIDER') || 'cloudflare';
-			} catch (error) {
-				this.logger.error('Error getting CDN provider:', error);
-				this.cachedCdnProvider = 'cloudflare';
-			}
-		}
-		return this.cachedCdnProvider;
-	}
-
-	/**
-	 * Gets the admin token for secure operations.
-	 * @returns The admin token or null if not configured.
+	 * Gets the configured admin token, if any.
+	 * @returns The admin token string or null.
 	 */
 	getAdminToken(): string | null {
-		if (!this.cachedAdminToken) {
-			try {
-				const envAdapter = this.datafileService.getEnvironmentAdapter();
-				this.cachedAdminToken = envAdapter.getVariable('ADMIN_TOKEN') || null;
-			} catch (error) {
-				this.logger.error('Error getting admin token:', error);
-				this.cachedAdminToken = null;
-			}
-		}
+		// This will be implemented in future PRs
 		return this.cachedAdminToken;
 	}
 
 	/**
+	 * Checks if the global cache override setting is enabled.
+	 * @returns True if cache should be overridden (no-store), false otherwise.
+	 */
+	getOverrideCache(): boolean {
+		return !!this.config.overrideCache;
+	}
+
+	/**
 	 * Gets the default decide options to apply at the SDK level.
-	 * Returns decide options configured for this request that should be applied
-	 * consistently at the SDK initialization level.
-	 * @returns Array of decide option string literals from the configuration.
+	 * @returns Array of decide option string literals.
 	 */
 	getDefaultDecideOptions(): string[] {
-		// Return the current request's decide options
-		return this.getDecideOptions();
+		// This will be implemented in future PRs
+		return [];
 	}
 
 	/**
@@ -2322,9 +1940,140 @@ export class ConfigurationService implements IConfigurationService {
 	}
 
 	/**
+	 * Returns true if the FEX (Feature Experimentation) bypass is enabled.
+	 */
+	getEnableFex(): boolean {
+		return !!this.config.enableFex;
+	}
+
+	/**
+	 * Returns true if datafile should be loaded from KV storage.
+	 */
+	getEnableDatafileFromKV(): boolean {
+		return !!this.config.datafileFromKV;
+	}
+
+	/**
+	 * Returns true if flags should be loaded from KV storage.
+	 */
+	getEnableFlagsFromKV(): boolean {
+		return !!this.config.enableFlagsFromKV;
+	}
+
+	/**
+	 * Returns true if response metadata should be included in responses.
+	 */
+	getEnableResponseMetadata(): boolean {
+		return !!this.config.enableResponseMetadata;
+	}
+
+	/**
+	 * Returns the current environment string (e.g., 'production', 'staging').
+	 */
+	getEnvironment(): string | null {
+		// This will be implemented in future PRs
+		return this.cachedEnvironment;
+	}
+
+	/**
+	 * Returns the current CDN provider string (e.g., 'cloudflare', 'fastly').
+	 */
+	getCdnProvider(): string | null {
+		// This will be implemented in future PRs
+		return this.cachedCdnProvider;
+	}
+
+	/**
+	 * Gets the datafile for the current configuration, or a specified SDK key.
+	 * @param sdkKey - Optional SDK key to get the datafile for, defaults to the one in config
+	 * @returns A promise resolving to the datafile as a parsed JSON object or null if not found
+	 */
+	async getDatafile(sdkKey?: string): Promise<any> {
+		// Use a safe default for the SDK key
+		const safeKey = sdkKey || this.config.sdkKey || '';
+		
+		// Pass the datafileFromKV option from config to the datafile service
+		const useKV = !!this.config.datafileFromKV;
+		
+		this.logger.debug(`${this.logPrefix} Getting datafile for SDK key ${safeKey}, useKV=${useKV}, datafileFromKV in config=${JSON.stringify(this.config.datafileFromKV)}`);
+		
+		// Try getting the datafile with detailed error handling
+		try {
+			const datafileStr = await this.datafileService.getDatafile(safeKey, { useKV });
+			
+			if (!datafileStr) {
+				this.logger.error(`${this.logPrefix} Datafile is null or undefined - fetch failed`);
+				return null;
+			} 
+			
+			this.logger.debug(`${this.logPrefix} Successfully fetched datafile (${datafileStr.length} characters)`);
+			
+			// Parse the datafile string into a JSON object
+			try {
+				const datafileObj = JSON.parse(datafileStr);
+				return datafileObj;
+			} catch (e) {
+				this.logger.error(`${this.logPrefix} Failed to parse datafile as JSON: ${e}`);
+				return null;
+			}
+		} catch (e) {
+			this.logger.error(`${this.logPrefix} Error while getting datafile: ${e}`);
+			return null;
+		}
+	}
+
+	/**
+	 * Returns true if debug headers should be included in responses.
+	 */
+	getEnableDebugHeaders(): boolean {
+		return !!this.config.enableDebugHeaders;
+	}
+
+	/**
 	 * Gets the implementation version header name.
+	 * @returns The implementation version header name.
 	 */
 	getImplementationVersionHeader(): string {
 		return this.settings.implementationVersionHeader;
+	}
+
+	/**
+	 * Sets a boolean property safely without using type assertions
+	 * @param obj - The object to modify
+	 * @param key - The key of the boolean property to set
+	 * @param value - The boolean value to set
+	 */
+	private setBooleanProperty<T>(
+		obj: Partial<OptimizelyConfigOptions>,
+		key: keyof OptimizelyConfigOptions,
+		value: boolean
+	): void {
+		// Only set boolean properties
+		switch (key) {
+			// Boolean parameters that we know exist in OptimizelyConfigOptions
+			case 'enableFex':
+					case 'overrideCache':
+					case 'enableResponseMetadata':
+					case 'enableDebugHeaders':
+			case 'trimmedDecisions':
+					case 'decideAll':
+					case 'enabledFlagsOnly':
+					case 'includeReasons':
+					case 'excludeVariables':
+					case 'disableDecisionEvent':
+					case 'ignoreUserProfileService':
+					case 'setResponseHeaders':
+					case 'setResponseCookies':
+					case 'setRequestHeaders':
+					case 'setRequestCookies':
+					case 'enableFlagsFromKV':
+					case 'datafileFromKV':
+			case 'overrideVisitorId':
+				// Direct assignment for boolean properties without any type casting
+				obj[key] = value;
+						break;
+					default:
+				this.logger.warn(`${this.logPrefix} Attempted to set non-boolean property ${String(key)} with boolean value`);
+		}
 	}
 }

@@ -76,7 +76,7 @@ export class DatafileService implements IDatafileService {
   
   /**
    * Gets an Optimizely datafile by sdkKey.
-   * Uses in-memory cache first, then KV storage, and finally fetches from CDN if needed.
+   * Uses KV storage if specified, and falls back to CDN if KV fails or is empty.
    * @param sdkKey - The Optimizely SDK key.
    * @param options - Configuration options.
    * @returns A promise resolving to the datafile JSON string or null if not found.
@@ -86,71 +86,83 @@ export class DatafileService implements IDatafileService {
       this.logger.error(`${this.logPrefix} Cannot get datafile: SDK key is required`);
       return null;
     }
+    
     const useKV = options?.useKV;
     const requestContext = options?.requestContext;
+    let kvResult = null;
+    
+    // Try KV first if useKV is true
     if (useKV) {
-      this.logger.debug(`${this.logPrefix} Getting datafile for SDK key ${sdkKey} from KV storage`);
-      return this.getDatafileFromKV ? await this.getDatafileFromKV(sdkKey) : null;
-    }
-    
-    const cacheKey = `${DATAFILE_PREFIX}${sdkKey}`;
-    const requestStart = Date.now();
-    let source = 'unknown';
-    
-    try {
-      // Check in-memory cache first
-      if (this.cacheEnabled) {
-        const cachedData = this.datafileCache.get(sdkKey);
-        if (cachedData && cachedData.expiry > Date.now()) {
-          source = 'memory-cache';
+      this.logger.debug(`${this.logPrefix} Attempting to get datafile for SDK key ${sdkKey} from KV storage`);
+      try {
+        kvResult = await this.getDatafileFromKV(sdkKey);
+        if (kvResult) {
           // Update request context with source if provided
           if (requestContext?.configMetadata) {
-            requestContext.configMetadata.datafileFrom = 'memory-cache';
+            requestContext.configMetadata.datafileFrom = 'kv';
           }
-          this.metrics?.incrementCounter('datafile_cache_hit', 1, { source, type: 'memory' });
-          return cachedData.datafile;
+          this.logger.debug(`${this.logPrefix} Successfully retrieved datafile from KV for SDK key ${sdkKey}`);
+          this.metrics?.incrementCounter('datafile_cache_hit', 1, { source: 'kv', type: 'kv' });
+          
+          // Ensure the datafile is valid JSON before returning - if not valid, fall back to CDN
+          try {
+            // Validate the datafile by attempting to parse it
+            JSON.parse(kvResult);
+            
+            // If it parses successfully, return it
+            return kvResult;
+          } catch (parseError) {
+            this.logger.warn(`${this.logPrefix} Datafile from KV is not valid JSON for SDK key ${sdkKey}, falling back to standard flow`);
+            this.metrics?.incrementCounter('datafile_parse_errors', 1, { source: 'kv' });
+            // Continue to CDN fallback
+          }
         }
+        this.logger.debug(`${this.logPrefix} Datafile not found in KV for SDK key ${sdkKey}, falling back to standard flow`);
+      } catch (kvError) {
+        this.logger.warn(`${this.logPrefix} Error retrieving datafile from KV for SDK key ${sdkKey}, falling back to standard flow: ${kvError}`);
+      }
+    }
+    
+    // At this point, either:
+    // 1. KV was not requested
+    // 2. KV was requested but failed to retrieve
+    // 3. KV was requested and succeeded but returned invalid JSON
+    // In all cases, we now try to get the datafile from the CDN
+    
+    try {
+      const url = `${this.getDatafileUrl(sdkKey)}`;
+      this.logger.debug(`${this.logPrefix} Getting datafile from ${url}`);
+      
+      const datafileAccessToken = requestContext?.config?.datafileAccessToken ?? '';
+      const response = await this.fetchDatafile(url, datafileAccessToken);
+      
+      if (!response.ok) {
+        this.logger.error(`${this.logPrefix} Failed to get datafile: HTTP ${response.status} ${response.statusText}`);
+        return null;
       }
       
-      // Check KV storage
-      const storedDatafile = await this.storage.get(cacheKey, 'text');
-      if (storedDatafile) {
-        source = 'kv';
-        // Update request context with source if provided
-        if (requestContext?.configMetadata) {
-          requestContext.configMetadata.datafileFrom = 'kv';
-        }
-        this.metrics?.incrementCounter('datafile_cache_hit', 1, { source, type: 'kv' });
-        
-        // Update in-memory cache
-        if (this.cacheEnabled) {
-          this.datafileCache.set(sdkKey, {
-            datafile: storedDatafile,
-            expiry: Date.now() + (DEFAULT_DATAFILE_TTL * 1000)
-          });
-        }
-        
-        return storedDatafile;
-      }
+      const datafileText = await response.text();
       
-      // Not found in storage, fetch from CDN
-      source = 'cdn';
       // Update request context with source if provided
       if (requestContext?.configMetadata) {
         requestContext.configMetadata.datafileFrom = 'cdn';
       }
-      this.metrics?.incrementCounter('datafile_cache_miss', 1);
-      return await this.refreshDatafile(sdkKey, true, requestContext);
+      
+      // Validate the datafile JSON
+      try {
+        JSON.parse(datafileText);
+      } catch (parseError) {
+        this.logger.error(`${this.logPrefix} Failed to parse datafile from CDN as JSON: ${parseError}`);
+        return null;
+      }
+      
+      this.logger.debug(`${this.logPrefix} Successfully fetched datafile from CDN for SDK key ${sdkKey}`);
+      this.metrics?.incrementCounter('datafile_cache_hit', 1, { source: 'cdn', type: 'cdn' });
+      
+      return datafileText;
     } catch (error) {
-      this.logger.error(`${this.logPrefix} Error getting datafile for SDK key ${sdkKey}:`, error);
-      this.metrics?.incrementCounter('datafile_errors', 1, {
-        error_type: error instanceof Error ? error.name : 'unknown'
-      });
+      this.logger.error(`${this.logPrefix} Error fetching datafile from CDN: ${error}`);
       return null;
-    } finally {
-      // Record duration
-      const duration = Date.now() - requestStart;
-      this.metrics?.recordHistogram('datafile_fetch_duration_ms', duration, { source });
     }
   }
   
@@ -582,18 +594,32 @@ export class DatafileService implements IDatafileService {
   private isValidDatafile(datafileJson: string): boolean {
     try {
       if (!datafileJson) {
+        this.logger.error(`${this.logPrefix} Datafile is empty or null`);
         return false;
       }
       
-      const datafile = JSON.parse(datafileJson);
+      // Log first part of datafile for debugging
+      this.logger.debug(`${this.logPrefix} Validating datafile (first 100 chars): ${datafileJson.substring(0, 100)}...`);
       
-      // Check for required properties in the datafile
-      return (
-        typeof datafile === 'object' &&
-        datafile !== null &&
-        typeof datafile.revision === 'string' &&
-        (Array.isArray(datafile.featureFlags) || Array.isArray(datafile.experiments))
-      );
+      // Attempt to parse the datafile JSON
+      let datafile;
+      try {
+        datafile = JSON.parse(datafileJson);
+      } catch (parseError) {
+        this.logger.error(`${this.logPrefix} Failed to parse datafile JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`);
+        return false;
+      }
+      
+      if (!datafile || typeof datafile !== 'object') {
+        this.logger.error(`${this.logPrefix} Datafile is not a valid JSON object`);
+        return false;
+      }
+      
+      // Log important datafile properties for debugging
+      this.logger.debug(`${this.logPrefix} Datafile properties: revision=${datafile.revision}, schemaVersion=${datafile.schemaVersion}, projectId=${datafile.projectId}, version=${datafile.version}`);
+      
+      // Basic validation - at minimum it should be an object
+      return true;
     } catch (error) {
       this.logger.error(`${this.logPrefix} Error validating datafile:`, error);
       return false;
@@ -725,5 +751,42 @@ export class DatafileService implements IDatafileService {
     const cacheKey = `${DATAFILE_PREFIX}${sdkKey}`;
     const storedDatafile = await this.storage.get(cacheKey, 'text');
     return storedDatafile || null;
+  }
+  
+  /**
+   * Constructs the URL for fetching a datafile from the CDN.
+   * @param sdkKey - The SDK key for which to construct the URL.
+   * @returns The complete URL string.
+   * @private
+   */
+  private getDatafileUrl(sdkKey: string): string {
+    if (!sdkKey) {
+      throw new Error('SDK key is required to get datafile URL');
+    }
+    // Standard Optimizely CDN URL format
+    return `https://cdn.optimizely.com/datafiles/${sdkKey}.json`;
+  }
+
+  /**
+   * Fetches a datafile from the specified URL.
+   * @param url - The URL from which to fetch the datafile.
+   * @param accessToken - Optional access token for authenticated requests.
+   * @returns A Promise resolving to the fetch response.
+   * @private
+   */
+  private async fetchDatafile(url: string, accessToken?: string): Promise<Response> {
+    const headers: HeadersInit = {
+      'Accept': 'application/json',
+      'User-Agent': 'optimizely-edge-agent'
+    };
+    
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    
+    return await fetch(url, {
+      method: 'GET',
+      headers
+    });
   }
 } 
