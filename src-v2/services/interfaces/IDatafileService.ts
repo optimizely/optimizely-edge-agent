@@ -10,9 +10,15 @@ export interface IDatafileService {
    * Gets an Optimizely datafile by sdkKey.
    * @param sdkKey - The Optimizely SDK key.
    * @param options - Optional configuration options.
+   * @param options.useKV - If true, attempts to fetch the datafile from KV storage first. 
+   *                        If KV storage is enabled and useKV=true, only KV storage will be used with no fallback.
+   *                        If KV storage is not enabled and useKV=true, an error will be returned.
+   *                        If false or undefined, behavior depends on global KV configuration: if enabled, 
+   *                        tries KV first then falls back to default sources; if disabled, uses only default sources.
+   * @param options.requestContext - Optional context data from the request.
    * @returns A promise resolving to the datafile JSON string or null if not found.
    */
-  getDatafile(sdkKey: string, options?: { useKV?: boolean }): Promise<string | null>;
+  getDatafile(sdkKey: string, options?: { useKV?: boolean; requestContext?: any }): Promise<string | null>;
 
   /**
    * Updates or stores an Optimizely datafile.
@@ -43,6 +49,12 @@ export interface IDatafileService {
    * Gets all flag keys for a specific SDK key.
    * @param sdkKey - The Optimizely SDK key.
    * @param options - Optional configuration options.
+   * @param options.useKV - If true, attempts to fetch flag keys from KV storage first.
+   *                        If KV storage is enabled and useKV=true, only KV storage will be used with no fallback.
+   *                        If KV storage is not enabled and useKV=true, an error will be returned.
+   *                        If false or undefined, behavior depends on global KV configuration: if enabled,
+   *                        tries KV first then falls back to default sources; if disabled, uses only default sources.
+   * @param options.requestContext - Optional context data from the request.
    * @returns A promise resolving to an array of flag keys or null if none are found.
    */
   getFlagKeys(sdkKey: string, options?: { useKV?: boolean, requestContext?: any }): Promise<string[] | null>;
@@ -142,6 +154,7 @@ export interface IDatafileService {
    * Gets datafile from KV store.
    * @param sdkKey - The Optimizely SDK key.
    * @returns A promise resolving to the datafile JSON string or null if not found.
+   * @throws Error if KV storage is not enabled in the system configuration.
    */
   getDatafileFromKV?(sdkKey: string): Promise<string | null>;
 } 

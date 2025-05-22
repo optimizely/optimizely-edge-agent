@@ -4,6 +4,7 @@ import { IEnvironmentAdapter } from "../../adapters/interfaces/IEnvironmentAdapt
 import { ILoggerAdapter } from "../../adapters/interfaces/ILoggerAdapter";
 import { IMetricsAdapter } from "../../adapters/interfaces/IMetricsAdapter";
 import { IFlagStorageService } from "../interfaces/IFlagStorageService";
+import { IConfigurationService } from "../interfaces/IConfigurationService";
 
 // Constants for storage
 const DATAFILE_PREFIX = 'datafile:';
@@ -22,10 +23,12 @@ export class DatafileService implements IDatafileService {
   private logger: ILoggerAdapter;
   private metrics: IMetricsAdapter | null;
   private flagStorage: IFlagStorageService | null;
+  private configService: IConfigurationService | null;
   private readonly logPrefix = '[v2][DatafileService]';
   private datafileCache: Map<string, { datafile: string, expiry: number }>;
   private flagKeysCache: Map<string, { flagKeys: string[], expiry: number }>;
   private cacheEnabled: boolean;
+  private autoExtractFlagKeys: boolean;
   
   /**
    * Creates an instance of DatafileService.
@@ -34,6 +37,7 @@ export class DatafileService implements IDatafileService {
    * @param logger - The logger adapter.
    * @param metrics - Optional metrics adapter for tracking performance.
    * @param flagStorage - Optional flag storage service for flag-specific operations.
+   * @param configService - Optional configuration service for feature toggles.
    * @param options - Configuration options.
    */
   constructor(
@@ -42,10 +46,12 @@ export class DatafileService implements IDatafileService {
     logger: ILoggerAdapter,
     metrics?: IMetricsAdapter,
     flagStorage?: IFlagStorageService,
+    configService?: IConfigurationService,
     options?: { 
       cacheEnabled?: boolean,
       datafileTtl?: number,
-      flagKeysTtl?: number
+      flagKeysTtl?: number,
+      autoExtractFlagKeys?: boolean
     }
   ) {
     if (!storage || !environment || !logger) {
@@ -57,13 +63,15 @@ export class DatafileService implements IDatafileService {
     this.logger = logger;
     this.metrics = metrics || null;
     this.flagStorage = flagStorage || null;
+    this.configService = configService || null;
     this.cacheEnabled = options?.cacheEnabled !== false; // Default to true
+    this.autoExtractFlagKeys = options?.autoExtractFlagKeys !== false; // Default to true for backward compatibility
     
     // Initialize in-memory caches
     this.datafileCache = new Map();
     this.flagKeysCache = new Map();
     
-    this.logger.info(`${this.logPrefix} Initialized with caching ${this.cacheEnabled ? 'enabled' : 'disabled'}`);
+    this.logger.info(`${this.logPrefix} Initialized with caching ${this.cacheEnabled ? 'enabled' : 'disabled'}, auto flag key extraction ${this.autoExtractFlagKeys ? 'enabled' : 'disabled'}`);
     
     if (this.metrics) {
       this.logger.info(`${this.logPrefix} Metrics tracking enabled`);
@@ -71,6 +79,10 @@ export class DatafileService implements IDatafileService {
     
     if (this.flagStorage) {
       this.logger.info(`${this.logPrefix} Flag storage service available for flag-specific operations`);
+    }
+    
+    if (this.configService) {
+      this.logger.info(`${this.logPrefix} Configuration service available for feature toggles`);
     }
   }
   
@@ -89,13 +101,20 @@ export class DatafileService implements IDatafileService {
     
     const useKV = options?.useKV;
     const requestContext = options?.requestContext;
-    let kvResult = null;
+    const isKVEnabled = this.configService?.getEnableDatafileFromKV() || false;
+    const fallbackEnabled = this.configService?.getEnableKVStorageFallback?.() ?? true; // Default to true for backward compatibility
     
-    // Try KV first if useKV is true
-    if (useKV) {
+    // Log configuration state for debugging
+    this.logger.debug(`${this.logPrefix} Getting datafile for SDK key ${sdkKey}, useKV=${useKV}, KV enabled=${isKVEnabled}, fallback enabled=${fallbackEnabled}`);
+    
+    // Determine if we should try KV first
+    const shouldTryKV = useKV === true || (useKV !== false && isKVEnabled);
+    
+    // Try KV if explicitly requested or if enabled by config
+    if (shouldTryKV) {
       this.logger.debug(`${this.logPrefix} Attempting to get datafile for SDK key ${sdkKey} from KV storage`);
       try {
-        kvResult = await this.getDatafileFromKV(sdkKey);
+        const kvResult = await this.getDatafileFromKV(sdkKey);
         if (kvResult) {
           // Update request context with source if provided
           if (requestContext?.configMetadata) {
@@ -104,7 +123,7 @@ export class DatafileService implements IDatafileService {
           this.logger.debug(`${this.logPrefix} Successfully retrieved datafile from KV for SDK key ${sdkKey}`);
           this.metrics?.incrementCounter('datafile_cache_hit', 1, { source: 'kv', type: 'kv' });
           
-          // Ensure the datafile is valid JSON before returning - if not valid, fall back to CDN
+          // Ensure the datafile is valid JSON before returning
           try {
             // Validate the datafile by attempting to parse it
             JSON.parse(kvResult);
@@ -112,32 +131,68 @@ export class DatafileService implements IDatafileService {
             // If it parses successfully, return it
             return kvResult;
           } catch (parseError) {
-            this.logger.warn(`${this.logPrefix} Datafile from KV is not valid JSON for SDK key ${sdkKey}, falling back to standard flow`);
+            this.logger.warn(`${this.logPrefix} Datafile from KV is not valid JSON for SDK key ${sdkKey}, falling back to CDN`);
             this.metrics?.incrementCounter('datafile_parse_errors', 1, { source: 'kv' });
-            // Continue to CDN fallback
+            
+            // If useKV is explicitly true and fallback is disabled, return error instead of falling back
+            if (useKV === true && !fallbackEnabled) {
+              this.logger.error(`${this.logPrefix} Datafile from KV is not valid JSON and fallback is disabled for SDK key ${sdkKey}`);
+              throw new Error(`Datafile from KV is not valid JSON for SDK key ${sdkKey} and fallback is disabled`);
+            }
+            
+            // Continue to CDN fallback if fallback is enabled
+            if (!fallbackEnabled) {
+              this.logger.warn(`${this.logPrefix} Not falling back to CDN due to configuration for SDK key ${sdkKey}`);
+              return null;
+            }
           }
         }
-        this.logger.debug(`${this.logPrefix} Datafile not found in KV for SDK key ${sdkKey}, falling back to standard flow`);
+        
+        this.logger.debug(`${this.logPrefix} Datafile not found in KV for SDK key ${sdkKey}`);
+        
+        // If useKV is explicitly true and fallback is disabled, return error instead of falling back
+        if (useKV === true && !fallbackEnabled) {
+          this.logger.warn(`${this.logPrefix} Datafile not found in KV and fallback is disabled for SDK key ${sdkKey}`);
+          throw new Error(`Datafile not found in KV storage for SDK key ${sdkKey} and fallback is disabled`);
+        }
+        
+        // Continue to CDN fallback if fallback is enabled
+        if (!fallbackEnabled) {
+          this.logger.warn(`${this.logPrefix} Not falling back to CDN due to configuration for SDK key ${sdkKey}`);
+          return null;
+        }
+        
       } catch (kvError) {
-        this.logger.warn(`${this.logPrefix} Error retrieving datafile from KV for SDK key ${sdkKey}, falling back to standard flow: ${kvError}`);
+        this.logger.warn(`${this.logPrefix} Error retrieving datafile from KV for SDK key ${sdkKey}: ${kvError}`);
+        
+        // If useKV is explicitly true and fallback is disabled, propagate error instead of falling back
+        if (useKV === true && !fallbackEnabled) {
+          throw new Error(`Error accessing KV storage for SDK key ${sdkKey} and fallback is disabled: ${kvError}`);
+        }
+        
+        // Continue to CDN fallback if fallback is enabled
+        if (!fallbackEnabled) {
+          this.logger.warn(`${this.logPrefix} Not falling back to CDN due to configuration for SDK key ${sdkKey}`);
+          return null;
+        }
       }
     }
     
     // At this point, either:
-    // 1. KV was not requested
-    // 2. KV was requested but failed to retrieve
-    // 3. KV was requested and succeeded but returned invalid JSON
+    // 1. KV was not requested/enabled
+    // 2. KV was requested/enabled but failed AND fallback is enabled
+    // 3. KV was requested/enabled but returned null AND fallback is enabled
     // In all cases, we now try to get the datafile from the CDN
     
     try {
       const url = `${this.getDatafileUrl(sdkKey)}`;
-      this.logger.debug(`${this.logPrefix} Getting datafile from ${url}`);
+      this.logger.debug(`${this.logPrefix} Getting datafile from CDN at ${url}`);
       
       const datafileAccessToken = requestContext?.config?.datafileAccessToken ?? '';
       const response = await this.fetchDatafile(url, datafileAccessToken);
       
       if (!response.ok) {
-        this.logger.error(`${this.logPrefix} Failed to get datafile: HTTP ${response.status} ${response.statusText}`);
+        this.logger.error(`${this.logPrefix} Failed to get datafile from CDN: HTTP ${response.status} ${response.statusText}`);
         return null;
       }
       
@@ -158,6 +213,16 @@ export class DatafileService implements IDatafileService {
       
       this.logger.debug(`${this.logPrefix} Successfully fetched datafile from CDN for SDK key ${sdkKey}`);
       this.metrics?.incrementCounter('datafile_cache_hit', 1, { source: 'cdn', type: 'cdn' });
+      
+      // If KV is enabled, store the datafile in KV for future use
+      if (isKVEnabled) {
+        try {
+          await this.setDatafile(sdkKey, datafileText);
+          this.logger.debug(`${this.logPrefix} Stored datafile in KV for future use: SDK key ${sdkKey}`);
+        } catch (storageError) {
+          this.logger.warn(`${this.logPrefix} Failed to store datafile in KV: ${storageError}`);
+        }
+      }
       
       return datafileText;
     } catch (error) {
@@ -194,13 +259,17 @@ export class DatafileService implements IDatafileService {
         });
       }
       
-      // Extract and update flag keys
-      try {
-        const flagKeys = this.extractFlagKeys(datafileJson);
-        await this.setFlagKeys(sdkKey, flagKeys, ttl);
-        this.logger.debug(`${this.logPrefix} Updated ${flagKeys.length} flag keys for SDK key ${sdkKey}`);
-      } catch (flagKeyError) {
-        this.logger.error(`${this.logPrefix} Error extracting flag keys from datafile:`, flagKeyError);
+      // Extract and update flag keys (if enabled)
+      if (this.autoExtractFlagKeys) {
+        try {
+          const flagKeys = this.extractFlagKeys(datafileJson);
+          await this.setFlagKeys(sdkKey, flagKeys, ttl);
+          this.logger.debug(`${this.logPrefix} Updated ${flagKeys.length} flag keys for SDK key ${sdkKey}`);
+        } catch (flagKeyError) {
+          this.logger.error(`${this.logPrefix} Error extracting flag keys from datafile:`, flagKeyError);
+        }
+      } else {
+        this.logger.debug(`${this.logPrefix} Skipping flag key extraction (disabled by configuration) for SDK key ${sdkKey}`);
       }
       
       this.logger.info(`${this.logPrefix} Datafile stored for SDK key ${sdkKey} with TTL ${ttl}s`);
@@ -291,11 +360,71 @@ export class DatafileService implements IDatafileService {
       this.logger.error(`${this.logPrefix} Cannot get flag keys: SDK key is required`);
       return null;
     }
+    
     const useKV = options?.useKV;
     const requestContext = options?.requestContext;
-    if (useKV) {
-      this.logger.debug(`${this.logPrefix} Getting flag keys for SDK key ${sdkKey} from KV storage`);
-      return this.getFlagsFromKV ? await this.getFlagsFromKV(sdkKey) : null;
+    const isKVEnabled = this.configService?.getEnableDatafileFromKV() || false;
+    const fallbackEnabled = this.configService?.getEnableKVStorageFallback?.() ?? true; // Default to true for backward compatibility
+    
+    // Log configuration state for debugging
+    this.logger.debug(`${this.logPrefix} Getting flag keys for SDK key ${sdkKey}, useKV=${useKV}, KV enabled=${isKVEnabled}, fallback enabled=${fallbackEnabled}`);
+    
+    // Determine if we should try KV first
+    const shouldTryKV = useKV === true || (useKV !== false && isKVEnabled);
+    
+    // Try KV if explicitly requested or if enabled by config
+    if (shouldTryKV) {
+      this.logger.debug(`${this.logPrefix} Attempting to get flag keys for SDK key ${sdkKey} from KV storage`);
+      try {
+        const kvResult = await this.getFlagsFromKV(sdkKey);
+        if (kvResult && Array.isArray(kvResult) && kvResult.length > 0) {
+          // Update request context with source if provided
+          if (requestContext?.configMetadata) {
+            requestContext.configMetadata.flagKeysFrom = 'kv';
+            requestContext.configMetadata.flagKeysDecided = kvResult;
+          }
+          this.logger.debug(`${this.logPrefix} Successfully retrieved ${kvResult.length} flag keys from KV for SDK key ${sdkKey}`);
+          this.metrics?.incrementCounter('flagkeys_cache_hit', 1, { source: 'kv', type: 'kv' });
+          
+          // Update in-memory cache for faster access
+          if (this.cacheEnabled) {
+            this.flagKeysCache.set(sdkKey, {
+              flagKeys: kvResult,
+              expiry: Date.now() + (DEFAULT_FLAGKEYS_TTL * 1000)
+            });
+          }
+          
+          return kvResult;
+        }
+        
+        this.logger.debug(`${this.logPrefix} Flag keys not found in KV for SDK key ${sdkKey}`);
+        
+        // If useKV is explicitly true and fallback is disabled, return error instead of falling back
+        if (useKV === true && !fallbackEnabled) {
+          this.logger.warn(`${this.logPrefix} Flag keys not found in KV and fallback is disabled for SDK key ${sdkKey}`);
+          throw new Error(`Flag keys not found in KV storage for SDK key ${sdkKey} and fallback is disabled`);
+        }
+        
+        // Continue to other sources if fallback is enabled
+        if (!fallbackEnabled) {
+          this.logger.warn(`${this.logPrefix} Not falling back to other sources due to configuration for SDK key ${sdkKey}`);
+          return [];
+        }
+        
+      } catch (kvError) {
+        this.logger.warn(`${this.logPrefix} Error retrieving flag keys from KV for SDK key ${sdkKey}: ${kvError}`);
+        
+        // If useKV is explicitly true and fallback is disabled, propagate error instead of falling back
+        if (useKV === true && !fallbackEnabled) {
+          throw new Error(`Error accessing KV storage for flag keys for SDK key ${sdkKey} and fallback is disabled: ${kvError}`);
+        }
+        
+        // Continue to other sources if fallback is enabled
+        if (!fallbackEnabled) {
+          this.logger.warn(`${this.logPrefix} Not falling back to other sources due to configuration for SDK key ${sdkKey}`);
+          return [];
+        }
+      }
     }
     
     const requestStart = Date.now();
@@ -313,11 +442,22 @@ export class DatafileService implements IDatafileService {
             requestContext.configMetadata.flagKeysDecided = flagKeys;
           }
           this.metrics?.incrementCounter('flagkeys_cache_hit', 1, { source, type: 'flag-storage' });
+          
+          // If KV is enabled, store the flag keys in KV for future use
+          if (isKVEnabled) {
+            try {
+              await this.setFlagKeys(sdkKey, flagKeys);
+              this.logger.debug(`${this.logPrefix} Stored ${flagKeys.length} flag keys in KV for future use: SDK key ${sdkKey}`);
+            } catch (storageError) {
+              this.logger.warn(`${this.logPrefix} Failed to store flag keys in KV: ${storageError}`);
+            }
+          }
+          
           return flagKeys;
         }
       }
       
-      // Check in-memory cache first
+      // Check in-memory cache
       if (this.cacheEnabled) {
         const cachedData = this.flagKeysCache.get(sdkKey);
         if (cachedData && cachedData.expiry > Date.now()) {
@@ -332,35 +472,6 @@ export class DatafileService implements IDatafileService {
         }
       }
       
-      // Check KV storage using legacy approach
-      const storageKey = `${FLAGKEYS_PREFIX}${sdkKey}`;
-      const storedFlagKeys = await this.storage.get<string[]>(storageKey, 'json');
-      
-      if (storedFlagKeys && Array.isArray(storedFlagKeys)) {
-        source = 'kv';
-        // Update request context with source if provided
-        if (requestContext?.configMetadata) {
-          requestContext.configMetadata.flagKeysFrom = 'kv';
-          requestContext.configMetadata.flagKeysDecided = storedFlagKeys;
-        }
-        this.metrics?.incrementCounter('flagkeys_cache_hit', 1, { source, type: 'kv' });
-        
-        // Update in-memory cache
-        if (this.cacheEnabled) {
-          this.flagKeysCache.set(sdkKey, {
-            flagKeys: storedFlagKeys,
-            expiry: Date.now() + (DEFAULT_FLAGKEYS_TTL * 1000)
-          });
-        }
-        
-        // Also store in FlagStorageService for future use if available
-        if (this.flagStorage) {
-          await this.flagStorage.putFlagKeys(sdkKey, storedFlagKeys);
-        }
-        
-        return storedFlagKeys;
-      }
-      
       // If flag keys aren't available, try to extract them from datafile
       source = 'datafile';
       // Update request context with source if provided
@@ -369,7 +480,8 @@ export class DatafileService implements IDatafileService {
       }
       this.metrics?.incrementCounter('flagkeys_cache_miss', 1);
       
-      const datafile = await this.getDatafile(sdkKey, requestContext);
+      // Note: we pass the same useKV option to getDatafile to maintain consistency
+      const datafile = await this.getDatafile(sdkKey, { useKV: options?.useKV, requestContext });
       if (datafile) {
         const flagKeys = this.extractFlagKeys(datafile);
         await this.setFlagKeys(sdkKey, flagKeys);
@@ -636,6 +748,16 @@ export class DatafileService implements IDatafileService {
   }
   
   /**
+   * Sets the configuration service after construction.
+   * This is used to avoid circular dependencies during initialization.
+   * @param configService - The configuration service instance.
+   */
+  public setConfigService(configService: IConfigurationService): void {
+    this.configService = configService;
+    this.logger.info(`${this.logPrefix} Configuration service injected`);
+  }
+  
+  /**
    * Gets the environment adapter used by this service.
    * @returns The environment adapter instance.
    */
@@ -742,15 +864,61 @@ export class DatafileService implements IDatafileService {
   }
   
   async getFlagsFromKV(sdkKey: string): Promise<string[] | null> {
+    // Check if KV storage is enabled via config service
+    const isKVEnabled = this.configService?.getEnableDatafileFromKV() || false;
+    
+    if (!isKVEnabled) {
+      this.logger.warn(`${this.logPrefix} Attempted to get flag keys from KV, but KV storage is not enabled`);
+      // We don't throw an error here - we'll just return null
+      // and the calling method will fall back to other sources
+      return null;
+    }
+    
     const storageKey = `${FLAGKEYS_PREFIX}${sdkKey}`;
-    const storedFlagKeys = await this.storage.get<string[]>(storageKey, 'json');
-    return storedFlagKeys && Array.isArray(storedFlagKeys) ? storedFlagKeys : null;
+    
+    try {
+      const storedFlagKeys = await this.storage.get<string[]>(storageKey, 'json');
+      
+      if (!storedFlagKeys || !Array.isArray(storedFlagKeys) || storedFlagKeys.length === 0) {
+        this.logger.debug(`${this.logPrefix} No flag keys found in KV storage for SDK key ${sdkKey}`);
+        return null;
+      }
+      
+      this.logger.debug(`${this.logPrefix} Retrieved ${storedFlagKeys.length} flag keys from KV storage for SDK key ${sdkKey}`);
+      return storedFlagKeys;
+    } catch (error) {
+      this.logger.error(`${this.logPrefix} Error retrieving flag keys from KV storage: ${error}`);
+      return null;
+    }
   }
   
   async getDatafileFromKV(sdkKey: string): Promise<string | null> {
+    // Check if KV storage is enabled via config service
+    const isKVEnabled = this.configService?.getEnableDatafileFromKV() || false;
+    
+    if (!isKVEnabled) {
+      this.logger.warn(`${this.logPrefix} Attempted to get datafile from KV, but KV storage is not enabled`);
+      // We don't throw an error here as per your clarification - we'll just return null
+      // and the calling method will fall back to CDN
+      return null;
+    }
+    
     const cacheKey = `${DATAFILE_PREFIX}${sdkKey}`;
-    const storedDatafile = await this.storage.get(cacheKey, 'text');
-    return storedDatafile || null;
+    
+    try {
+      const storedDatafile = await this.storage.get(cacheKey, 'text');
+      
+      if (!storedDatafile) {
+        this.logger.debug(`${this.logPrefix} No datafile found in KV storage for SDK key ${sdkKey}`);
+        return null;
+      }
+      
+      this.logger.debug(`${this.logPrefix} Retrieved datafile from KV storage for SDK key ${sdkKey}`);
+      return storedDatafile;
+    } catch (error) {
+      this.logger.error(`${this.logPrefix} Error retrieving datafile from KV storage: ${error}`);
+      return null;
+    }
   }
   
   /**

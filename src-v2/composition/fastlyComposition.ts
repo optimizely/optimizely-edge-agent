@@ -23,6 +23,7 @@ import { ICacheService } from "../services/interfaces/ICacheService";
 import { DatafileService } from "../services/implementations/DatafileService";
 import { IDatafileService } from "../services/interfaces/IDatafileService";
 import { IEventService } from "../services/interfaces/IEventService";
+import { FlagStorageService } from "../services/implementations/FlagStorageService";
 
 // Define the binding name for the primary KV namespace used by ConfigService
 const CONFIG_KV_BINDING_NAME = 'OPTLY_HYBRID_AGENT_KV';
@@ -63,8 +64,32 @@ function composeFastlyApplication(factoryInputs: FastlyAdapterFactoryInputs): Fa
 
   // Create Services (inject dependencies)
   const cacheService = new CacheService(storageAdapter, logger);
-  const datafileService = new DatafileService(storageAdapter, environmentAdapter, logger);
+  
+  // Create FlagStorageService first (needed by DatafileService)
+  const flagStorageService = new FlagStorageService(
+    storageAdapter,
+    logger,
+    {
+      autoCleanup: true,
+      cleanupIntervalMs: 3600000 // 1 hour
+    }
+  );
+  
+  // Create DatafileService with FlagStorageService (ConfigurationService will be set later)
+  const datafileService = new DatafileService(
+    storageAdapter, 
+    environmentAdapter, 
+    logger, 
+    undefined, // metricsAdapter - Fastly doesn't have metrics yet
+    flagStorageService,  // Pass FlagStorageService as 5th parameter
+    undefined  // ConfigurationService will be injected later to avoid circular dependency
+  );
+  
   const configService: IConfigurationService = new ConfigurationService(datafileService, logger);
+  
+  // Inject ConfigurationService back into DatafileService to resolve circular dependency
+  datafileService.setConfigService(configService);
+  
   const decisionService = new DecisionService(configService, logger);
   
   // Create RequestHandler

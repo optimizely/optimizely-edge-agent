@@ -10,48 +10,109 @@ import { IDecisionService, OptimizelyUserContext, OptimizelyDecision } from "../
 import { RequestHandler } from './RequestHandler';
 import { extractAttributes } from '../utils/extractAttributes'; // Import the utility
 
-// At the top of the file, after the imports
-// Add the RequestConfig interface
+/**
+ * Configuration object for API requests containing user context, SDK settings, and header/cookie control flags.
+ * This interface defines the complete request configuration used throughout the API processing pipeline.
+ */
 interface RequestConfig {
+  /** The SDK key for the Optimizely project */
   sdkKey: string | null;
+  /** The user identifier for the request */
   userId: string | null;
+  /** The visitor identifier for the request (can be same as userId) */
   visitorId: string | null;
+  /** User attributes for targeting and segmentation */
   attributes?: Record<string, any>;
+  /** Event tags for tracking additional metadata */
   eventTags?: Record<string, any>;
+  /** Event key for tracking specific events */
   eventKey?: string;
+  /** Configuration metadata including sources and tracking information */
   configMetadata: {
+    /** SDK key value */
     sdkKey?: string | null;
+    /** Source of the SDK key (header, query, body) */
     sdkKeyFrom?: string;
+    /** Visitor ID value */
     visitorId?: string | null;
+    /** User attributes object */
     attributes?: Record<string, any>;
+    /** Decide options array for decision behavior */
     decideOptions?: string[];
+    /** Additional metadata fields */
     [key: string]: any;
   } | null;
-  // Add header/cookie control flags
+  /** Whether to set response headers */
   setResponseHeaders: boolean;
+  /** Whether to set response cookies */
   setResponseCookies: boolean;
+  /** Whether to set request headers */
   setRequestHeaders: boolean;
+  /** Whether to set request cookies */
   setRequestCookies: boolean;
-  // Add decisions for header generation
+  /** Decisions array for header/cookie generation */
   decisions?: Record<string, any>;
 }
 
 /**
- * Service responsible for routing and handling API requests.
+ * Service responsible for routing and handling API requests for the Optimizely Edge Agent.
+ * 
+ * This class implements the core API routing logic, handling various endpoints like:
+ * - /api/datafile - Datafile management (GET/PUT/POST)
+ * - /api/flagkeys - Flag keys management
+ * - /api/decide - Single flag decisions
+ * - /api/decide-all - All flags decisions
+ * - /api/decide-for-keys - Multiple specific flags decisions
+ * - /api/variations - Variation management
+ * - /api/admin/* - Administrative endpoints
+ * - /api/debug - Debug information
+ * - Forced variation endpoints
+ * 
+ * The router supports both v1 and v2 API patterns and includes comprehensive
+ * header/cookie control, metadata tracking, and response formatting.
  */
 export class ApiRouter {
+  /** Service for datafile and flag key operations */
   private datafileService: IDatafileService;
+  /** Service for caching operations */
   private cacheService: ICacheService;
+  /** Service for configuration management */
   private configService: IConfigurationService;
+  /** Logger adapter for logging operations */
   private logger: ILoggerAdapter;
+  /** Optional metrics adapter for tracking performance and usage */
   private metrics: IMetricsAdapter | undefined;
+  /** Optional decision service for Optimizely SDK operations */
   private decisionService: IDecisionService | undefined;
+  /** Log prefix for consistent logging */
   private readonly logPrefix = '[v2][ApiRouter]';
-  private apiPathPrefix: string; // Store the API path prefix
-  private implementationVersionHeader: string = 'X-Implementation-Version'; // Default implementation version header
+  /** Configurable API path prefix (default: '/api/') */
+  private apiPathPrefix: string;
+  /** Header name for implementation version tracking */
+  private implementationVersionHeader: string = 'X-Implementation-Version';
 
   /**
    * Creates an instance of the ApiRouter.
+   * 
+   * @param datafileService - Service for datafile and flag key operations
+   * @param cacheService - Service for caching operations
+   * @param configService - Service for configuration management
+   * @param logger - Logger adapter for logging operations
+   * @param metrics - Optional metrics adapter for performance tracking
+   * @param decisionService - Optional decision service for Optimizely SDK operations
+   * @throws {Error} When required services are not provided
+   * 
+   * @example
+   * ```typescript
+   * const apiRouter = new ApiRouter(
+   *   datafileService,
+   *   cacheService,
+   *   configService,
+   *   logger,
+   *   metricsAdapter,
+   *   decisionService
+   * );
+   * ```
    */
   constructor(
     datafileService: IDatafileService,
@@ -104,8 +165,22 @@ export class ApiRouter {
 
   /**
    * Routes an API request to the appropriate handler based on the path.
-   * @param requestAdapter - The adapter for the incoming request.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * This is the main entry point for all API requests. It performs:
+   * - Configuration initialization from the request
+   * - FEX (Feature Experimentation) bypass checking
+   * - Path-based routing to specific handlers
+   * - Error handling and metrics tracking
+   * - Response header management
+   * 
+   * @param requestAdapter - The adapter for the incoming request
+   * @returns A promise resolving to the ResponseResult with status, body, and headers
+   * 
+   * @example
+   * ```typescript
+   * const response = await apiRouter.routeApiRequest(requestAdapter);
+   * console.log(`Status: ${response.status}, Body: ${response.body}`);
+   * ```
    */
   async routeApiRequest(requestAdapter: IRequestAdapter): Promise<ResponseResult> {
     const requestId = uuidv4();
@@ -248,9 +323,57 @@ export class ApiRouter {
 
   /**
    * Handles requests to the datafile API endpoint.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * **GET Requests:**
+   * - Retrieve datafile from KV storage or CDN based on configuration
+   * - Supports ?datafileFromKV=true to force KV-only retrieval
+   * 
+   * **PUT/POST Requests (Admin only):**
+   * - **Default behavior**: Expects datafile JSON in request body to save to KV storage
+   * - **Operation modes** via ?operation parameter:
+   *   - `?operation=refresh` - Fetches datafile from Optimizely CDN and saves to KV
+   *   - `?operation=sync` - Same as refresh (alias)
+   *   - `?operation=fetch` - Same as refresh (alias)
+   *   - `?operation=update` - Default behavior (save provided body)
+   *   - `?operation=save` - Same as update (alias)
+   * - **Empty body handling**: Use ?allowEmpty=true to create minimal datafile structure
+   * 
+   * **Recommended CDN-to-KV Update:**
+   * Use `PUT /api/datafile?operation=refresh` with SDK key in X-Optimizely-SDK-Key header
+   * This fetches from CDN, saves to KV, and updates flag keys automatically.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
+   * 
+   * @example
+   * ```typescript
+   * // GET: Retrieve datafile
+   * GET /api/datafile?sdkKey=your_sdk_key
+   * 
+   * // GET: Force KV-only retrieval
+   * GET /api/datafile?sdkKey=your_sdk_key&datafileFromKV=true
+   * 
+   * // PUT: Save custom datafile JSON (default behavior)
+   * PUT /api/datafile
+   * Headers: X-Optimizely-SDK-Key: your_sdk_key
+   * Body: { "version": "4", "experiments": [], ... }
+   * 
+   * // PUT: Fetch from CDN and update KV (recommended)
+   * PUT /api/datafile?operation=refresh
+   * Headers: X-Optimizely-SDK-Key: your_sdk_key
+   * // No body required - fetches from CDN automatically
+   * 
+   * // POST: Create minimal datafile when no content available
+   * POST /api/datafile?allowEmpty=true
+   * Headers: X-Optimizely-SDK-Key: your_sdk_key
+   * // Empty body allowed - creates minimal structure
+   * 
+   * // POST: Sync from CDN (same as refresh)
+   * POST /api/datafile?operation=sync
+   * Headers: X-Optimizely-SDK-Key: your_sdk_key
+   * ```
    */
   private async handleDatafileRequest(
     requestAdapter: IRequestAdapter,
@@ -284,28 +407,140 @@ export class ApiRouter {
     
     try {
       if (method === 'GET') {
-        // Extract useKV from config or query/body
-        const useKV = this.configService.getEnableDatafileFromKV() || params.datafileFromKV === 'true';
-        // Get datafile by SDK key
-        const datafileTimer = this.metrics?.startTimer('datafile_fetch_duration');
-        const datafile = await this.datafileService.getDatafile(sdkKey, { useKV });
-        if (datafileTimer) datafileTimer.stop();
+        // Check if datafileFromKV is explicitly requested via query parameter
+        const datafileFromKV = params.datafileFromKV === 'true';
+        // Check if KV storage is enabled in configuration
+        const isKVEnabled = this.configService.getEnableDatafileFromKV();
         
-        if (!datafile) {
+        this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Handling datafile request: sdkKey=${sdkKey}, datafileFromKV=${datafileFromKV}, isKVEnabled=${isKVEnabled}`);
+        
+        // CASE 1: Explicit KV requested
+        if (datafileFromKV) {
+          // If KV is explicitly requested but not enabled, return error
+          if (!isKVEnabled) {
+            this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] KV storage requested but not enabled`);
+            this.metrics?.incrementCounter('api_errors_total', 1, {
+              endpoint: `${this.apiPathPrefix}datafile`,
+              method,
+              error_type: 'kv_not_enabled'
+            });
+            return this.createJsonResponse(requestId, 400, { 
+              error: "KV storage is not enabled for datafiles. Please enable it in configuration to use this feature." 
+            }, method, requestContext);
+          }
+          
+          // Attempt to get datafile from KV storage only
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Fetching datafile from KV storage only`);
+          const datafileTimer = this.metrics?.startTimer('datafile_fetch_duration');
+          try {
+            const datafile = await this.datafileService.getDatafile(sdkKey, { useKV: true, requestContext });
+            if (datafileTimer) datafileTimer.stop();
+            
+            if (!datafile) {
+              this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Datafile not found in KV storage`);
+              this.metrics?.incrementCounter('api_errors_total', 1, {
+                endpoint: `${this.apiPathPrefix}datafile`,
+                method,
+                error_type: 'datafile_not_found_kv'
+              });
+              return this.createJsonResponse(requestId, 404, { 
+                error: "Datafile not found in KV storage for the provided SDK key." 
+              }, method, requestContext);
+            }
+            
+            this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Successfully retrieved datafile from KV storage`);
+            // Track datafile size
+            if (typeof datafile === 'string') {
+              this.metrics?.recordHistogram('datafile_size_bytes', datafile.length, { 
+                endpoint: `${this.apiPathPrefix}datafile`,
+                source: 'kv'
+              });
+            }
+            
+            return this.createJsonResponse(requestId, 200, JSON.parse(datafile), method, requestContext);
+          } catch (kvError) {
+            this.logger.error(`${this.logPrefix} [REQUEST:${requestId}] Error retrieving datafile from KV:`, kvError);
+            this.metrics?.incrementCounter('api_errors_total', 1, {
+              endpoint: `${this.apiPathPrefix}datafile`,
+              method,
+              error_type: 'kv_access_error'
+            });
+            return this.createJsonResponse(requestId, 500, { 
+              error: "Error accessing KV storage: " + (kvError instanceof Error ? kvError.message : String(kvError)) 
+            }, method, requestContext);
+          }
+        }
+        
+        // CASE 2: No explicit KV request (fallback behavior based on config)
+        // Try KV first if enabled by configuration, then fall back to default source
+        if (isKVEnabled) {
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] KV enabled by config, trying KV first with fallback`);
+          try {
+            const kvDatafile = await this.datafileService.getDatafile(sdkKey, { useKV: true, requestContext });
+            if (kvDatafile) {
+              this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Found datafile in KV storage`);
+              // Track datafile size and source
+              if (typeof kvDatafile === 'string') {
+                this.metrics?.recordHistogram('datafile_size_bytes', kvDatafile.length, { 
+                  endpoint: `${this.apiPathPrefix}datafile`,
+                  source: 'kv'
+                });
+              }
+              return this.createJsonResponse(requestId, 200, JSON.parse(kvDatafile), method, requestContext);
+            }
+            // If not found in KV, fall through to default source
+            this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Datafile not found in KV, falling back to default source`);
+          } catch (kvError) {
+            // Log error but continue to fallback
+            this.logger.warn(`${this.logPrefix} [REQUEST:${requestId}] Error retrieving from KV, falling back:`, kvError);
+          }
+        } else {
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] KV not enabled by config, using default source only`);
+        }
+        
+        // Default source (CDN/config)
+        this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Fetching datafile from default source`);
+        const datafileTimer = this.metrics?.startTimer('datafile_fetch_duration');
+        try {
+          // Pass useKV=false to explicitly use default source
+          const datafile = await this.datafileService.getDatafile(sdkKey, { useKV: false, requestContext });
+          if (datafileTimer) datafileTimer.stop();
+          
+          if (!datafile) {
+            this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Datafile not found in default source`);
+            this.metrics?.incrementCounter('api_errors_total', 1, {
+              endpoint: `${this.apiPathPrefix}datafile`,
+              method,
+              error_type: 'datafile_not_found_default'
+            });
+            return this.createJsonResponse(requestId, 404, { 
+              error: "Datafile not found for the provided SDK key." 
+            }, method, requestContext);
+          }
+          
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Successfully retrieved datafile from default source`);
+          // Track datafile size and source
+          if (typeof datafile === 'string') {
+            this.metrics?.recordHistogram('datafile_size_bytes', datafile.length, { 
+              endpoint: `${this.apiPathPrefix}datafile`,
+              source: 'default'
+            });
+          }
+          
+          return this.createJsonResponse(requestId, 200, JSON.parse(datafile), method, requestContext);
+        } catch (defaultError) {
+          if (datafileTimer) datafileTimer.stop();
+          this.logger.error(`${this.logPrefix} [REQUEST:${requestId}] Error retrieving datafile from default source:`, defaultError);
           this.metrics?.incrementCounter('api_errors_total', 1, {
             endpoint: `${this.apiPathPrefix}datafile`,
             method,
-            error_type: 'datafile_not_found'
+            error_type: 'default_source_error'
           });
-          return this.createJsonResponse(requestId, 404, { error: "Datafile not found" }, method, requestContext);
+          return this.createJsonResponse(requestId, 500, { 
+            error: "Error retrieving datafile from default source: " + 
+              (defaultError instanceof Error ? defaultError.message : String(defaultError)) 
+          }, method, requestContext);
         }
-        
-        // Track datafile size
-        if (typeof datafile === 'string') {
-          this.metrics?.recordHistogram('datafile_size_bytes', datafile.length, { endpoint: `${this.apiPathPrefix}datafile` });
-        }
-        
-        return this.createJsonResponse(requestId, 200, JSON.parse(datafile), method, requestContext);
       } else if (method === 'PUT' || method === 'POST') {
         // Only allow admin users to update datafiles
         const isAdmin = await this.isAdminRequest(requestAdapter);
@@ -318,18 +553,105 @@ export class ApiRouter {
           return this.createJsonResponse(requestId, 403, { error: "Unauthorized" }, method, requestContext);
         }
         
-        // Get datafile content from request body
+        // Get datafile content from request body with smart handling
         const requestBody = await this.getRequestBody(requestAdapter);
-        if (!requestBody) {
-          this.metrics?.incrementCounter('api_errors_total', 1, {
-            endpoint: `${this.apiPathPrefix}datafile`,
-            method,
-            error_type: 'invalid_body'
-          });
-          return this.createJsonResponse(requestId, 400, { error: "Invalid request body" }, method, requestContext);
+        
+        // Smart body handling: Check if this is a specific operation type
+        const url = requestAdapter.getUrl();
+        const urlParams = this.parseUrlParams(url.search);
+        const operationType = urlParams.operation || 'update'; // Default to 'update'
+        
+        // Handle different operation types
+        switch (operationType.toLowerCase()) {
+          case 'refresh':
+          case 'sync':
+          case 'fetch':
+            // For these operations, no body is required - fetch from CDN
+            this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Performing ${operationType} operation - fetching from CDN`);
+            try {
+              const refreshedDatafile = await this.datafileService.refreshDatafile(sdkKey, true);
+              if (!refreshedDatafile) {
+                return this.createJsonResponse(requestId, 404, { 
+                  error: `Failed to ${operationType} datafile from CDN for SDK key ${sdkKey}` 
+                }, method, requestContext);
+              }
+              
+              // Update flag keys from refreshed datafile
+              try {
+                const datafileObj = JSON.parse(refreshedDatafile);
+                await this.updateFlagKeysFromDatafile(sdkKey, datafileObj);
+              } catch (flagKeyError) {
+                this.logger.error(`${this.logPrefix} Error updating flag keys after ${operationType}:`, flagKeyError);
+              }
+              
+              return this.createJsonResponse(requestId, 200, { 
+                success: true, 
+                operation: operationType,
+                message: `Datafile ${operationType} completed successfully` 
+              }, method, requestContext);
+            } catch (error) {
+              return this.createJsonResponse(requestId, 500, { 
+                error: `Failed to ${operationType} datafile: ${error instanceof Error ? error.message : String(error)}` 
+              }, method, requestContext);
+            }
+            
+          case 'update':
+          case 'save':
+          default:
+            // For update/save operations, validate body content
+            if (!requestBody) {
+              // Check if we should allow empty body for specific configurations
+              const allowEmptyBody = urlParams.allowEmpty === 'true' || 
+                                   requestAdapter.getHeader('x-optimizely-allow-empty-body') === 'true';
+              
+              if (allowEmptyBody) {
+                // Create minimal valid datafile structure
+                const minimalDatafile = {
+                  version: "4",
+                  rollouts: [],
+                  typedAudiences: [],
+                  anonymizeIP: false,
+                  experiments: [],
+                  audiences: [],
+                  groups: [],
+                  attributes: [],
+                  projectId: sdkKey,
+                  variables: [],
+                  featureFlags: [],
+                  events: [],
+                  revision: "1"
+                };
+                
+                this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Empty body allowed - using minimal datafile structure`);
+                
+                // Save minimal datafile
+                const saveTimer = this.metrics?.startTimer('datafile_save_duration');
+                await this.datafileService.saveDatafile(sdkKey, JSON.stringify(minimalDatafile));
+                if (saveTimer) saveTimer.stop();
+                
+                return this.createJsonResponse(requestId, 200, { 
+                  success: true, 
+                  message: "Minimal datafile created successfully",
+                  datafile: minimalDatafile 
+                }, method, requestContext);
+              } else {
+                // Standard behavior - require body
+                this.metrics?.incrementCounter('api_errors_total', 1, {
+                  endpoint: `${this.apiPathPrefix}datafile`,
+                  method,
+                  error_type: 'invalid_body'
+                });
+                return this.createJsonResponse(requestId, 400, { 
+                  error: "Invalid request body. Provide datafile JSON, use ?operation=refresh to fetch from CDN, or use ?allowEmpty=true to create minimal datafile" 
+                }, method, requestContext);
+              }
+            }
+            
+            // Standard update/save with provided body
+            break;
         }
         
-        // Save datafile
+        // Save datafile (for update/save operations with valid body)
         const saveTimer = this.metrics?.startTimer('datafile_save_duration');
         await this.datafileService.saveDatafile(sdkKey, JSON.stringify(requestBody));
         if (saveTimer) saveTimer.stop();
@@ -375,9 +697,16 @@ export class ApiRouter {
 
   /**
    * Handles requests to the flag keys API endpoint.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Supports:
+   * - GET: Retrieve flag keys from KV storage or derived from datafile
+   * - PUT/POST: Save flag keys (admin only)
+   * - KV storage with fallback to default source
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleFlagKeysRequest(
     requestAdapter: IRequestAdapter,
@@ -411,26 +740,135 @@ export class ApiRouter {
     
     try {
       if (method === 'GET') {
-        // Extract useKV from config or query/body
-        const useKV = this.configService.getEnableFlagsFromKV() || params.flagsFromKV === 'true';
-        // Get flag keys by SDK key
-        const flagKeysTimer = this.metrics?.startTimer('flagkeys_fetch_duration');
-        const flagKeys = await this.datafileService.getFlagKeys(sdkKey, { useKV });
-        if (flagKeysTimer) flagKeysTimer.stop();
+        // Check if flagsFromKV is explicitly requested via query parameter
+        const flagsFromKV = params.flagsFromKV === 'true';
+        // Check if KV storage is enabled in configuration
+        const isKVEnabled = this.configService.getEnableFlagsFromKV();
         
-        if (!flagKeys || flagKeys.length === 0) {
+        this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Handling flag keys request: sdkKey=${sdkKey}, flagsFromKV=${flagsFromKV}, isKVEnabled=${isKVEnabled}`);
+        
+        // CASE 1: Explicit KV requested
+        if (flagsFromKV) {
+          // If KV is explicitly requested but not enabled, return error
+          if (!isKVEnabled) {
+            this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] KV storage requested but not enabled for flag keys`);
+            this.metrics?.incrementCounter('api_errors_total', 1, {
+              endpoint: `${this.apiPathPrefix}flagkeys`,
+              method,
+              error_type: 'kv_not_enabled'
+            });
+            return this.createJsonResponse(requestId, 400, { 
+              error: "KV storage is not enabled for flag keys. Please enable it in configuration to use this feature." 
+            }, method, requestContext);
+          }
+          
+          // Attempt to get flag keys from KV storage only
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Fetching flag keys from KV storage only`);
+          const flagKeysTimer = this.metrics?.startTimer('flagkeys_fetch_duration');
+          try {
+            const flagKeys = await this.datafileService.getFlagKeys(sdkKey, { useKV: true, requestContext });
+            if (flagKeysTimer) flagKeysTimer.stop();
+            
+            if (!flagKeys || flagKeys.length === 0) {
+              this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Flag keys not found in KV storage`);
+              this.metrics?.incrementCounter('api_errors_total', 1, {
+                endpoint: `${this.apiPathPrefix}flagkeys`,
+                method,
+                error_type: 'flagkeys_not_found_kv'
+              });
+              return this.createJsonResponse(requestId, 404, { 
+                error: "Flag keys not found in KV storage for the provided SDK key." 
+              }, method, requestContext);
+            }
+            
+            this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Successfully retrieved flag keys from KV storage`);
+            // Track flag keys count
+            this.metrics?.recordHistogram('flagkeys_count', flagKeys.length, { 
+              endpoint: `${this.apiPathPrefix}flagkeys`,
+              source: 'kv'
+            });
+            
+            return this.createJsonResponse(requestId, 200, { flagKeys }, method, requestContext);
+          } catch (kvError) {
+            if (flagKeysTimer) flagKeysTimer.stop();
+            this.logger.error(`${this.logPrefix} [REQUEST:${requestId}] Error retrieving flag keys from KV:`, kvError);
+            this.metrics?.incrementCounter('api_errors_total', 1, {
+              endpoint: `${this.apiPathPrefix}flagkeys`,
+              method,
+              error_type: 'kv_access_error'
+            });
+            return this.createJsonResponse(requestId, 500, { 
+              error: "Error accessing KV storage: " + (kvError instanceof Error ? kvError.message : String(kvError)) 
+            }, method, requestContext);
+          }
+        }
+        
+        // CASE 2: No explicit KV request (fallback behavior based on config)
+        // Try KV first if enabled by configuration, then fall back to default source
+        if (isKVEnabled) {
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] KV enabled by config, trying KV first with fallback`);
+          try {
+            const kvFlagKeys = await this.datafileService.getFlagKeys(sdkKey, { useKV: true, requestContext });
+            if (kvFlagKeys && kvFlagKeys.length > 0) {
+              this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Found flag keys in KV storage`);
+              // Track flag keys count and source
+              this.metrics?.recordHistogram('flagkeys_count', kvFlagKeys.length, { 
+                endpoint: `${this.apiPathPrefix}flagkeys`,
+                source: 'kv'
+              });
+              return this.createJsonResponse(requestId, 200, { flagKeys: kvFlagKeys }, method, requestContext);
+            }
+            // If not found in KV, fall through to default source
+            this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Flag keys not found in KV, falling back to default source`);
+          } catch (kvError) {
+            // Log error but continue to fallback
+            this.logger.warn(`${this.logPrefix} [REQUEST:${requestId}] Error retrieving flag keys from KV, falling back:`, kvError);
+          }
+        } else {
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] KV not enabled by config, using default source only`);
+        }
+        
+        // Default source (CDN/config)
+        this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Fetching flag keys from default source`);
+        const flagKeysTimer = this.metrics?.startTimer('flagkeys_fetch_duration');
+        try {
+          // Pass useKV=false to explicitly use default source
+          const flagKeys = await this.datafileService.getFlagKeys(sdkKey, { useKV: false, requestContext });
+          if (flagKeysTimer) flagKeysTimer.stop();
+          
+          if (!flagKeys || flagKeys.length === 0) {
+            this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Flag keys not found in default source`);
+            this.metrics?.incrementCounter('api_errors_total', 1, {
+              endpoint: `${this.apiPathPrefix}flagkeys`,
+              method,
+              error_type: 'flagkeys_not_found_default'
+            });
+            return this.createJsonResponse(requestId, 404, { 
+              error: "Flag keys not found for the provided SDK key." 
+            }, method, requestContext);
+          }
+          
+          this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Successfully retrieved flag keys from default source`);
+          // Track flag keys count and source
+          this.metrics?.recordHistogram('flagkeys_count', flagKeys.length, { 
+            endpoint: `${this.apiPathPrefix}flagkeys`,
+            source: 'default'
+          });
+          
+          return this.createJsonResponse(requestId, 200, { flagKeys }, method, requestContext);
+        } catch (defaultError) {
+          if (flagKeysTimer) flagKeysTimer.stop();
+          this.logger.error(`${this.logPrefix} [REQUEST:${requestId}] Error retrieving flag keys from default source:`, defaultError);
           this.metrics?.incrementCounter('api_errors_total', 1, {
             endpoint: `${this.apiPathPrefix}flagkeys`,
             method,
-            error_type: 'flagkeys_not_found'
+            error_type: 'default_source_error'
           });
-          return this.createJsonResponse(requestId, 404, { error: "Flag keys not found" }, method, requestContext);
+          return this.createJsonResponse(requestId, 500, { 
+            error: "Error retrieving flag keys from default source: " + 
+              (defaultError instanceof Error ? defaultError.message : String(defaultError)) 
+          }, method, requestContext);
         }
-        
-        // Track flag keys count
-        this.metrics?.recordHistogram('flagkeys_count', flagKeys.length, { endpoint: `${this.apiPathPrefix}flagkeys` });
-        
-        return this.createJsonResponse(requestId, 200, { flagKeys }, method, requestContext);
       } else if (method === 'PUT' || method === 'POST') {
         // Only allow admin users to update flag keys
         const isAdmin = await this.isAdminRequest(requestAdapter);
@@ -491,9 +929,17 @@ export class ApiRouter {
 
   /**
    * Handles requests to the SDK information API endpoint.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Returns information about the edge agent including:
+   * - Version number
+   * - Environment
+   * - CDN provider
+   * - Agent name
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleSdkInfoRequest(
     requestAdapter: IRequestAdapter,
@@ -543,9 +989,12 @@ export class ApiRouter {
 
   /**
    * Handles requests to the variations API endpoint.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
+   * @deprecated This endpoint is not yet implemented
    */
   private async handleVariationsRequest(
     requestAdapter: IRequestAdapter,
@@ -634,9 +1083,15 @@ export class ApiRouter {
 
   /**
    * Handles requests to the admin API endpoints.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Supports admin-only operations:
+   * - /api/admin/cache/clear - Clear cache
+   * - /api/admin/status - Get service status
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleAdminRequest(
     requestAdapter: IRequestAdapter,
@@ -720,10 +1175,15 @@ export class ApiRouter {
   }
 
   /**
-   * Handles requests to set a forced variation.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * Handles requests to set a forced variation for a user.
+   * 
+   * Allows setting forced decisions for testing and QA purposes.
+   * Requires decision service to be available.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleSetForcedVariationRequest(
     requestAdapter: IRequestAdapter,
@@ -864,10 +1324,14 @@ export class ApiRouter {
   }
 
   /**
-   * Handles requests to get a forced variation.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * Handles requests to get a forced variation for a user.
+   * 
+   * Retrieves any forced decision that has been set for a user and flag combination.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleGetForcedVariationRequest(
     requestAdapter: IRequestAdapter,
@@ -987,10 +1451,14 @@ export class ApiRouter {
   }
 
   /**
-   * Handles requests to remove a forced variation.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * Handles requests to remove a forced variation for a user.
+   * 
+   * Removes any forced decision that has been set for a user and flag combination.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleRemoveForcedVariationRequest(
     requestAdapter: IRequestAdapter,
@@ -1179,9 +1647,13 @@ export class ApiRouter {
 
   /**
    * Handles requests to remove all forced decisions for a user.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Clears all forced decisions across all flags for a specific user.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleRemoveAllForcedDecisionsRequest(
     requestAdapter: IRequestAdapter,
@@ -1348,9 +1820,14 @@ export class ApiRouter {
 
   /**
    * Handles requests to get available decide options.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Returns the list of available decide options that can be used with
+   * the decision endpoints, formatted for different SDK versions.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleDecideOptionsRequest(
     requestAdapter: IRequestAdapter,
@@ -1464,9 +1941,25 @@ export class ApiRouter {
 
   /**
    * Handles individual decide requests for feature flags and experiments.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Makes a decision for a single flag key for a specific user.
+   * Supports all decide options and visitor ID override functionality.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
+   * 
+   * @example
+   * ```typescript
+   * POST /api/decide
+   * {
+   *   "userId": "user123",
+   *   "flagKey": "my_flag",
+   *   "attributes": { "age": 25 },
+   *   "decideOptions": ["INCLUDE_REASONS"]
+   * }
+   * ```
    */
   private async handleDecideRequest(
     requestAdapter: IRequestAdapter,
@@ -1777,9 +2270,14 @@ export class ApiRouter {
 
   /**
    * Handles batch decide-all requests for all feature flags.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Makes decisions for all available flags for a specific user.
+   * Uses the decision service's decideAll method for efficiency.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleDecideAllRequest(
     requestAdapter: IRequestAdapter,
@@ -2042,9 +2540,14 @@ export class ApiRouter {
 
   /**
    * Handles batch decide requests for specified feature flags.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Makes decisions for a specific set of flag keys for a user.
+   * More efficient than individual decide calls when multiple flags are needed.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleDecideForKeysRequest(
     requestAdapter: IRequestAdapter,
@@ -2329,9 +2832,16 @@ export class ApiRouter {
 
   /**
    * Handles requests to the debug API endpoint for testing purposes.
-   * @param requestAdapter - The request adapter.
-   * @param requestId - The unique request ID.
-   * @returns A promise resolving to the ResponseResult.
+   * 
+   * Returns comprehensive debug information about the request including:
+   * - Request headers and parameters
+   * - Configuration and metadata
+   * - Extracted attributes and event data
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
    */
   private async handleDebugRequest(
     requestAdapter: IRequestAdapter,
@@ -2379,9 +2889,19 @@ export class ApiRouter {
   }
 
   /**
-   * Retrieves the complete request configuration including metadata for the given request
+   * Retrieves the complete request configuration including metadata for the given request.
+   * 
+   * This method extracts and processes all relevant information from the request:
+   * - SDK key with source tracking (header → query → body precedence)
+   * - User/Visitor ID with source tracking
+   * - Flag keys with source tracking
+   * - Attributes and event data
+   * - Header/cookie control flags
+   * - Visitor ID override functionality
+   * 
    * @param requestAdapter - The request adapter
    * @returns The request configuration including metadata
+   * @private
    */
   private async getRequestConfig(requestAdapter: IRequestAdapter): Promise<RequestConfig> {
     // Get basic request data
@@ -2701,7 +3221,11 @@ export class ApiRouter {
   }
   
   /**
-   * Extracts headers from the request adapter into a lowercase dictionary
+   * Extracts headers from the request adapter into a lowercase dictionary.
+   * 
+   * @param requestAdapter - The request adapter
+   * @returns Record of headers with lowercase keys
+   * @private
    */
   private extractHeaders(requestAdapter: IRequestAdapter): Record<string, string> {
     const headerObj: Record<string, string> = {};
@@ -2719,8 +3243,12 @@ export class ApiRouter {
 
   /**
    * Gets headers from request adapter with sensitive information removed.
-   * @param requestAdapter - The request adapter.
-   * @returns Record of safe headers.
+   * 
+   * Filters out authorization and cookie headers for safe logging and debugging.
+   * 
+   * @param requestAdapter - The request adapter
+   * @returns Record of safe headers with sensitive data redacted
+   * @private
    */
   private getSafeHeaders(requestAdapter: IRequestAdapter): Record<string, string> {
     const headers = requestAdapter.getHeaders();
@@ -2739,13 +3267,24 @@ export class ApiRouter {
   }
 
   /**
-   * Creates a JSON response.
-   * @param requestId - The unique request ID.
-   * @param status - The HTTP status code.
-   * @param body - The response body.
-   * @param method - The HTTP method of the request.
-   * @param requestContext - The request context containing metadata.
-   * @returns The ResponseResult.
+   * Creates a JSON response with proper headers and metadata.
+   * 
+   * This method handles:
+   * - Content-Type and standard headers
+   * - Implementation version tracking
+   * - Cache control headers
+   * - Response metadata inclusion
+   * - Debug headers (when enabled)
+   * - Header/cookie control logic
+   * - Visitor ID and decisions headers/cookies
+   * 
+   * @param requestId - The unique request ID
+   * @param status - The HTTP status code
+   * @param body - The response body object
+   * @param method - The HTTP method of the request
+   * @param requestContext - The request context containing metadata
+   * @returns The ResponseResult with formatted response
+   * @private
    */
   private createJsonResponse(requestId: string, status: number, body: any, method?: string, requestContext?: any): ResponseResult {
     // Start with all headers
@@ -2925,10 +3464,16 @@ export class ApiRouter {
 
   /**
    * Adds metadata to the response body if enabled.
-   * @param body - The original response body.
-   * @param requestMethod - The HTTP method of the request.
-   * @param requestContext - The request context containing metadata.
-   * @returns The response body with metadata added.
+   * 
+   * Merges configuration metadata with request context metadata
+   * to provide comprehensive information about parameter sources
+   * and processing details. Only included in POST requests by default.
+   * 
+   * @param body - The original response body
+   * @param requestMethod - The HTTP method of the request
+   * @param requestContext - The request context containing metadata
+   * @returns The response body with metadata added
+   * @private
    */
   private addResponseMetadata(body: any, requestMethod?: string, requestContext?: any): any {
     // Only add metadata to POST requests; for others log it for diagnostics
@@ -2960,7 +3505,8 @@ export class ApiRouter {
         const preferRequestContextKeys = [
           'flagKeysFrom', 'sdkKeyFrom', 'visitorIdFrom', 
           'enableResponseMetadataFrom', 'attributesFrom', 
-          'overrideVisitorId', 'overrideVisitorIdFrom'
+          'overrideVisitorId', 'overrideVisitorIdFrom',
+          'datafileFrom', 'flagKeysDecided'
         ];
 
         if (preferRequestContextKeys.includes(key)) {
@@ -3003,20 +3549,26 @@ export class ApiRouter {
   }
 
   /**
-   * Creates an error response.
-   * @param requestId - The unique request ID.
-   * @param status - The HTTP status code.
-   * @param message - The error message.
-   * @param method - The HTTP method of the request.
-   * @param requestContext - The request context containing metadata.
-   * @returns The ResponseResult.
+   * Creates an error response with consistent formatting.
+   * 
+   * @param requestId - The unique request ID
+   * @param status - The HTTP status code
+   * @param message - The error message
+   * @param method - The HTTP method of the request
+   * @param requestContext - The request context containing metadata
+   * @returns The ResponseResult with error formatting
+   * @private
    */
   private createErrorResponse(requestId: string, status: number, message: string, method?: string, requestContext?: any): ResponseResult {
     return this.createJsonResponse(requestId, status, { error: message }, method, requestContext);
   }
 
   /**
-   * Parses URL search parameters into a dictionary
+   * Parses URL search parameters into a dictionary.
+   * 
+   * @param searchString - The URL search string (query parameters)
+   * @returns Record of parameter key-value pairs
+   * @private
    */
   private parseUrlParams(searchString: string): Record<string, string> {
     const params: Record<string, string> = {};
@@ -3031,8 +3583,13 @@ export class ApiRouter {
 
   /**
    * Gets the request body as a JSON object.
-   * @param requestAdapter - The request adapter.
-   * @returns A promise resolving to the request body.
+   * 
+   * Handles both string and object body formats, with error handling
+   * for malformed JSON.
+   * 
+   * @param requestAdapter - The request adapter
+   * @returns A promise resolving to the request body object or null
+   * @private
    */
   private async getRequestBody(requestAdapter: IRequestAdapter): Promise<any> {
     try {
@@ -3050,8 +3607,13 @@ export class ApiRouter {
 
   /**
    * Checks if the request is from an admin user.
-   * @param requestAdapter - The request adapter.
-   * @returns A promise resolving to a boolean indicating if the request is from an admin.
+   * 
+   * Validates the X-Optimizely-Admin-Token header against the configured
+   * admin token from the configuration service.
+   * 
+   * @param requestAdapter - The request adapter
+   * @returns A promise resolving to a boolean indicating admin status
+   * @private
    */
   private async isAdminRequest(requestAdapter: IRequestAdapter): Promise<boolean> {
     try {
@@ -3073,8 +3635,14 @@ export class ApiRouter {
 
   /**
    * Extracts flag keys from a datafile and saves them.
-   * @param sdkKey - The SDK key.
-   * @param datafile - The datafile content.
+   * 
+   * Processes both feature flags and experiments from the datafile
+   * to create a comprehensive list of available flag keys.
+   * 
+   * @param sdkKey - The SDK key
+   * @param datafile - The datafile content object
+   * @throws {Error} When flag key extraction or saving fails
+   * @private
    */
   private async updateFlagKeysFromDatafile(sdkKey: string, datafile: any): Promise<void> {
     try {
@@ -3109,8 +3677,13 @@ export class ApiRouter {
 
   /**
    * Creates a hash of a sensitive value for logging/metrics.
-   * @param value - The sensitive value to hash.
-   * @returns A hash of the input value.
+   * 
+   * Simple hashing function for privacy protection in logs and metrics.
+   * Shows first 4 characters followed by '...' for identification.
+   * 
+   * @param value - The sensitive value to hash
+   * @returns A hash of the input value for safe logging
+   * @private
    */
   private hashSensitiveValue(value: string): string {
     // Simple hashing function for privacy
@@ -3119,8 +3692,10 @@ export class ApiRouter {
   }
 
   /**
-   * Generates a UUID.
-   * @returns A UUID string.
+   * Generates a UUID for visitor ID creation.
+   * 
+   * @returns A UUID string
+   * @private
    */
   private generateUUID(): string {
     return uuidv4();
@@ -3128,7 +3703,12 @@ export class ApiRouter {
 
   /**
    * Initializes an empty config metadata template.
-   * @returns An empty config metadata object.
+   * 
+   * Creates the standard metadata structure used throughout
+   * the request processing pipeline.
+   * 
+   * @returns An empty config metadata object with default values
+   * @private
    */
   private initializeConfigMetadata(): any {
     return {
@@ -3157,9 +3737,33 @@ export class ApiRouter {
 
   /**
    * Collects decide options from headers, body and URL parameters into a unified array.
-   * Header support:
-   *   – Consolidated header:  X-Optimizely-Decide-Options  (JSON list or CSV)
-   *   – Individual toggles:   X-Optimizely-Decide-Options-<OPTION>
+   * 
+   * Supports multiple input formats:
+   * - Header: X-Optimizely-Decide-Options (JSON list or CSV)
+   * - Individual toggle headers: X-Optimizely-Decide-Options-<OPTION>
+   * - Body: decideOptions or options field (array or CSV string)
+   * - Query: decideOptions parameter (CSV string)
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestBody - The parsed request body
+   * @param urlParams - The parsed URL parameters
+   * @returns Array of unique decide option strings in uppercase
+   * @private
+   * 
+   * @example
+   * ```typescript
+   * // Header format
+   * X-Optimizely-Decide-Options: ["INCLUDE_REASONS", "EXCLUDE_VARIABLES"]
+   * 
+   * // Individual toggle format
+   * X-Optimizely-Decide-Options-INCLUDE-REASONS: true
+   * 
+   * // Body format
+   * { "decideOptions": ["INCLUDE_REASONS"] }
+   * 
+   * // Query format
+   * ?decideOptions=INCLUDE_REASONS,EXCLUDE_VARIABLES
+   * ```
    */
   private collectDecideOptions(
     requestAdapter: IRequestAdapter,
@@ -3199,6 +3803,20 @@ export class ApiRouter {
     return Array.from(opts);
   }
 
+  /**
+   * Parses a value to boolean with a default fallback.
+   * 
+   * Handles various input types and provides consistent boolean conversion:
+   * - undefined/null → default value
+   * - boolean → direct return
+   * - string → 'true' (case-insensitive) → true, else false
+   * - other → default value
+   * 
+   * @param value - The value to parse as boolean
+   * @param defaultValue - The default value if parsing fails
+   * @returns The parsed boolean value or default
+   * @private
+   */
   private parseBoolean(value: any, defaultValue: boolean): boolean {
     if (value === undefined || value === null) return defaultValue;
     if (typeof value === 'boolean') return value;

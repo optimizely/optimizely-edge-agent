@@ -152,12 +152,24 @@ function composeApplication(factoryInputs: AnyCDNAdapterFactoryInputs, cdnType: 
   logger.info(`[Composition Root] FlagStorage cleanup configuration: autoCleanup=${flagStorageServiceConfig.autoCleanup}, interval=${flagStorageServiceConfig.cleanupIntervalMs}ms`);
 
   const flagStorageService = new FlagStorageService(storageAdapter, logger, flagStorageServiceConfig);
+  
+  // Configure DatafileService options
+  const datafileServiceOptions = {
+    cacheEnabled: process.env.OPTIMIZELY_DISABLE_DATAFILE_CACHE !== 'true',
+    autoExtractFlagKeys: process.env.OPTIMIZELY_DISABLE_AUTO_FLAG_EXTRACTION !== 'true'
+  };
+  
+  // Log DatafileService configuration
+  logger.info(`[Composition Root] DatafileService configuration: cacheEnabled=${datafileServiceOptions.cacheEnabled}, autoExtractFlagKeys=${datafileServiceOptions.autoExtractFlagKeys}`);
+  
   const datafileService = new DatafileService(
     storageAdapter, 
     environmentAdapter, 
     logger, 
     metricsAdapter || undefined,
-    flagStorageService
+    flagStorageService,
+    undefined, // configService will be set later
+    datafileServiceOptions
   );
   const configService: IConfigurationService = new ConfigurationService(datafileService, logger);
   

@@ -75,6 +75,11 @@ export class ConfigurationService implements IConfigurationService {
 	private enableDatafileFromKV: boolean = false;
 
 	/**
+	 * Whether to fall back to default sources when KV storage fails
+	 */
+	private kvStorageFallback: boolean = true;
+
+	/**
 	 * Configurable cookie/header names for header/cookie parity (v1/v2).
 	 */
 	private decisionsCookieName: string = 'optly_edge_decisions';
@@ -1352,6 +1357,7 @@ export class ConfigurationService implements IConfigurationService {
 			enableResponseMetadata: true,
 			flagsFromKV: this.enableFlagsFromKV,
 			datafileFromKV: this.enableDatafileFromKV,
+			kvStorageFallback: this.kvStorageFallback,
 			defaultTrimmedDecisions: true,
 			defaultSetResponseCookies: true,
 			defaultSetResponseHeaders: true,
@@ -1801,7 +1807,15 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns The admin token string or null.
 	 */
 	getAdminToken(): string | null {
-		// This will be implemented in future PRs
+		if (!this.cachedAdminToken) {
+			try {
+				const envAdapter = this.datafileService.getEnvironmentAdapter();
+				this.cachedAdminToken = envAdapter.getVariable('ADMIN_TOKEN') || null;
+			} catch (error) {
+				this.logger.error("Error getting admin token:", error);
+				this.cachedAdminToken = null;
+			}
+		}
 		return this.cachedAdminToken;
 	}
 
@@ -1861,14 +1875,22 @@ export class ConfigurationService implements IConfigurationService {
 	 * Returns true if datafile should be loaded from KV storage.
 	 */
 	getEnableDatafileFromKV(): boolean {
-		return !!this.config.datafileFromKV;
+		return this.enableDatafileFromKV;
 	}
 
 	/**
 	 * Returns true if flags should be loaded from KV storage.
 	 */
 	getEnableFlagsFromKV(): boolean {
-		return !!this.config.enableFlagsFromKV;
+		return this.enableFlagsFromKV;
+	}
+
+	/**
+	 * Returns true if fallback to default sources is enabled when KV storage is unavailable.
+	 * @returns true if fallback is enabled, false otherwise
+	 */
+	getEnableKVStorageFallback(): boolean {
+		return this.kvStorageFallback;
 	}
 
 	/**

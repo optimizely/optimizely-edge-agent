@@ -115,8 +115,31 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
 
   // Create Services (inject dependencies)
   const cacheService = new CacheService(storageAdapter, logger);
-  const datafileService = new DatafileService(storageAdapter, environmentAdapter, logger, metricsAdapter);
+  
+  // Create FlagStorageService first (needed by DatafileService)
+  const flagStorageService = new FlagStorageService(
+    storageAdapter,
+    logger,
+    {
+      autoCleanup: true,
+      cleanupIntervalMs: 3600000 // 1 hour
+    }
+  );
+  
+  // Create DatafileService with FlagStorageService (ConfigurationService will be set later)
+  const datafileService = new DatafileService(
+    storageAdapter, 
+    environmentAdapter, 
+    logger, 
+    metricsAdapter,
+    flagStorageService,  // Pass FlagStorageService as 5th parameter
+    undefined  // ConfigurationService will be injected later to avoid circular dependency
+  );
+  
   const configService: IConfigurationService = new ConfigurationService(datafileService, logger);
+  
+  // Inject ConfigurationService back into DatafileService to resolve circular dependency
+  datafileService.setConfigService(configService);
   
   // Get SDK key from config or environment
   const sdkKey = configService.getValue('sdkKey') || environmentAdapter.getVariable('DEFAULT_SDK_KEY') || '8mR1pGh8u2ztUP8GqjmQq';
@@ -152,16 +175,6 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     metricsAdapter,
     undefined, // defaultSdkKey (optional)
     userProfileServiceAdapter // Pass the adapter itself, not its return value
-  );
-  
-  // Create FlagStorageService for managing feature flags
-  const flagStorageService = new FlagStorageService(
-    storageAdapter,
-    logger,
-    {
-      autoCleanup: true,
-      cleanupIntervalMs: 3600000 // 1 hour
-    }
   );
   
   // Create Edge Mode Components

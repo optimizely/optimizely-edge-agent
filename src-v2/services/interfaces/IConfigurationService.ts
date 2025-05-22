@@ -42,6 +42,7 @@ export interface OptimizelyConfigOptions {
   overrideCache?: boolean | null;                // Whether to override cache
   enableFlagsFromKV?: boolean | null;            // Whether to enable flags from KV storage
   datafileFromKV?: boolean | null;               // Whether to retrieve datafile from KV
+  kvStorageFallback?: boolean | null;            // Whether to fall back to default sources when KV storage fails
 
   // Advanced options
   enableResponseMetadata?: boolean | null;       // Whether to include metadata in response
@@ -69,6 +70,7 @@ export interface ServiceConfigSettings {
   enableResponseMetadata: boolean;      // Whether to include metadata in response
   flagsFromKV: boolean;                 // Whether to use KV storage for flags
   datafileFromKV: boolean;              // Whether to use KV storage for datafiles
+  kvStorageFallback: boolean;           // Whether to fall back to default sources when KV storage fails
   
   // Default behaviors
   defaultTrimmedDecisions: boolean;     // Default for trimmed decisions
@@ -173,6 +175,7 @@ export interface ConfigMetadata {
   setResponseCookies?: boolean;         // Whether to set response cookies
   setRequestHeaders?: boolean;          // Whether to set request headers
   setRequestCookies?: boolean;          // Whether to set request cookies
+  kvStorageFallback?: boolean;          // Whether to fall back to default sources when KV fails
   
   // Add missing properties for flagKey and eventKey
   flagKey?: string;                     // Flag key for decide operations
@@ -196,6 +199,7 @@ export interface ConfigMetadata {
   enabledFlagsOnlyFrom?: string;        // Source of enabledFlagsOnly setting
   includeReasonsFrom?: string;          // Source of includeReasons setting
   ignoreUserProfileServiceFrom?: string; // Source of ignoreUserProfileService setting
+  kvStorageFallbackFrom?: string;       // Source of kvStorageFallback setting
   
   // Additional source tracking fields
   flagKeyFrom?: string;                 // Source of flagKey setting
@@ -467,4 +471,10 @@ export interface IConfigurationService {
    * @returns The implementation version header name.
    */
   getImplementationVersionHeader(): string;
+
+  /**
+   * Returns true if fallback to default sources is enabled when KV storage is unavailable.
+   * @returns true if fallback is enabled, false otherwise
+   */
+  getEnableKVStorageFallback(): boolean;
 } 
