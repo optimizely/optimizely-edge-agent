@@ -165,7 +165,7 @@ export class RequestHandler implements IRequestHandler {
 		}
 
 		// Log initialized services
-		this.logger.info(`[${this.logPrefix}] Initialized services`, {
+		this.logger.debug(`${this.logPrefix} Initialized services`, {
 			decisionService: !!decisionService,
 			eventService: !!eventService,
 			cacheService: !!cacheService,
@@ -178,7 +178,7 @@ export class RequestHandler implements IRequestHandler {
 		});
 
 		// Log initialized services using structured logging
-		this.logger.info('Initialized with required and optional services', {
+		this.logger.debug('Initialized with required and optional services', {
 			services: {
 				decisionService: true,
 				eventService: true,
@@ -200,18 +200,18 @@ export class RequestHandler implements IRequestHandler {
 		});
 
 		if (this.metrics) {
-			this.logger.info(`${this.logPrefix} RequestHandler: Initialized with metrics tracking enabled.`);
+			this.logger.debug(`${this.logPrefix} Initialized with metrics tracking enabled.`);
 		}
 
 		if (this.edgeModeIntegration) {
-			this.logger.info(`${this.logPrefix} RequestHandler: Initialized with Edge Mode integration.`);
+			this.logger.debug(`${this.logPrefix} Initialized with Edge Mode integration.`);
 		}
 
 		if (this.flagStorage) {
-			this.logger.info(`${this.logPrefix} RequestHandler: Initialized with Flag Storage integration.`);
+			this.logger.debug(`${this.logPrefix} Initialized with Flag Storage integration.`);
 			if (this.requestTriggeringEnabled) {
-				this.logger.info(
-					`${this.logPrefix} RequestHandler: Automatic cleanup triggering enabled (interval: ${
+				this.logger.debug(
+					`${this.logPrefix} Automatic cleanup triggering enabled (interval: ${
 						this.cleanupTriggerInterval
 					}ms, probability: ${this.cleanupTriggerProbability * 100}%)`
 				);
@@ -219,10 +219,11 @@ export class RequestHandler implements IRequestHandler {
 		}
 
 		if (this.apiRouter) {
-			this.logger.info(`${this.logPrefix} RequestHandler: Initialized with API Router integration.`);
+			this.logger.debug(`${this.logPrefix} Initialized with API Router integration.`);
 		}
 
-		this.logger.info(`${this.logPrefix} RequestHandler initialized`);
+		// Single info log at end of initialization for visibility
+		this.logger.info(`${this.logPrefix} RequestHandler initialized successfully`);
 	}
 
 	/**
@@ -248,8 +249,8 @@ export class RequestHandler implements IRequestHandler {
 			path,
 		});
 
-		this.logger.info(
-			`${this.logPrefix} RequestHandler: Handling ${method} request ${requestId} for URL: ${url.toString()}`
+		this.logger.debug(
+			`${this.logPrefix} Handling ${method} request ${requestId} for URL: ${url.toString()}`
 		);
 
 		try {
@@ -281,7 +282,7 @@ export class RequestHandler implements IRequestHandler {
 
 				// Case 1: API path (any method) = Use ApiRouter
 				if (isApiPath) {
-					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Routing ${method} request to API router: ${path}`);
+					this.logger.debug(`${this.logPrefix} [${requestId}]: Routing ${method} request to API router: ${path}`);
 					
 					if (this.apiRouter) {
 						// Use ApiRouter to handle API requests (regardless of method)
@@ -302,7 +303,7 @@ export class RequestHandler implements IRequestHandler {
 				
 				// Case 2: Non-API path + POST method = Unsupported route error
 				else if (!isApiPath && method === 'POST') {
-					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Rejected POST request to non-API path: ${path}`);
+					this.logger.debug(`${this.logPrefix} [${requestId}]: Rejected POST request to non-API path: ${path}`);
 					
 					// Track rejected non-API POST requests
 					this.metrics?.incrementCounter('non_api_requests_rejected', 1, {
@@ -328,7 +329,7 @@ export class RequestHandler implements IRequestHandler {
 					this.logger.debug(`${this.logPrefix} RequestHandler [${requestId}]: User context created`, userContext);
 
 					// Process through Edge Mode
-					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Processing GET request through Edge Mode: ${path}`);
+					this.logger.debug(`${this.logPrefix} [${requestId}]: Processing GET request through Edge Mode: ${path}`);
 					result = await this.handleEdgeModeRequest(requestAdapter, requestId, userContext);
 					this.metrics?.incrementCounter('edge_mode_requests', 1);
 				}
@@ -423,7 +424,7 @@ export class RequestHandler implements IRequestHandler {
 		requestId: string
 	): Promise<ResponseResult> {
 		try {
-			this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Processing pixel tracking request`);
+			this.logger.debug(`${this.logPrefix} [${requestId}]: Processing pixel tracking request`);
 
 			// Parse request configuration
 			const requestBody = await this.getRequestConfig(requestAdapter);
@@ -2512,7 +2513,7 @@ export class RequestHandler implements IRequestHandler {
 			}
 		} else {
 			// FALLBACK IMPLEMENTATION when cookie service is not available
-			this.logger.info(`${this.logPrefix} Using fallback cookie implementation (cookieService not available)`);
+			this.logger.debug(`${this.logPrefix} Using fallback cookie implementation (cookieService not available)`);
 			
 			const cookies = [];
 			
@@ -2593,7 +2594,7 @@ export class RequestHandler implements IRequestHandler {
 		// This method is kept for backwards compatibility but is no longer used
 		// due to the normalized decision format in createResponseHeaders
 		// which ensures consistent formats are used for both headers and cookies
-		this.logger.warn(`${this.logPrefix} addCookiesArrayFormat called but should not be used anymore`);
+		this.logger.debug(`${this.logPrefix} addCookiesArrayFormat called but is deprecated`);
 	}
 
 	// Helper method to generate a UUID for new visitor IDs

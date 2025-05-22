@@ -167,90 +167,58 @@ export class ConfigurationService implements IConfigurationService {
 	 */
 	async initialize(request: IRequestAdapter): Promise<OptimizelyConfigOptions> {
 		const requestId = Math.random().toString(36).substring(2, 10);
-		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] ===== INITIALIZE DEBUG - Starting configuration initialization from request =====`);
+		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Initializing configuration from request`);
 
 		// Reset config for new request with all properties initialized to empty values or defaults
 		this.resetConfig();
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] INITIALIZE DEBUG - Reset config to defaults`);
+		// Debug log removed
 		
 		// Re-initialize metadata to ensure clean state
 		this.metadata = this.initializeConfigMetadata();
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] INITIALIZE DEBUG - Reset metadata to initial state`);
+		// Debug log removed
 
 		// CRITICAL: First collect ALL values from ALL sources WITHOUT setting metadata
 		// This is essential for proper precedence ordering
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] INITIALIZE DEBUG - Beginning to extract values from all sources`);
 		
 		// Extract parameters from each source with setSource=false to prevent premature source setting
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== EXTRACTION PHASE - HEADERS =====`);
 		const headerValues = await this.extractHeaderValues(request, false, requestId);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EXTRACTION SUMMARY - HEADERS - Found ${Object.keys(headerValues).length} values: ${this.safeStringify(headerValues)}`);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAMS - Header values extracted: sdkKey=${headerValues.sdkKey}, visitorId=${headerValues.visitorId}, flagKey=${headerValues.flagKey}`);
-		
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== EXTRACTION PHASE - QUERY PARAMETERS =====`);
 		const queryValues = await this.extractQueryValues(request, false, requestId);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EXTRACTION SUMMARY - QUERY - Found ${Object.keys(queryValues).length} values: ${this.safeStringify(queryValues)}`);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAMS - Query values extracted: sdkKey=${queryValues.sdkKey}, visitorId=${queryValues.visitorId}, flagKey=${queryValues.flagKey}`);
-		
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== EXTRACTION PHASE - BODY =====`);
 		const bodyValues = await this.extractBodyValues(request, false, requestId);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EXTRACTION SUMMARY - BODY - Found ${Object.keys(bodyValues).length} values: ${this.safeStringify(bodyValues)}`);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAMS - Body values extracted: sdkKey=${bodyValues.sdkKey}, visitorId=${bodyValues.visitorId}, flagKey=${bodyValues.flagKey}`);
+		
+		// Log critical parameters for debugging
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Parameters from headers: sdkKey=${headerValues.sdkKey || 'none'}, visitorId=${headerValues.visitorId || 'none'}, flagKey=${headerValues.flagKey || 'none'}`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Parameters from query: sdkKey=${queryValues.sdkKey || 'none'}, visitorId=${queryValues.visitorId || 'none'}, flagKey=${queryValues.flagKey || 'none'}`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Parameters from body: sdkKey=${bodyValues.sdkKey || 'none'}, visitorId=${bodyValues.visitorId || 'none'}, flagKey=${bodyValues.flagKey || 'none'}`);
 
 		// Apply values in strict precedence order (Headers > Query > Body > Defaults)
-		// This will set the metadata sources as part of the application process
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - Starting precedence application =====`);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION ORDER: Headers > Query > Body > Defaults`);
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Applying values with precedence: Headers > Query > Body > Defaults`);
 		
-		// First, individually apply each extracted value set with its correct source type
-		// This ensures each set gets the correct source type and precedence is respected
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - APPLYING HEADER VALUES =====`);
+		// Apply each source in correct order with its respective source type
 		if (Object.keys(headerValues).length > 0) {
 			this.applyIndividualSourceValues(headerValues, 'header', requestId);
-		} else {
-			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION PHASE - No header values to apply`);
 		}
 		
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] STATUS CHECK - After HEADER application: sdkKey=${this.config.sdkKey}(from: ${this.metadata.sdkKeyFrom}), visitorId=${this.config.visitorId}(from: ${this.metadata.visitorIdFrom})`);
-		
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - APPLYING QUERY VALUES =====`);
 		if (Object.keys(queryValues).length > 0) {
 			this.applyIndividualSourceValues(queryValues, 'query', requestId);
-		} else {
-			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION PHASE - No query values to apply`);
 		}
 		
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] STATUS CHECK - After QUERY application: sdkKey=${this.config.sdkKey}(from: ${this.metadata.sdkKeyFrom}), visitorId=${this.config.visitorId}(from: ${this.metadata.visitorIdFrom})`);
-		
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE - APPLYING BODY VALUES =====`);
 		if (Object.keys(bodyValues).length > 0) {
 			this.applyIndividualSourceValues(bodyValues, 'body', requestId);
-		} else {
-			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLICATION PHASE - No body values to apply`);
 		}
 		
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] STATUS CHECK - After BODY application: sdkKey=${this.config.sdkKey}(from: ${this.metadata.sdkKeyFrom}), visitorId=${this.config.visitorId}(from: ${this.metadata.visitorIdFrom})`);
-		
-		// Check resulting config and metadata after precedence application
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== APPLICATION PHASE COMPLETE =====`);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FINAL STATUS - sdkKey: ${this.config.sdkKey}, sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FINAL STATUS - visitorId: ${this.config.visitorId}, visitorIdFrom: ${this.metadata.visitorIdFrom}`);
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FINAL STATUS - flagKey: ${this.config.flagKey}, flagKeyFrom: ${this.metadata.flagKeyFrom}`);
-
 		// Apply remaining defaults and computed values
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ===== DEFAULTS PHASE =====`);
 		this.applyDefaults();
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] DEFAULTS APPLIED - Final sdkKey: ${this.config.sdkKey}, visitorId: ${this.config.visitorId}`);
-
-		// Update metadata - should be done after all sources processed
+		
+		// Update metadata after all sources are processed
 		this.updateMetadata();
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] METADATA UPDATED - sdkKeyFrom: ${this.metadata.sdkKeyFrom}, visitorIdFrom: ${this.metadata.visitorIdFrom}`);
+		
+		// Log final parameter values and sources
+		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Final config: sdkKey=${this.config.sdkKey} (from ${this.metadata.sdkKeyFrom}), visitorId=${this.config.visitorId} (from ${this.metadata.visitorIdFrom}), flagKey=${this.config.flagKey} (from ${this.metadata.flagKeyFrom})`);
 
 		// Validate the configuration
 		const validationResult = this.validate();
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] VALIDATION COMPLETE - Valid: ${validationResult.valid}, Errors: ${validationResult.hasErrors}, Warnings: ${validationResult.hasWarnings}`);
-
-		// Log validation issues
+		
+		// Log validation issues and attempt fixes
 		if (validationResult.hasErrors) {
 			this.logger.warn(
 				`${this.logPrefix} [REQUEST:${requestId}] Configuration has ${
@@ -263,28 +231,14 @@ export class ConfigurationService implements IConfigurationService {
 				const fixedCount = this.fixValidationIssues(validationResult.issues);
 				if (fixedCount > 0) {
 					this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Fixed ${fixedCount} validation issue(s)`);
-					
-					// Update metadata again after fixes
-					this.updateMetadata();
-					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] METADATA UPDATED AFTER FIXES`);
+					this.updateMetadata(); // Update metadata after fixes
 				}
 			}
 		}
 
 		// Set initialization flag
 		this.isInitialized = true;
-		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] ===== INITIALIZATION COMPLETE =====`);
-		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] FINAL CONFIG - sdkKey: ${this.config.sdkKey} (from: ${this.metadata.sdkKeyFrom}), visitorId: ${this.config.visitorId} (from: ${this.metadata.visitorIdFrom})`);
-		
-		// Final source validation for debugging
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] PRECEDENCE CHECK - Final config:
-			sdkKey: ${this.config.sdkKey} (from: ${this.metadata.sdkKeyFrom || 'unknown'})
-			visitorId: ${this.config.visitorId} (from: ${this.metadata.visitorIdFrom || 'unknown'})
-			flagKey: ${this.config.flagKey} (from: ${this.metadata.flagKeyFrom || 'unknown'})
-			Original headers had: sdkKey=${headerValues.sdkKey}, visitorId=${headerValues.visitorId}, flagKey=${headerValues.flagKey}
-			Original query had: sdkKey=${queryValues.sdkKey}, visitorId=${queryValues.visitorId}, flagKey=${queryValues.flagKey}
-			Original body had: sdkKey=${bodyValues.sdkKey}, visitorId=${bodyValues.visitorId}, flagKey=${bodyValues.flagKey}
-		`);
+		this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Configuration initialized`);
 
 		// Return the configuration
 		return this.config;
@@ -932,8 +886,6 @@ export class ConfigurationService implements IConfigurationService {
 		source: MetadataSource,
 		requestId: string
 	): void {
-		this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SOURCE APPLY DEBUG - Starting to apply ${Object.keys(values).length} values from source: ${source}`);
-		
 		// Process each key in the values object
 		Object.keys(values).forEach(key => {
 			const typedKey = key as keyof OptimizelyConfigOptions;
@@ -942,28 +894,17 @@ export class ConfigurationService implements IConfigurationService {
 			// Get current source for this key (if any)
 			const currentSource = this.getMetadataSourceField(typedKey);
 			
-			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] VALUE CHECK - Key: '${String(typedKey)}', Current value: '${this.safeStringify(this.config[typedKey])}', Current source: '${currentSource || "none"}', New value: '${this.safeStringify(value)}', New source: '${source}'`);
-			
 			// Only apply if the new source has higher precedence
 			if (value !== undefined && this.shouldOverrideValue(currentSource, source)) {
-				// Log before changing
-				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] OVERRIDE APPROVED - Will override '${String(typedKey)}' value from source '${currentSource || "none"}' with value from '${source}'`);
-				
 				// Type-safe assignment to ensure type compatibility
 				(this.config[typedKey] as any) = value;
 				this.setMetadataSourceField(typedKey, source);
-				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] APPLIED - '${String(typedKey)}'='${this.safeStringify(value)}' from '${source}', metadata source updated`);
-			} else if (value !== undefined) {
-				this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] SKIPPED - Did NOT apply '${String(typedKey)}'='${this.safeStringify(value)}' from '${source}' because current source '${currentSource}' has higher precedence`);
+				
+				// Only log critical parameters (sdkKey, visitorId, flagKey)
+				if (['sdkKey', 'visitorId', 'flagKey'].includes(String(typedKey))) {
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Applied ${String(typedKey)}='${this.safeStringify(value)}' from ${source}`);
+				}
 			}
-		});
-		
-		// Log critical parameters after application
-		const criticalParams = ['sdkKey', 'visitorId', 'flagKey'];
-		criticalParams.forEach(param => {
-			const typedParam = param as keyof OptimizelyConfigOptions;
-			const source = this.getMetadataSourceField(typedParam);
-			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] CRITICAL PARAM STATUS - After applying '${source}' values: ${param}='${this.safeStringify(this.config[typedParam])}', source='${source || "none"}'`);
 		});
 	}
 	
@@ -1079,12 +1020,8 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns True if the new source has higher or equal precedence
 	 */
 	private shouldOverrideValue(currentSource: MetadataSource | null, newSource: MetadataSource): boolean {
-		const logPrefix = `${this.logPrefix} [PRECEDENCE DEBUG]`;
-		this.logger.debug(`${logPrefix} OVERRIDE CHECK - currentSource: '${currentSource}', newSource: '${newSource}'`);
-		
 		// If no current source, always apply the new value
 		if (currentSource === null) {
-			this.logger.debug(`${logPrefix} DECISION: TRUE - No current source, will apply new value from '${newSource}'`);
 			return true;
 		}
 		
@@ -1098,25 +1035,17 @@ export class ConfigurationService implements IConfigurationService {
 			'localstorage'
 		];
 		
-		this.logger.debug(`${logPrefix} Precedence order (highest to lowest): ${precedence.join(' > ')}`);
-		
 		// Get precedence indices (lower index = higher precedence)
 		const currentIndex = precedence.indexOf(currentSource);
 		const newIndex = precedence.indexOf(newSource);
 		
-		this.logger.debug(`${logPrefix} Precedence indices - currentSource: '${currentSource}' = ${currentIndex}, newSource: '${newSource}' = ${newIndex}`);
-		
 		// Handle unknown sources (should never happen)
 		if (currentIndex === -1 || newIndex === -1) {
-			this.logger.debug(`${logPrefix} DECISION: TRUE - Unknown source detected. currentIndex: ${currentIndex}, newIndex: ${newIndex}`);
 			return true; // Default to overriding if we can't determine precedence
 		}
 		
 		// Return true if new source has higher or equal precedence (lower or equal index)
-		// Equal precedence means we still want to overwrite (e.g. multiple header values)
-		const shouldOverride = newIndex <= currentIndex;
-		this.logger.debug(`${logPrefix} DECISION: ${shouldOverride} - ${newSource} ${shouldOverride ? 'has higher or equal precedence than' : 'has lower precedence than'} ${currentSource}`);
-		return shouldOverride;
+		return newIndex <= currentIndex;
 	}
 	
 	
@@ -1225,7 +1154,6 @@ export class ConfigurationService implements IConfigurationService {
 				source = null;
 		}
 		
-		this.logger.debug(`${this.logPrefix} [METADATA SOURCE] - Parameter '${String(paramName)}' current source: '${source || "none"}'`);
 		return source;
 	}
 
@@ -1485,11 +1413,6 @@ export class ConfigurationService implements IConfigurationService {
 	 */
 	
 	private setMetadataSourceField(paramName: keyof OptimizelyConfigOptions, source: MetadataSource): void {
-		this.logger.debug(`${this.logPrefix} SOURCE_FIELD DEBUG - Setting metadata source for '${String(paramName)}' to '${source}'`);
-		
-		// CRITICAL: We must ALWAYS set the source tracking fields
-		// This ensures the internal state is always consistent with the actual source used
-		
 		// Set the appropriate metadata field based on the parameter name
 		switch (paramName) {
 			case 'sdkKey':
@@ -1527,17 +1450,9 @@ export class ConfigurationService implements IConfigurationService {
 	 * Updates configuration metadata.
 	 */
 	private updateMetadata(): void {
-		this.logger.debug(`${this.logPrefix} UPDATE_METADATA DEBUG - Starting updateMetadata, current sdkKeyFrom: ${this.metadata.sdkKeyFrom}`);
-		
-		// CRITICAL: ONLY update value fields in metadata, NEVER touch any "From" fields
-		// Source tracking is solely managed by setMetadataSourceField
-		
 		// String fields
 		this.metadata.visitorId = this.config.visitorId || '';
 		this.metadata.sdkKey = this.config.sdkKey || '';
-		
-		// Log to verify source fields are preserved
-		this.logger.debug(`${this.logPrefix} UPDATE_METADATA DEBUG - After updating, sdkKeyFrom is still: ${this.metadata.sdkKeyFrom}`);
 		
 		// Object fields (only update the values, not the source tracking)
 		if (this.config.attributes && typeof this.config.attributes === 'object') {
@@ -1555,7 +1470,6 @@ export class ConfigurationService implements IConfigurationService {
 		// Handle forcedDecisions - it's an object in config but array in metadata
 		if (this.config.forcedDecisions && typeof this.config.forcedDecisions === 'object') {
 			// Keep metadata.forcedDecisions as an empty array to maintain type compatibility
-			// The actual config data is stored in the config object
 			this.metadata.forcedDecisions = [];
 		}
 		
@@ -1612,9 +1526,6 @@ export class ConfigurationService implements IConfigurationService {
 		
 		// Set an updated timestamp
 		this.metadata.updatedAt = new Date().toISOString();
-		
-		// Final verification log to ensure source fields were not modified
-		this.logger.debug(`${this.logPrefix} UPDATE_METADATA DEBUG - After all updates, source fields: sdkKeyFrom=${this.metadata.sdkKeyFrom}, visitorIdFrom=${this.metadata.visitorIdFrom}`);
 	}
 
 	/**

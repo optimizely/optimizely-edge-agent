@@ -2943,13 +2943,9 @@ export class ApiRouter {
       return body;
     }
     
-    this.logger.debug(`${this.logPrefix} [META DEBUG] ===== RESPONSE METADATA CREATION =====`);
-    
     // CRITICAL FIX: Always get the most up-to-date metadata from the ConfigService for source tracking
     // This ensures that our response metadata always reflects the correct parameter precedence
     const configServiceMetadata = this.configService.getMetadata();
-    this.logger.debug(`${this.logPrefix} [META DEBUG] Using ConfigService metadata: sdkKeyFrom=${configServiceMetadata.sdkKeyFrom}, visitorIdFrom=${configServiceMetadata.visitorIdFrom}, flagKeysFrom=${configServiceMetadata.flagKeysFrom}`);
-    this.logger.debug(`${this.logPrefix} [META DEBUG] Pre-merge requestContext.configMetadata?.flagKeysFrom: ${requestContext?.configMetadata?.flagKeysFrom}`); // Log for flagKeysFrom
     
     // Start with the ConfigService metadata (source of truth)
     // This ensures the correct source tracking info is always used

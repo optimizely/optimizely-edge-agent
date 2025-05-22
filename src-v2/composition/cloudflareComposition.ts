@@ -97,23 +97,21 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     // Check if analytics engine is available
     if (factoryInputs.env && 'ANALYTICS_ENGINE' in factoryInputs.env && factoryInputs.env.ANALYTICS_ENGINE) {
       metricsAdapter = cloudflareFactory.createMetricsAdapter();
-      logger.info("[Cloudflare Composition] Metrics adapter created with Analytics Engine.");
+      logger.debug("[Cloudflare Composition] Metrics adapter created with Analytics Engine.");
     } else {
       // Create metrics adapter without analytics engine - will log but not record
       metricsAdapter = new CloudflareMetricsAdapter(logger);
-      logger.info("[Cloudflare Composition] Metrics adapter created in logging-only mode.");
+      logger.debug("[Cloudflare Composition] Metrics adapter created in logging-only mode.");
     }
   } catch (error) {
     logger.warn("[Cloudflare Composition] Failed to create metrics adapter:", error);
     // Create fallback metrics adapter that just logs
     metricsAdapter = new CloudflareMetricsAdapter(logger);
-    logger.info("[Cloudflare Composition] Fallback metrics adapter created in logging-only mode.");
+    logger.debug("[Cloudflare Composition] Fallback metrics adapter created in logging-only mode.");
   }
   
   // Create Cloudflare-specific event service
   eventService = new CloudflareEventService(storageAdapter, environmentAdapter, logger);
-
-  logger.debug("Cloudflare Composition: CLOUDFLARE adapters created/retrieved.");
 
   // Create Services (inject dependencies)
   const cacheService = new CacheService(storageAdapter, logger);
@@ -167,8 +165,6 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
   );
   
   // Create Edge Mode Components
-  logger.debug("Cloudflare Composition: Creating Edge Mode components.");
-  
   // Create URL Matcher with required logger parameter
   const urlMatcher = new URLMatcher(logger);
   
@@ -227,8 +223,6 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     metricsAdapter
   );
   
-  logger.debug("Cloudflare Composition: Edge Mode components created and integrated.");
-  
   // Create API Router
   const apiRouter = createApiRouter(
     datafileService,
@@ -257,8 +251,6 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     },
     apiRouter
   );
-
-  logger.debug("Cloudflare Composition: Services instantiated.");
 
   // Return the composed application graph
   return {
@@ -291,8 +283,6 @@ export async function handleCloudflareWorkerRequest(
     
     // If FEX is NOT enabled (header missing or not true), bypass Optimizely
     if (!fexEnabled) {
-      console.log("[Cloudflare Composition] FEX not enabled. Bypassing Optimizely Edge Agent.");
-      
       // For POST requests: Return disabled message
       if (request.method === 'POST') {
         return new Response(
@@ -310,7 +300,6 @@ export async function handleCloudflareWorkerRequest(
       
       // If we detect a loop, return a static response instead of continuing the loop
       if (isLoopDetected) {
-        console.log("[Cloudflare Composition] Loop detected in FEX bypass (X-Forwarded-By). Returning static response.");
         return new Response(
           "Optimizely Edge Agent bypassed. Loop detected and broken.",
           { 
@@ -324,7 +313,6 @@ export async function handleCloudflareWorkerRequest(
       }
       
       // No loop detected - continue with pass-through but add EdgeAgent header
-      console.log("[Cloudflare Composition] Passing request to origin with EdgeAgent header.");
       
       // Clone the request and modify headers
       const newHeaders = new Headers(request.headers);
@@ -344,7 +332,6 @@ export async function handleCloudflareWorkerRequest(
     }
 
     // FEX is enabled - proceed with normal Optimizely processing
-    console.log("[Cloudflare Composition] FEX enabled. Proceeding with normal Optimizely processing.");
 
     // 1. Compose the application
     const factoryInputs: CloudflareAdapterFactoryInputs = { request, env, ctx };
@@ -369,8 +356,7 @@ export async function handleCloudflareWorkerRequest(
     const validatedHeaders = new Headers();
     
     if (result.headers) {
-      // Log the original headers
-      console.debug("[Cloudflare Composition] Original headers:", JSON.stringify(result.headers));
+      // Skip logging original headers as they may be large
       
       // Special handling for Set-Cookie headers
       let setCookieValues: string[] = [];
@@ -379,7 +365,6 @@ export async function handleCloudflareWorkerRequest(
       Object.entries(result.headers).forEach(([name, value]) => {
         // Skip if name or value is undefined/null
         if (!name || value === undefined || value === null) {
-          console.warn(`[Cloudflare Composition] Skipping invalid header: ${name}:${value}`);
           return;
         }
         
@@ -392,11 +377,8 @@ export async function handleCloudflareWorkerRequest(
               const cookies = value.split('\n');
               cookies.forEach(cookie => {
                 if (cookie && cookie.trim()) {
-                  try {
-                    setCookieValues.push(cookie.trim());
-                  } catch (cookieError) {
-                    console.warn(`[Cloudflare Composition] Error adding cookie: ${cookie}`, cookieError);
-                  }
+                  // Just add the cookie to the array
+                  setCookieValues.push(cookie.trim());
                 }
               });
             }
@@ -405,23 +387,20 @@ export async function handleCloudflareWorkerRequest(
             const stringValue = String(value).trim();
             if (stringValue) {
               validatedHeaders.set(name, stringValue);
-            } else {
-              console.warn(`[Cloudflare Composition] Skipping empty header: ${name}`);
-            }
+            } // Skip empty headers silently
           }
         } catch (headerError) {
-          console.warn(`[Cloudflare Composition] Error setting header ${name}:`, headerError);
+          // Silently handle header setting errors
         }
       });
       
       // Add Set-Cookie headers after processing all other headers
       if (setCookieValues.length > 0) {
-        console.debug(`[Cloudflare Composition] Adding ${setCookieValues.length} Set-Cookie headers`);
         setCookieValues.forEach(cookie => {
           try {
             validatedHeaders.append('Set-Cookie', cookie);
           } catch (cookieError) {
-            console.warn(`[Cloudflare Composition] Error appending cookie: ${cookie}`, cookieError);
+            // Silently handle cookie appending errors
           }
         });
       }
