@@ -1941,25 +1941,106 @@ export class ApiRouter {
 
   /**
    * Handles individual decide requests for feature flags and experiments.
+   * Makes a decision for a single flag key with mode-specific response formatting and integration.
    * 
-   * Makes a decision for a single flag key for a specific user.
-   * Supports all decide options and visitor ID override functionality.
+   * **Edge Mode Behavior:**
+   * - Returns JSON decision data for application consumption
+   * - Integrates with CDN response headers and cookies when configured
+   * - Optimized for single-flag decisions with minimal latency
+   * - Supports response header injection for CDN edge caching
    * 
-   * @param requestAdapter - The request adapter
-   * @param requestId - The unique request ID for tracking
-   * @returns A promise resolving to the ResponseResult
+   * **Agent Mode Behavior:**
+   * - Returns comprehensive JSON response with decision details
+   * - Includes metadata about decision sources and processing
+   * - Supports detailed error reporting and debugging information
+   * - Optimized for application-to-application communication
+   * 
+   * **Flag Key Sources (precedence order):**
+   * 1. Request body: `{ "flagKey": "flag-name" }`
+   * 2. Query parameter: `?flagKey=flag-name`
+   * 3. Header: `X-Optimizely-Flag-Key: flag-name`
+   * 
+   * **User Identification (precedence order):**
+   * 1. Request body: `{ "userId": "user123" }` or `{ "visitorId": "visitor456" }`
+   * 2. Header: `X-Optimizely-User-Id` or `X-Optimizely-Visitor-Id`
+   * 3. Cookie: `optimizely_user_id` or `optimizely_visitor_id`
+   * 
+   * **Decide Options Support:**
+   * All Optimizely SDK decide options are supported:
+   * - `INCLUDE_REASONS`: Include decision reasoning in response
+   * - `EXCLUDE_VARIABLES`: Exclude variable values from response
+   * - `ENABLED_FLAGS_ONLY`: Only return enabled flags
+   * - `IGNORE_USER_PROFILE_SERVICE`: Skip sticky bucketing for this request
+   * 
+   * @param requestAdapter - The request adapter containing HTTP request details
+   * @param requestId - The unique request ID for tracking and correlation
+   * @returns Promise resolving to ResponseResult with decision data and appropriate HTTP status
    * @private
    * 
    * @example
    * ```typescript
+   * // Basic decide request
    * POST /api/decide
+   * Content-Type: application/json
    * {
    *   "userId": "user123",
-   *   "flagKey": "my_flag",
-   *   "attributes": { "age": 25 },
-   *   "decideOptions": ["INCLUDE_REASONS"]
+   *   "flagKey": "checkout_redesign",
+   *   "attributes": { 
+   *     "platform": "web",
+   *     "userType": "premium" 
+   *   }
+   * }
+   * 
+   * // Response:
+   * {
+   *   "variationKey": "treatment",
+   *   "enabled": true,
+   *   "variables": { "buttonColor": "blue" },
+   *   "ruleKey": "experiment_123",
+   *   "flagKey": "checkout_redesign"
    * }
    * ```
+   * 
+   * @example
+   * ```typescript
+   * // Decide with debug options
+   * POST /api/decide
+   * {
+   *   "userId": "test_user",
+   *   "flagKey": "feature_toggle",
+   *   "decideOptions": ["INCLUDE_REASONS", "EXCLUDE_VARIABLES"]
+   * }
+   * 
+   * // Response includes decision reasoning:
+   * {
+   *   "variationKey": "off",
+   *   "enabled": false,
+   *   "reasons": [
+   *     "User does not meet audience conditions for experiment"
+   *   ],
+   *   "ruleKey": "rollout_456",
+   *   "flagKey": "feature_toggle"
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Query parameter usage
+   * GET /api/decide?flagKey=my_flag&userId=user789&platform=mobile
+   * 
+   * // Header-based usage
+   * POST /api/decide
+   * X-Optimizely-Flag-Key: my_flag
+   * X-Optimizely-User-Id: user789
+   * Content-Type: application/json
+   * {
+   *   "attributes": { "platform": "mobile" }
+   * }
+   * ```
+   * 
+   * @see {@link handleDecideAllRequest} for making decisions on multiple flags
+   * @see {@link DecisionService.decide} for the underlying decision logic
+   * @since v2.0.0
    */
   private async handleDecideRequest(
     requestAdapter: IRequestAdapter,
@@ -2269,15 +2350,105 @@ export class ApiRouter {
   }
 
   /**
-   * Handles batch decide-all requests for all feature flags.
+   * Handles batch decide-all requests for multiple feature flags simultaneously.
+   * Supports both "all flags" and "specific flags" modes with efficient batch processing and mode-specific optimizations.
    * 
-   * Makes decisions for all available flags for a specific user.
-   * Uses the decision service's decideAll method for efficiency.
+   * **Edge Mode Behavior:**
+   * - Returns flat JSON object mapping flag keys to decision objects
+   * - Optimized for CDN edge processing with minimal response size
+   * - Supports response header injection for enabled flags
+   * - Ideal for single-page applications requiring multiple flag states
    * 
-   * @param requestAdapter - The request adapter
-   * @param requestId - The unique request ID for tracking
-   * @returns A promise resolving to the ResponseResult
+   * **Agent Mode Behavior:**
+   * - Returns comprehensive decision map with detailed metadata
+   * - Includes batch processing metrics and timing information
+   * - Supports detailed error reporting for individual flags
+   * - Optimized for server-to-server batch decision requests
+   * 
+   * **Flag Key Sources (precedence order):**
+   * 1. Request body: `{ "flagKeys": ["flag1", "flag2"] }` - Decide for specific flags only
+   * 2. Query parameter: `?flagKeys=flag1,flag2` - Comma-separated flag list
+   * 3. KV Storage: All flag keys stored for the SDK key (when no flagKeys provided)
+   * 4. Datafile: All feature flags defined in the project (fallback)
+   * 
+   * **Performance Optimizations:**
+   * - Single SDK client initialization for all decisions
+   * - Parallel decision processing when supported by platform
+   * - Shared user profile service lookups
+   * - Batch metrics recording and logging
+   * 
+   * **User Identification:** Same precedence as single decide requests
+   * 
+   * @param requestAdapter - The request adapter containing HTTP request details
+   * @param requestId - The unique request ID for tracking and correlation
+   * @returns Promise resolving to ResponseResult with decision map and appropriate HTTP status
    * @private
+   * 
+   * @example
+   * ```typescript
+   * // Decide for all available flags
+   * POST /api/decide-all
+   * Content-Type: application/json
+   * {
+   *   "userId": "user123",
+   *   "attributes": { 
+   *     "platform": "web",
+   *     "plan": "premium" 
+   *   }
+   * }
+   * 
+   * // Response includes all flags:
+   * {
+   *   "checkout_redesign": {
+   *     "variationKey": "treatment",
+   *     "enabled": true,
+   *     "variables": { "buttonColor": "blue" }
+   *   },
+   *   "new_navigation": {
+   *     "variationKey": "control",
+   *     "enabled": false,
+   *     "variables": {}
+   *   }
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Decide for specific flags only
+   * POST /api/decide-all
+   * {
+   *   "userId": "user456",
+   *   "flagKeys": ["checkout_redesign", "payment_flow"],
+   *   "decideOptions": ["ENABLED_FLAGS_ONLY"]
+   * }
+   * 
+   * // Response only includes specified flags that are enabled:
+   * {
+   *   "checkout_redesign": {
+   *     "variationKey": "treatment",
+   *     "enabled": true,
+   *     "variables": { "version": "v2" }
+   *   }
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Query parameter usage for specific flags
+   * GET /api/decide-all?userId=user789&flagKeys=flag1,flag2,flag3
+   * 
+   * // Edge Mode usage for CDN integration
+   * POST /api/decide-all
+   * X-Optimizely-User-Id: edge_user_123
+   * {
+   *   "decideOptions": ["EXCLUDE_VARIABLES"],  // Minimize response size
+   *   "attributes": { "device": "mobile" }
+   * }
+   * ```
+   * 
+   * @see {@link handleDecideRequest} for making decisions on individual flags
+   * @see {@link DecisionService.decideAll} for the underlying batch decision logic
+   * @since v2.0.0
    */
   private async handleDecideAllRequest(
     requestAdapter: IRequestAdapter,

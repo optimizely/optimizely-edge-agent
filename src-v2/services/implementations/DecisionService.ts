@@ -803,11 +803,67 @@ export class DecisionService implements IDecisionService {
   }
 
   /**
-   * Decides which variation, if any, is assigned for a feature flag or experiment.
-   * @param flagKey - The key of the feature flag or experiment.
-   * @param userContext - The user context (userId and attributes).
-   * @param options - Optional: { sdkKey: string, decideOptions: OptimizelyDecideOption[] } to specify datafile/client and decision options.
-   * @returns A promise resolving to the OptimizelyDecision.
+   * Makes a decision for a specific flag key and user context.
+   * Handles Edge Mode vs Agent Mode behavior differences and integrates with Optimizely Full Stack SDK.
+   * 
+   * **Edge Mode:** Returns decisions with optional response headers/cookies for CDN integration
+   * **Agent Mode:** Returns JSON decision data only for application consumption
+   * 
+   * @param flagKey - The feature flag or experiment key to decide for (e.g., 'checkout_flow', 'new_ui_v2')
+   * @param userContext - User context containing userId and attributes for targeting
+   * @param userContext.userId - Unique identifier for the user (required for consistent bucketing)
+   * @param userContext.attributes - Key-value pairs for audience targeting (e.g., { platform: 'web', plan: 'premium' })
+   * @param userContext.forcedDecisions - Optional map of flag keys to forced variation keys
+   * @param userContext.metadata - Optional metadata including request context for tracking
+   * @param options - Optional configuration for the decision request
+   * @param options.sdkKey - Specific SDK key to use (defaults to service default if not provided)
+   * @param options.decideOptions - Array of Optimizely decide options affecting decision behavior
+   * 
+   * @returns Promise resolving to OptimizelyDecision with variation details
+   * @returns OptimizelyDecision.variationKey - The variation assigned to the user ('control', 'treatment', etc.)
+   * @returns OptimizelyDecision.enabled - Whether the feature flag is enabled for this user
+   * @returns OptimizelyDecision.variables - Variable values associated with the variation
+   * @returns OptimizelyDecision.ruleKey - The rule (experiment/rollout) that made the decision
+   * @returns OptimizelyDecision.flagKey - Echo of the input flag key
+   * @returns OptimizelyDecision.reasons - Decision reasons when INCLUDE_REASONS option is used
+   * 
+   * @throws {Error} When SDK initialization fails or critical configuration is missing
+   * 
+   * @example
+   * ```typescript
+   * // Basic feature flag decision
+   * const decision = await decisionService.decide('checkout_v2', {
+   *   userId: 'user123',
+   *   attributes: { platform: 'web', userType: 'premium' }
+   * });
+   * 
+   * if (decision.enabled) {
+   *   console.log(`User gets variation: ${decision.variationKey}`);
+   *   console.log(`Feature variables:`, decision.variables);
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Decision with specific SDK key and debug options
+   * const decision = await decisionService.decide('feature-flag-1', 
+   *   { userId: 'user456', attributes: { plan: 'enterprise' } },
+   *   { 
+   *     sdkKey: 'custom_sdk_key_123',
+   *     decideOptions: [
+   *       optimizely.OptimizelyDecideOption.INCLUDE_REASONS,
+   *       optimizely.OptimizelyDecideOption.EXCLUDE_VARIABLES
+   *     ]
+   *   }
+   * );
+   * 
+   * console.log('Decision reasons:', decision.reasons);
+   * ```
+   * 
+   * @see {@link decideAll} for making decisions on multiple flags simultaneously
+   * @see {@link getDecision} for retrieving cached decisions
+   * @see {@link setForcedVariation} for overriding decisions in testing
+   * @since v2.0.0
    */
   async decide(
     flagKey: string,
@@ -1031,11 +1087,83 @@ export class DecisionService implements IDecisionService {
   }
 
   /**
-   * Gets values for all flags for a given user.
-   * @param userContext - The context for the user.
-   * @param flagKeys - Optional list of specific flag keys to decide for.
-   * @param options - Optional: { sdkKey: string, decideOptions: OptimizelyDecideOption[] }.
-   * @returns A promise resolving to a map of flag keys to OptimizelyDecision.
+   * Makes decisions for multiple flag keys simultaneously for optimal performance.
+   * Supports both "decide all flags" and "decide specific flags" modes with efficient batch processing.
+   * 
+   * **Flag Key Sources (precedence order):**
+   * 1. `flagKeys` parameter: Specific flag keys provided in the call
+   * 2. KV Storage: All flag keys stored for the SDK key (when flagKeys not provided)
+   * 3. Datafile: All feature flags defined in the project datafile (fallback)
+   * 
+   * **Performance Optimization:**
+   * - Single SDK client initialization for all decisions
+   * - Batch metrics recording and logging
+   * - Parallel decision processing when possible
+   * - Shared user profile service calls
+   * 
+   * @param userContext - User context containing userId and attributes for targeting
+   * @param userContext.userId - Unique identifier for the user (required for consistent bucketing)
+   * @param userContext.attributes - Key-value pairs for audience targeting
+   * @param userContext.forcedDecisions - Optional map of flag keys to forced variation keys
+   * @param userContext.metadata - Optional metadata including request context for tracking
+   * @param flagKeys - Optional array of specific flag keys to decide for. If not provided, decides for all available flags
+   * @param options - Optional configuration for the batch decision request
+   * @param options.sdkKey - Specific SDK key to use (defaults to service default if not provided)
+   * @param options.decideOptions - Array of Optimizely decide options affecting all decisions in the batch
+   * 
+   * @returns Promise resolving to a record mapping flag keys to their OptimizelyDecision objects
+   * @returns Record<string, OptimizelyDecision> - Map where keys are flag keys and values are decision objects
+   * 
+   * @throws {Error} When SDK initialization fails or critical configuration is missing
+   * 
+   * @example
+   * ```typescript
+   * // Decide for all available flags
+   * const allDecisions = await decisionService.decideAll({
+   *   userId: 'user123',
+   *   attributes: { platform: 'web', plan: 'premium' }
+   * });
+   * 
+   * Object.entries(allDecisions).forEach(([flagKey, decision]) => {
+   *   console.log(`${flagKey}: ${decision.variationKey} (enabled: ${decision.enabled})`);
+   * });
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Decide for specific flags only
+   * const specificDecisions = await decisionService.decideAll(
+   *   { userId: 'user456', attributes: { userType: 'beta' } },
+   *   ['checkout_v2', 'new_ui', 'payment_flow'], // Only these flags
+   *   { 
+   *     decideOptions: [optimizely.OptimizelyDecideOption.INCLUDE_REASONS]
+   *   }
+   * );
+   * 
+   * const checkoutDecision = specificDecisions['checkout_v2'];
+   * if (checkoutDecision?.enabled) {
+   *   console.log('Checkout v2 enabled:', checkoutDecision.reasons);
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Edge Mode usage with response integration
+   * const decisions = await decisionService.decideAll(userContext, flagKeys, {
+   *   sdkKey: 'edge_sdk_key',
+   *   decideOptions: [optimizely.OptimizelyDecideOption.EXCLUDE_VARIABLES]
+   * });
+   * 
+   * // Process decisions for CDN response headers/cookies
+   * const enabledFlags = Object.entries(decisions)
+   *   .filter(([_, decision]) => decision.enabled)
+   *   .map(([flagKey, _]) => flagKey);
+   * ```
+   * 
+   * @see {@link decide} for making decisions on individual flags
+   * @see {@link getDecision} for retrieving cached decisions
+   * @see {@link getAllDecisions} for retrieving all cached decisions
+   * @since v2.0.0
    */
   async decideAll(
     userContext: ExtendedOptimizelyUserContext,
@@ -1192,11 +1320,74 @@ export class DecisionService implements IDecisionService {
   }
 
   /**
-   * Sets a forced variation for a flag and user
-   * @param flagKey - The feature flag key
-   * @param userId - The user ID
-   * @param variationKey - Variation to force, or null to remove forced variation
-   * @param options - Optional: { sdkKey: string }
+   * Sets or removes a forced variation for a specific flag and user.
+   * Used primarily for testing, debugging, and QA scenarios to override normal bucketing behavior.
+   * 
+   * **Use Cases:**
+   * - Testing specific variations in development/staging environments
+   * - QA validation of different feature flag states
+   * - Customer support for troubleshooting user-specific issues
+   * - Demo scenarios requiring consistent behavior
+   * 
+   * **Important Notes:**
+   * - Forced variations override all targeting rules and traffic allocation
+   * - Changes take effect immediately for subsequent decisions
+   * - Forced variations are stored in memory and don't persist across worker restarts
+   * - Use `null` as variationKey to remove an existing forced variation
+   * 
+   * @param flagKey - The feature flag or experiment key to set forced variation for
+   * @param userId - The user ID to apply the forced variation to (must match exactly in subsequent decisions)
+   * @param variationKey - The variation key to force for this user, or null to remove forced variation
+   * @param options - Optional configuration for the forced variation request
+   * @param options.sdkKey - Specific SDK key to use (defaults to service default if not provided)
+   * 
+   * @returns Promise that resolves when the forced variation is set or removed
+   * 
+   * @throws {Error} When SDK initialization fails or invalid parameters are provided
+   * 
+   * @example
+   * ```typescript
+   * // Force a user to see the 'treatment' variation
+   * await decisionService.setForcedVariation(
+   *   'checkout_redesign', 
+   *   'test_user_123', 
+   *   'treatment'
+   * );
+   * 
+   * // Subsequent decisions will return the forced variation
+   * const decision = await decisionService.decide('checkout_redesign', {
+   *   userId: 'test_user_123',
+   *   attributes: {}
+   * });
+   * console.log(decision.variationKey); // 'treatment'
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Remove a forced variation to restore normal bucketing
+   * await decisionService.setForcedVariation(
+   *   'checkout_redesign', 
+   *   'test_user_123', 
+   *   null  // Remove forced variation
+   * );
+   * 
+   * // User will now be bucketed normally based on targeting rules
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Set forced variation with specific SDK key
+   * await decisionService.setForcedVariation(
+   *   'feature_flag_x', 
+   *   'qa_user_456', 
+   *   'variation_b',
+   *   { sdkKey: 'staging_sdk_key' }
+   * );
+   * ```
+   * 
+   * @see {@link getForcedVariation} for retrieving current forced variations
+   * @see {@link decide} for making decisions (which will use forced variations if set)
+   * @since v2.0.0
    */
   async setForcedVariation(
     flagKey: string,
@@ -1261,11 +1452,71 @@ export class DecisionService implements IDecisionService {
   }
 
   /**
-   * Gets the forced variation for a flag and user, if any
-   * @param flagKey - The feature flag key
-   * @param userId - The user ID
-   * @param options - Optional: { sdkKey: string }
-   * @returns The forced variation key or null if none
+   * Retrieves the current forced variation for a specific flag and user.
+   * Used to check if a user has been assigned a forced variation for testing or debugging purposes.
+   * 
+   * **Use Cases:**
+   * - Verify forced variations are correctly applied during testing
+   * - Administrative interfaces showing current forced variation state
+   * - Debugging user-specific decision behavior
+   * - Audit trails for QA and support scenarios
+   * 
+   * **Important Notes:**
+   * - Returns null if no forced variation is set for the flag/user combination
+   * - Only returns forced variations set via setForcedVariation() method
+   * - Forced variations are stored in memory and lost on worker restart
+   * 
+   * @param flagKey - The feature flag or experiment key to check for forced variations
+   * @param userId - The user ID to check for forced variations (must match exactly what was used in setForcedVariation)
+   * @param options - Optional configuration for the forced variation query
+   * @param options.sdkKey - Specific SDK key to use (defaults to service default if not provided)
+   * 
+   * @returns Promise resolving to the forced variation key, or null if no forced variation is set
+   * 
+   * @throws {Error} When SDK initialization fails or invalid parameters are provided
+   * 
+   * @example
+   * ```typescript
+   * // Check if a user has a forced variation
+   * const forcedVariation = await decisionService.getForcedVariation(
+   *   'checkout_redesign',
+   *   'test_user_123'
+   * );
+   * 
+   * if (forcedVariation) {
+   *   console.log(`User has forced variation: ${forcedVariation}`);
+   * } else {
+   *   console.log('User will be bucketed normally');
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Check forced variation with specific SDK key
+   * const forcedVariation = await decisionService.getForcedVariation(
+   *   'feature_flag_x',
+   *   'qa_user_456',
+   *   { sdkKey: 'staging_sdk_key' }
+   * );
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Validate forced variation before making decision
+   * const forcedVariation = await decisionService.getForcedVariation('my_flag', userId);
+   * 
+   * if (forcedVariation) {
+   *   console.log(`User will see variation: ${forcedVariation}`);
+   * }
+   * 
+   * const decision = await decisionService.decide('my_flag', { userId, attributes: {} });
+   * console.log(`Actual decision: ${decision.variationKey}`);
+   * // decision.variationKey should match forcedVariation if one was set
+   * ```
+   * 
+   * @see {@link setForcedVariation} for setting forced variations
+   * @see {@link decide} for making decisions (which will use forced variations if set)
+   * @since v2.0.0
    */
   async getForcedVariation(
     flagKey: string,

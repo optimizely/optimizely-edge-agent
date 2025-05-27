@@ -349,11 +349,69 @@ export class DatafileService implements IDatafileService {
   }
   
   /**
-   * Gets all flag keys for a specific SDK key.
-   * Uses FlagStorageService if available, falls back to legacy implementation.
-   * @param sdkKey - The Optimizely SDK key.
-   * @param options - Configuration options.
-   * @returns A promise resolving to an array of flag keys or null if not found.
+   * Retrieves all feature flag keys for a specific SDK key with intelligent storage source selection.
+   * Provides fallback mechanisms and caching for optimal performance across different deployment scenarios.
+   * 
+   * **Storage Source Priority (when useKV not explicitly set):**
+   * 1. **FlagStorageService**: Modern KV storage with prefix `optimizely_flags:${sdkKey}` (preferred)
+   * 2. **Legacy KV Storage**: Direct storage with prefix `flagkeys:${sdkKey}` (compatibility)
+   * 3. **Datafile Extraction**: Extract flag keys from stored or CDN datafile (fallback)
+   * 4. **In-Memory Cache**: Return cached flag keys if available and valid
+   * 
+   * **Caching Behavior:**
+   * - Successful KV lookups are cached in memory with configurable TTL
+   * - Cache is automatically invalidated when flag keys are updated
+   * - Cache size is limited to prevent memory exhaustion
+   * 
+   * **Metadata Tracking:**
+   * - Records source of flag keys in request context metadata
+   * - Enables monitoring and debugging of data source usage
+   * - Supports performance analytics and optimization
+   * 
+   * @param sdkKey - The Optimizely SDK key to retrieve flag keys for
+   * @param options - Configuration options for the retrieval operation
+   * @param options.useKV - Force KV storage usage (true) or datafile extraction (false)
+   * @param options.requestContext - Request context for metadata tracking and debugging
+   * 
+   * @returns Promise resolving to array of flag keys, or null if no flags found
+   * 
+   * @throws {Error} When SDK key is invalid or storage operations fail critically
+   * 
+   * @example
+   * ```typescript
+   * // Get flag keys with automatic source selection
+   * const flagKeys = await datafileService.getFlagKeys('my_sdk_key');
+   * if (flagKeys) {
+   *   console.log(`Found ${flagKeys.length} flags:`, flagKeys);
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Force KV storage usage for Edge Mode
+   * const flagKeys = await datafileService.getFlagKeys('sdk_key', {
+   *   useKV: true,
+   *   requestContext: { source: 'api_request' }
+   * });
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Get flag keys with request tracking
+   * const requestContext = { requestId: 'req_123', source: 'decide_all' };
+   * const flagKeys = await datafileService.getFlagKeys('sdk_key', {
+   *   requestContext
+   * });
+   * 
+   * // Check metadata to see which source was used
+   * console.log('Flag keys source:', requestContext.configMetadata?.flagKeysFrom);
+   * // Outputs: 'kv', 'datafile', or 'cache'
+   * ```
+   * 
+   * @see {@link setFlagKeys} for storing flag keys in KV storage
+   * @see {@link extractFlagKeys} for extracting flag keys from datafiles
+   * @see {@link synchronizeFlagKeys} for syncing flag keys between storage types
+   * @since v2.0.0
    */
   async getFlagKeys(sdkKey: string, options?: { useKV?: boolean, requestContext?: any }): Promise<string[] | null> {
     if (!sdkKey) {
@@ -507,12 +565,79 @@ export class DatafileService implements IDatafileService {
   }
   
   /**
-   * Updates the list of flag keys for a specific SDK key.
-   * Uses FlagStorageService if available, falls back to legacy implementation.
-   * @param sdkKey - The Optimizely SDK key.
-   * @param flagKeys - The array of flag keys to store.
-   * @param ttl - Optional time-to-live in seconds.
-   * @returns A promise resolving to true if the operation was successful.
+   * Stores feature flag keys for a specific SDK key with intelligent storage routing and deduplication.
+   * Automatically chooses between FlagStorageService and legacy storage for optimal compatibility.
+   * 
+   * **Storage Strategy:**
+   * - **Primary**: FlagStorageService with prefix `optimizely_flags:${sdkKey}` (when available)
+   * - **Fallback**: Legacy KV storage with prefix `flagkeys:${sdkKey}` (for compatibility)
+   * 
+   * **Data Processing:**
+   * - Automatic deduplication of flag keys to prevent storage waste
+   * - Validation of flag key format and structure
+   * - Empty array handling with appropriate logging
+   * 
+   * **Performance Features:**
+   * - In-memory cache update on successful storage
+   * - Metrics tracking for storage operations and performance
+   * - Batch processing for large flag key sets
+   * 
+   * **TTL Management:**
+   * - Configurable TTL with sensible defaults (1 hour)
+   * - Automatic expiration handling in KV storage
+   * - Cache TTL synchronization with storage TTL
+   * 
+   * @param sdkKey - The Optimizely SDK key to store flag keys for
+   * @param flagKeys - Array of flag keys to store (duplicates will be removed automatically)
+   * @param ttl - Time-to-live in seconds for the stored flag keys (default: 3600 seconds/1 hour)
+   * 
+   * @returns Promise resolving to true if storage was successful, false otherwise
+   * 
+   * @throws {Error} When SDK key is invalid or critical storage failure occurs
+   * 
+   * @example
+   * ```typescript
+   * // Store flag keys with default TTL
+   * const success = await datafileService.setFlagKeys('my_sdk_key', [
+   *   'checkout_redesign',
+   *   'new_navigation',
+   *   'payment_flow'
+   * ]);
+   * 
+   * if (success) {
+   *   console.log('Flag keys stored successfully');
+   * }
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Store with custom TTL (24 hours)
+   * const flagKeys = ['feature_a', 'feature_b', 'feature_c'];
+   * const success = await datafileService.setFlagKeys(
+   *   'sdk_key',
+   *   flagKeys,
+   *   24 * 60 * 60  // 24 hours in seconds
+   * );
+   * ```
+   * 
+   * @example
+   * ```typescript
+   * // Automatic deduplication example
+   * const flagKeysWithDuplicates = [
+   *   'flag_1', 'flag_2', 'flag_1', 'flag_3', 'flag_2'
+   * ];
+   * 
+   * const success = await datafileService.setFlagKeys(
+   *   'sdk_key',
+   *   flagKeysWithDuplicates
+   * );
+   * // Only unique flags ['flag_1', 'flag_2', 'flag_3'] will be stored
+   * ```
+   * 
+   * @see {@link getFlagKeys} for retrieving stored flag keys
+   * @see {@link extractFlagKeys} for extracting flag keys from datafiles
+   * @see {@link saveFlagKeys} for alias method with same functionality
+   * @since v2.0.0
    */
   async setFlagKeys(sdkKey: string, flagKeys: string[], ttl = DEFAULT_FLAGKEYS_TTL): Promise<boolean> {
     if (!sdkKey || !Array.isArray(flagKeys)) {

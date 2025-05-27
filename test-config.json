@@ -1,0 +1,182 @@
+{
+  "apiTesting": {
+    "baseUrl": "http://localhost:8080",
+    "endpoints": {
+      "datafile": "/api/datafile"
+    },
+    "testData": {
+      "validSdkKey": "21537940209",
+      "testSdkKey": "test-sdk-key-123",
+      "invalidSdkKey": "invalid-sdk-key"
+    },
+    "expectedResponses": {
+      "errors": {
+        "missingSDKKey": {
+          "status": 400,
+          "message": "SDK key is required"
+        },
+        "kvDisabled": {
+          "status": 400,
+          "message": "KV storage is not enabled for datafiles. Please enable it in configuration to use this feature."
+        },
+        "kvDatafileNotFound": {
+          "status": 404,
+          "message": "Datafile not found in KV storage for the provided SDK key."
+        },
+        "datafileNotFound": {
+          "status": 404,
+          "message": "Datafile not found for the provided SDK key."
+        }
+      },
+      "success": {
+        "status": 200,
+        "expectedFields": ["version", "projectId", "experiments", "groups"],
+        "metadataField": "metadata",
+        "sourceField": "datafileFrom"
+      }
+    },
+    "testCases": {
+      "missingSDKKey": [
+        {
+          "name": "No SDK key in query or headers",
+          "url": "/api/datafile",
+          "headers": {},
+          "expectedError": "missingSDKKey"
+        },
+        {
+          "name": "Empty SDK key in query parameter",
+          "url": "/api/datafile?sdkKey=",
+          "headers": {},
+          "expectedError": "missingSDKKey"
+        },
+        {
+          "name": "Empty SDK key in header",
+          "url": "/api/datafile",
+          "headers": {
+            "x-optimizely-sdk-key": ""
+          },
+          "expectedError": "missingSDKKey"
+        }
+      ],
+      "explicitKVRequests": [
+        {
+          "name": "KV explicitly requested but KV disabled",
+          "url": "/api/datafile?sdkKey={{testSdkKey}}&datafileFromKV=true",
+          "headers": {},
+          "expectedError": "kvDisabled"
+        },
+        {
+          "name": "KV explicitly requested, KV enabled, but datafile not found",
+          "url": "/api/datafile?sdkKey={{testSdkKey}}&datafileFromKV=true",
+          "headers": {
+            "X-Test-Enable-KV": "true"
+          },
+          "expectedError": "kvDatafileNotFound"
+        },
+        {
+          "name": "KV explicitly requested with SDK key in header",
+          "url": "/api/datafile?datafileFromKV=true",
+          "headers": {
+            "x-optimizely-sdk-key": "{{testSdkKey}}",
+            "X-Test-Enable-KV": "true"
+          },
+          "expectedError": "kvDatafileNotFound"
+        }
+      ],
+      "defaultRequests": [
+        {
+          "name": "Default request with KV disabled (should use CDN)",
+          "url": "/api/datafile?sdkKey={{validSdkKey}}",
+          "headers": {},
+          "expectedResult": "success"
+        },
+        {
+          "name": "Default request with KV enabled (should try KV, then fall back to CDN)",
+          "url": "/api/datafile?sdkKey={{validSdkKey}}",
+          "headers": {
+            "X-Test-Enable-KV": "true"
+          },
+          "expectedResult": "success"
+        },
+        {
+          "name": "Default request with invalid SDK key",
+          "url": "/api/datafile?sdkKey={{invalidSdkKey}}",
+          "headers": {},
+          "expectedError": "datafileNotFound"
+        }
+      ],
+      "sdkKeySourceVariations": [
+        {
+          "name": "SDK key in query parameter",
+          "url": "/api/datafile?sdkKey={{validSdkKey}}",
+          "headers": {},
+          "expectedResult": "success"
+        },
+        {
+          "name": "SDK key in header",
+          "url": "/api/datafile",
+          "headers": {
+            "x-optimizely-sdk-key": "{{validSdkKey}}"
+          },
+          "expectedResult": "success"
+        },
+        {
+          "name": "SDK key in both header and query (header precedence)",
+          "url": "/api/datafile?sdkKey={{invalidSdkKey}}",
+          "headers": {
+            "x-optimizely-sdk-key": "{{validSdkKey}}"
+          },
+          "expectedResult": "success"
+        }
+      ],
+      "specialParameterValues": [
+        {
+          "name": "datafileFromKV=false (explicit default source)",
+          "url": "/api/datafile?sdkKey={{validSdkKey}}&datafileFromKV=false",
+          "headers": {},
+          "expectedResult": "success"
+        },
+        {
+          "name": "datafileFromKV=invalid (should be treated as false)",
+          "url": "/api/datafile?sdkKey={{validSdkKey}}&datafileFromKV=invalid",
+          "headers": {},
+          "expectedResult": "success"
+        },
+        {
+          "name": "datafileFromKV=True (case sensitivity)",
+          "url": "/api/datafile?sdkKey={{testSdkKey}}&datafileFromKV=True",
+          "headers": {
+            "X-Test-Enable-KV": "true"
+          },
+          "expectedError": "kvDatafileNotFound"
+        }
+      ],
+      "responseValidation": [
+        {
+          "name": "JSON structure validation for missing SDK key error",
+          "url": "/api/datafile",
+          "headers": {},
+          "validateJSON": true,
+          "expectedError": "missingSDKKey"
+        },
+        {
+          "name": "JSON structure validation for KV disabled error",
+          "url": "/api/datafile?sdkKey={{testSdkKey}}&datafileFromKV=true",
+          "headers": {},
+          "validateJSON": true,
+          "expectedError": "kvDisabled"
+        }
+      ],
+      "metadataValidation": [
+        {
+          "name": "Response metadata validation for CDN source",
+          "url": "/api/datafile?sdkKey={{validSdkKey}}",
+          "headers": {},
+          "expectedResult": "success",
+          "validateMetadata": true,
+          "expectedSource": "cdn"
+        }
+      ]
+    }
+  }
+} 
