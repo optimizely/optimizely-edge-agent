@@ -2211,16 +2211,13 @@ export class ApiRouter {
       } else if (requestContext?.configMetadata && !requestContext.configMetadata.sdkKeyFrom && sdkKey) {
          requestContext.configMetadata.sdkKey = sdkKey;
          requestContext.configMetadata.sdkKeyFrom = 'body'; 
-      }
-      
-      // Check for trimmedDecisions parameter in body, URL, or header
-      const headerTrimmedDecisions = headers['x-optimizely-trimmed-decisions']; // Use lowercased map
-      const trimmedDecisions = 
-        requestBody?.trimmedDecisions === true || 
-        urlParams.trimmedDecisions === 'true' || 
-        headerTrimmedDecisions === 'true';
-      
-      this.logger.debug(`${this.logPrefix} Decision parameters:`, {
+              }
+        
+        // Get trimmedDecisions from ConfigurationService (respects defaults and precedence)
+        const config = this.configService.getConfig();
+        const trimmedDecisions = config.trimmedDecisions ?? this.configService.getSettings().defaultTrimmedDecisions;
+        
+        this.logger.debug(`${this.logPrefix} Decision parameters:`, {
         userId: finalUserId,
         flagKey,
         attributeCount: Object.keys(attributes).length,
@@ -2251,15 +2248,52 @@ export class ApiRouter {
           requestContext.configMetadata.decideOptions = decideOptionsArr;
         }
         
+        // Extract forced decisions from configuration and prepare user context
+        const config = this.configService.getConfig();
+        let userContextForcedDecisions: Record<string, { variationKey: string }> = {};
+        
+        if (config.forcedDecisions) {
+          // Convert configuration forced decisions to the format expected by DecisionService
+          if (Array.isArray(config.forcedDecisions)) {
+            // Array format: [{ flagKey: "flag1", variationKey: "var1" }, ...]
+            for (const decision of config.forcedDecisions) {
+              if (decision.flagKey && decision.variationKey) {
+                userContextForcedDecisions[decision.flagKey] = { variationKey: decision.variationKey };
+              }
+            }
+          } else if (typeof config.forcedDecisions === 'object') {
+            // Object format: { "flag1": { "variationKey": "var1" }, ... }
+            for (const [flagKey, decision] of Object.entries(config.forcedDecisions)) {
+              if (decision && typeof decision === 'object' && (decision as any).variationKey) {
+                userContextForcedDecisions[flagKey] = { variationKey: (decision as any).variationKey };
+              }
+            }
+          }
+          
+          if (Object.keys(userContextForcedDecisions).length > 0) {
+            this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Processed forced decisions from config:`, {
+              flagCount: Object.keys(userContextForcedDecisions).length,
+              flags: Object.keys(userContextForcedDecisions)
+            });
+          }
+        }
+        
         // Pass sdkKey as an option
         const options: any = sdkKey ? { sdkKey } : {};
         if (decideOptionsArr.length > 0) {
           options.decideOptions = decideOptionsArr;
         }
-        const decision = await this.decisionService.getDecision(
-          finalUserId,
-          flagKey,
+        
+        // Create extended user context with forced decisions
+        const extendedUserContext: any = {
+          userId: finalUserId,
           attributes,
+          forcedDecisions: userContextForcedDecisions
+        };
+        
+        const decision = await this.decisionService.decide(
+          flagKey,
+          extendedUserContext,
           options
         );
         
@@ -2561,12 +2595,9 @@ export class ApiRouter {
       const attributes = requestBody?.attributes || {};
       const sdkKey = requestBody?.sdkKey || urlParams.sdkKey || requestAdapter.getHeader('X-Optimizely-SDK-Key');
       
-      // Check for trimmedDecisions parameter
-      const headerTrimmedDecisions = requestAdapter.getHeader('X-Optimizely-Trimmed-Decisions');
-      const trimmedDecisions = 
-        requestBody?.trimmedDecisions === true || 
-        urlParams.trimmedDecisions === 'true' || 
-        headerTrimmedDecisions === 'true';
+      // Get trimmedDecisions from ConfigurationService (respects defaults and precedence)
+      const config = this.configService.getConfig();
+      const trimmedDecisions = config.trimmedDecisions ?? this.configService.getSettings().defaultTrimmedDecisions;
       
       this.logger.debug(`${this.logPrefix} Decide-all parameters:`, {
         userId: finalUserId,
@@ -2860,12 +2891,9 @@ export class ApiRouter {
         requestContext.configMetadata.flagKeysFrom = 'body'; // Default to body if no other more specific source was set
       }
       
-      // Check for trimmedDecisions parameter
-      const headerTrimmedDecisions = requestAdapter.getHeader('X-Optimizely-Trimmed-Decisions');
-      const trimmedDecisions = 
-        requestBody?.trimmedDecisions === true || 
-        urlParams.trimmedDecisions === 'true' || 
-        headerTrimmedDecisions === 'true';
+      // Get trimmedDecisions from ConfigurationService (respects defaults and precedence)
+      const config = this.configService.getConfig();
+      const trimmedDecisions = config.trimmedDecisions ?? this.configService.getSettings().defaultTrimmedDecisions;
       
       this.logger.debug(`${this.logPrefix} Decide-for-keys parameters:`, {
         userId: finalUserId,

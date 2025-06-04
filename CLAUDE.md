@@ -1,0 +1,1 @@
+- Never restart a node js server or wrangler dev server. Ask me if you need to restart any server as they are outside your context.

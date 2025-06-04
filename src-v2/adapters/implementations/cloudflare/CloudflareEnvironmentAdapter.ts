@@ -6,6 +6,17 @@ export type CloudflareEnv = Record<string, any> & {
   // Example: Add specific known binding types for better type safety
   // MY_KV_NAMESPACE: KVNamespace;
   // MY_VARIABLE: string;
+  
+  // Metrics configuration environment variables
+  OPTIMIZELY_METRICS_ENABLED?: string;
+  OPTIMIZELY_METRICS_PREFIX?: string;
+  OPTIMIZELY_METRICS_SAMPLING_RATE?: string;
+  OPTIMIZELY_METRICS_MAX_DIMENSIONS?: string;
+  OPTIMIZELY_METRICS_ENABLE_HISTOGRAMS?: string;
+  OPTIMIZELY_METRICS_GLOBAL_DIMENSIONS?: string; // JSON string of key-value pairs
+  
+  // Analytics Engine binding
+  ANALYTICS_ENGINE?: any;
 };
 
 // Define a type for the Cloudflare ExecutionContext

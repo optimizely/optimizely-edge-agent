@@ -7,6 +7,7 @@ import {
   TimerMetric
 } from "../../interfaces/IMetricsAdapter";
 import { ILoggerAdapter } from "../../interfaces/ILoggerAdapter";
+import { IEnvironmentAdapter } from "../../interfaces/IEnvironmentAdapter";
 
 /**
  * Cloudflare-specific implementation of IMetricsAdapter.
@@ -21,24 +22,35 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
   private analyticsEngine: any | null;
   private globalDimensions: MetricTags = {};
   private configuration: MetricsConfiguration;
+  private readonly environmentAdapter?: IEnvironmentAdapter;
 
   /**
    * Creates an instance of CloudflareMetricsAdapter.
    * @param logger - The logger adapter for logging metrics operations.
-   * @param prefix - Optional prefix for all metric names.
+   * @param prefix - Optional prefix for all metric names (can be overridden by env var).
    * @param analyticsEngine - Optional reference to Cloudflare analytics engine.
    * @param config - Optional additional configuration.
+   * @param environmentAdapter - Optional environment adapter to read configuration from env vars.
    */
   constructor(
     logger: ILoggerAdapter,
     prefix: string = 'optimizely_edge_',
     analyticsEngine: any = null,
-    config?: Partial<MetricsConfiguration>
+    config?: Partial<MetricsConfiguration>,
+    environmentAdapter?: IEnvironmentAdapter
   ) {
     this.logger = logger;
-    this.prefix = prefix;
+    this.environmentAdapter = environmentAdapter;
+    
+    // Read configuration from environment variables if available
+    const envConfig = this.readEnvironmentConfiguration();
+    
+    // Determine final prefix (env var takes precedence)
+    this.prefix = envConfig.prefix || prefix;
     this.analyticsEngine = analyticsEngine;
-    this.enabled = !!analyticsEngine;
+    
+    // Determine if metrics are enabled (env var takes precedence)
+    this.enabled = envConfig.enabled !== undefined ? envConfig.enabled : !!analyticsEngine;
     
     // Default configuration
     this.configuration = {
@@ -47,10 +59,11 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
       defaultSamplingRate: 1.0,
       maxDimensions: 20,
       enableHistograms: true,
-      enabled: this.enabled
+      enabled: this.enabled,
+      ...envConfig // Apply environment configuration
     };
     
-    // Apply custom configuration if provided
+    // Apply custom configuration if provided (takes highest precedence)
     if (config) {
       this.updateConfiguration(config);
     }
@@ -58,8 +71,83 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
     if (!this.enabled) {
       this.logger.warn(`[CloudflareMetricsAdapter] Initialized without an analytics engine. Metrics will be logged but not recorded.`);
     } else {
-      this.logger.info(`[CloudflareMetricsAdapter] Initialized with prefix: ${this.prefix}`);
+      this.logger.info(`[CloudflareMetricsAdapter] Initialized with prefix: ${this.prefix}, enabled: ${this.enabled}`);
     }
+  }
+
+  /**
+   * Reads metrics configuration from environment variables.
+   * @returns Partial metrics configuration from environment variables.
+   */
+  private readEnvironmentConfiguration(): Partial<MetricsConfiguration> {
+    if (!this.environmentAdapter) {
+      return {};
+    }
+
+    const config: Partial<MetricsConfiguration> = {};
+
+    try {
+      // Read enabled flag
+      const enabledVar = this.environmentAdapter.getVariable('OPTIMIZELY_METRICS_ENABLED');
+      if (enabledVar !== undefined) {
+        config.enabled = enabledVar.toLowerCase() === 'true';
+      }
+
+      // Read prefix
+      const prefixVar = this.environmentAdapter.getVariable('OPTIMIZELY_METRICS_PREFIX');
+      if (prefixVar !== undefined) {
+        config.prefix = prefixVar;
+      }
+
+      // Read sampling rate
+      const samplingRateVar = this.environmentAdapter.getVariable('OPTIMIZELY_METRICS_SAMPLING_RATE');
+      if (samplingRateVar !== undefined) {
+        const samplingRate = parseFloat(samplingRateVar);
+        if (!isNaN(samplingRate) && samplingRate >= 0 && samplingRate <= 1) {
+          config.defaultSamplingRate = samplingRate;
+        } else {
+          this.logger.warn(`[CloudflareMetricsAdapter] Invalid sampling rate in env var: ${samplingRateVar}. Using default.`);
+        }
+      }
+
+      // Read max dimensions
+      const maxDimensionsVar = this.environmentAdapter.getVariable('OPTIMIZELY_METRICS_MAX_DIMENSIONS');
+      if (maxDimensionsVar !== undefined) {
+        const maxDimensions = parseInt(maxDimensionsVar, 10);
+        if (!isNaN(maxDimensions) && maxDimensions > 0) {
+          config.maxDimensions = maxDimensions;
+        } else {
+          this.logger.warn(`[CloudflareMetricsAdapter] Invalid max dimensions in env var: ${maxDimensionsVar}. Using default.`);
+        }
+      }
+
+      // Read enable histograms
+      const enableHistogramsVar = this.environmentAdapter.getVariable('OPTIMIZELY_METRICS_ENABLE_HISTOGRAMS');
+      if (enableHistogramsVar !== undefined) {
+        config.enableHistograms = enableHistogramsVar.toLowerCase() === 'true';
+      }
+
+      // Read global dimensions
+      const globalDimensionsVar = this.environmentAdapter.getVariable('OPTIMIZELY_METRICS_GLOBAL_DIMENSIONS');
+      if (globalDimensionsVar !== undefined) {
+        try {
+          const globalDimensions = JSON.parse(globalDimensionsVar);
+          if (typeof globalDimensions === 'object' && globalDimensions !== null) {
+            config.globalDimensions = globalDimensions;
+          } else {
+            this.logger.warn(`[CloudflareMetricsAdapter] Invalid global dimensions in env var: must be a JSON object. Using default.`);
+          }
+        } catch (error) {
+          this.logger.warn(`[CloudflareMetricsAdapter] Failed to parse global dimensions from env var: ${error}. Using default.`);
+        }
+      }
+
+      this.logger.debug(`[CloudflareMetricsAdapter] Environment configuration loaded:`, config);
+    } catch (error) {
+      this.logger.warn(`[CloudflareMetricsAdapter] Error reading environment configuration: ${error}`);
+    }
+
+    return config;
   }
 
   /**

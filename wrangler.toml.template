@@ -22,4 +22,5 @@ analytics_engine_datasets = [
  # Supported: "debug, debugExt, info, error"
  LOG_LEVEL = "debug" 
  #TESTING_FLAG_DEBUG = "INDIVIDUAL FX FLAG KEY FOR TESTING GOES HERE"
- 
+ OPTIMIZELY_DISABLE_AUTO_FLAG_EXTRACTION = "false"
+#ENVIRONMENT = "production"

@@ -449,6 +449,21 @@ export class ConfigurationService implements IConfigurationService {
 			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse attributes header: ${e}`);
 		}
 		
+		// Forced Decisions
+		try {
+			const forcedDecisionsHeader = this.getHeader(request, 'x-optimizely-forced-decisions', requestId);
+			if (forcedDecisionsHeader) {
+				const parsedForcedDecisions = JSON.parse(forcedDecisionsHeader);
+				if (typeof parsedForcedDecisions === 'object' && parsedForcedDecisions !== null) {
+					values.forcedDecisions = parsedForcedDecisions;
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FORCED DECISIONS FOUND - Parsed and set`);
+					if (setSource) this.setMetadataSourceField('forcedDecisions', 'header');
+				}
+			}
+		} catch (e) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse forced decisions header: ${e}`);
+		}
+		
 		// === Boolean Parameters ===
 		// Feature Experimentation (FEX)
 		const fexHeader = this.getHeader(request, 'x-optimizely-enable-fex', requestId);
@@ -687,6 +702,20 @@ export class ConfigurationService implements IConfigurationService {
 			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse attributes from query params: ${e}`);
 		}
 		
+		// Forced Decisions
+		try {
+			const forcedDecisionsParam = getParamCaseInsensitive('forced_decisions');
+			if (forcedDecisionsParam) {
+				const parsedForcedDecisions = JSON.parse(forcedDecisionsParam);
+				if (typeof parsedForcedDecisions === 'object' && parsedForcedDecisions !== null) {
+					values.forcedDecisions = parsedForcedDecisions;
+					if (setSource) this.setMetadataSourceField('forcedDecisions', 'query');
+				}
+			}
+		} catch (e) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse forced decisions from query params: ${e}`);
+		}
+		
 		// === Boolean parameters ===
 		const setQueryBoolParam = (paramName: keyof OptimizelyConfigOptions, queryName: string) => {
 			const queryValue = getParamCaseInsensitive(queryName);
@@ -823,6 +852,13 @@ export class ConfigurationService implements IConfigurationService {
 			if (attributesValue !== undefined && typeof attributesValue === 'object' && attributesValue !== null) {
 				values.attributes = attributesValue;
 				if (setSource) this.setMetadataSourceField('attributes', 'body');
+			}
+			
+			// Forced Decisions
+			const forcedDecisionsValue = getBodyPropCaseInsensitive('forced_decisions');
+			if (forcedDecisionsValue !== undefined && typeof forcedDecisionsValue === 'object' && forcedDecisionsValue !== null) {
+				values.forcedDecisions = forcedDecisionsValue;
+				if (setSource) this.setMetadataSourceField('forcedDecisions', 'body');
 			}
 			
 			// === Boolean Parameters ===

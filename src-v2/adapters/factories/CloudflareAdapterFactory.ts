@@ -92,6 +92,7 @@ export class CloudflareAdapterFactory {
 
   createMetricsAdapter(): IMetricsAdapter {
     const logger = this.getLoggerAdapter();
+    const environmentAdapter = this.getEnvironmentAdapter();
     
     // Get analytics engine if available
     let analyticsEngine = null;
@@ -99,6 +100,12 @@ export class CloudflareAdapterFactory {
       analyticsEngine = this.inputs.env.ANALYTICS_ENGINE;
     }
     
-    return new CloudflareMetricsAdapter(logger, 'optimizely_edge_', analyticsEngine);
+    return new CloudflareMetricsAdapter(
+      logger, 
+      'optimizely_edge_', 
+      analyticsEngine, 
+      undefined, // config - let environment variables take precedence
+      environmentAdapter // pass environment adapter for env var configuration
+    );
   }
 } 
