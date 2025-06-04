@@ -117,6 +117,8 @@ export class DecisionService implements IDecisionService {
   private clientCachingEnabled: boolean = true; // Controls if clients are cached (for testing)
   private datafileUpdateTimers: Map<string, number> = new Map(); // Track datafile update times
   private idMapper: OptimizelyIdMapper; // Utility for mapping between flag keys and experiment IDs
+  private optimizelyConfigCache: Map<string, { config: any, expiry: number }> = new Map(); // Cache for OptimizelyConfig
+  private optimizelyConfigCacheTtl = 60 * 60 * 1000; // 60 minutes default TTL in milliseconds
 
   /**
    * Creates an instance of the DecisionService.
@@ -207,12 +209,21 @@ export class DecisionService implements IDecisionService {
     const now = Date.now();
     let userContextsRemoved = 0;
     let clientsRemoved = 0;
+    let configsRemoved = 0;
     
     // Clean up user context cache based on TTL
     this.userContextCache.forEach((entry, key) => {
       if (now - entry.timestamp > this.userContextCacheTtl) {
         this.userContextCache.delete(key);
         userContextsRemoved++;
+      }
+    });
+    
+    // Clean up OptimizelyConfig cache based on expiry
+    this.optimizelyConfigCache.forEach((entry, key) => {
+      if (entry.expiry < now) {
+        this.optimizelyConfigCache.delete(key);
+        configsRemoved++;
       }
     });
     
@@ -239,6 +250,10 @@ export class DecisionService implements IDecisionService {
         component: this.componentName,
         cache_type: 'client' 
       });
+      this.metrics.setGauge('cache_size', this.optimizelyConfigCache.size, { 
+        component: this.componentName,
+        cache_type: 'optimizely_config' 
+      });
       this.metrics.incrementCounter('cache_items_removed', userContextsRemoved, {
         component: this.componentName,
         cache_type: 'user_context'
@@ -247,6 +262,10 @@ export class DecisionService implements IDecisionService {
         component: this.componentName,
         cache_type: 'client'
       });
+      this.metrics.incrementCounter('cache_items_removed', configsRemoved, {
+        component: this.componentName,
+        cache_type: 'optimizely_config'
+      });
     }
     
     // Log cleanup results with structured data
@@ -254,7 +273,9 @@ export class DecisionService implements IDecisionService {
       userContextCacheSize: this.userContextCache.size,
       userContextsRemoved,
       clientCacheSize: Object.keys(this.clientCache).length,
-      clientsRemoved
+      clientsRemoved,
+      optimizelyConfigCacheSize: this.optimizelyConfigCache.size,
+      configsRemoved
     });
     
     if (cleanupTimer) {
@@ -1789,6 +1810,112 @@ export class DecisionService implements IDecisionService {
     } finally {
       if (forcedVarTimer) {
         forcedVarTimer.stop();
+      }
+    }
+  }
+
+  /**
+   * Retrieves the OptimizelyConfig for the given SDK key.
+   * This provides access to feature flags, experiments, audiences, and other project configuration.
+   * @param sdkKey - The Optimizely SDK key.
+   * @returns A promise resolving to the OptimizelyConfig object or null if not available.
+   */
+  async getOptimizelyConfig(sdkKey: string): Promise<any | null> {
+    const configTimer = this.metrics?.startTimer('optimizely_config_fetch_duration', {
+      sdkKey: this.maskSensitiveData(sdkKey)
+    });
+
+    try {
+      // Check if sdkKey is provided
+      if (!sdkKey) {
+        this.logger.warn(`${this.LOG_PREFIX} No SDK key provided for getOptimizelyConfig`);
+        return null;
+      }
+
+      // Check cache first
+      const cacheKey = `optimizely_config:${sdkKey}`;
+      const cached = this.optimizelyConfigCache.get(cacheKey);
+      const now = Date.now();
+      
+      if (cached && cached.expiry > now) {
+        this.logger.debug(`${this.LOG_PREFIX} Returning cached OptimizelyConfig for SDK key: ${this.maskSensitiveData(sdkKey)}`);
+        
+        if (this.metrics) {
+          this.metrics.incrementCounter('optimizely_config_cache_hits', 1, {
+            sdkKey: this.maskSensitiveData(sdkKey)
+          });
+        }
+        
+        return cached.config;
+      }
+
+      this.logger.debug(`${this.LOG_PREFIX} Retrieving OptimizelyConfig for SDK key: ${this.maskSensitiveData(sdkKey)}`);
+
+      // Get the Optimizely client
+      const client = await this.getOptimizelyClient(sdkKey);
+      if (!client) {
+        this.logger.warn(`${this.LOG_PREFIX} No client available for SDK key: ${this.maskSensitiveData(sdkKey)}`);
+        return null;
+      }
+
+      // Get the OptimizelyConfig from the client
+      try {
+        const config = client.getOptimizelyConfig();
+        
+        if (!config) {
+          this.logger.warn(`${this.LOG_PREFIX} OptimizelyConfig is null for SDK key: ${this.maskSensitiveData(sdkKey)}`);
+          return null;
+        }
+
+        // Get cache TTL from environment variable or use default
+        const ttlMinutes = parseInt(process.env.OPTIMIZELY_CONFIG_CACHE_TTL || '60', 10);
+        const ttlMs = ttlMinutes * 60 * 1000;
+        
+        // Cache the config
+        this.optimizelyConfigCache.set(cacheKey, {
+          config,
+          expiry: now + ttlMs
+        });
+
+        this.logger.debug(`${this.LOG_PREFIX} Successfully retrieved and cached OptimizelyConfig`, {
+          sdkKey: this.maskSensitiveData(sdkKey),
+          featuresCount: Object.keys(config.featuresMap || {}).length,
+          experimentsCount: Object.keys(config.experimentsMap || {}).length,
+          audiencesCount: (config.audiences || []).length,
+          eventsCount: (config.events || []).length,
+          revision: config.revision,
+          cacheTtlMinutes: ttlMinutes
+        });
+
+        // Record metrics
+        if (this.metrics) {
+          this.metrics.incrementCounter('optimizely_config_requests', 1, {
+            result: 'success',
+            sdkKey: this.maskSensitiveData(sdkKey)
+          });
+          this.metrics.incrementCounter('optimizely_config_cache_misses', 1, {
+            sdkKey: this.maskSensitiveData(sdkKey)
+          });
+        }
+
+        return config;
+      } catch (error) {
+        this.logger.error(`${this.LOG_PREFIX} Error retrieving OptimizelyConfig:`, error as Error, {
+          sdkKey: this.maskSensitiveData(sdkKey)
+        });
+        
+        if (this.metrics) {
+          this.metrics.incrementCounter('optimizely_config_requests', 1, {
+            result: 'error',
+            error_type: error instanceof Error ? error.name : 'unknown'
+          });
+        }
+        
+        return null;
+      }
+    } finally {
+      if (configTimer) {
+        configTimer.stop();
       }
     }
   }

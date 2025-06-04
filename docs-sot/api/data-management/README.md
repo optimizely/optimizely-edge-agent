@@ -7,6 +7,7 @@ Manage Optimizely datafiles, flag keys, and Edge Agent information.
 Data management endpoints provide:
 - **Datafile operations** - Fetch, update, and refresh from CDN
 - **Flag key management** - Control available feature flags
+- **Configuration access** - Query OptimizelyConfig dynamically
 - **SDK information** - Edge Agent metadata and version
 - **KV storage control** - Manage persistent storage
 
@@ -16,6 +17,7 @@ Data management endpoints provide:
 |----------|---------|-------------|---------------|
 | [`/api/datafile`](./datafile.md) | GET/PUT/POST | Datafile operations | Admin for PUT/POST |
 | [`/api/flagkeys`](./flagkeys.md) | GET/PUT/POST | Flag key management | Admin for PUT/POST |
+| [`/api/config`](./config.md) | GET | OptimizelyConfig with queries | Admin Token |
 | [`/api/sdk`](./sdk-info.md) | GET | Edge Agent information | None |
 
 ## Key Concepts

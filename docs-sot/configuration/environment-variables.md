@@ -18,6 +18,19 @@ Environment variables provide deployment-wide configuration for the Optimizely E
 export OPTIMIZELY_SDK_KEY="your-project-sdk-key"
 ```
 
+### ADMIN_TOKEN
+
+**Type**: `string`  
+**Required**: For admin endpoints  
+**Description**: Admin authentication token for secure operations  
+**Security**: Keep this value secret and use a strong, unique token  
+**Used by**: Config endpoint (`/api/config`), datafile updates, flag key management
+
+```bash
+# Example
+export ADMIN_TOKEN="your-secure-admin-token"
+```
+
 ## Core Configuration Variables
 
 ### OPTIMIZELY_ENVIRONMENT
@@ -112,6 +125,28 @@ export CACHE_TIME_SECONDS="0"    # Disable caching
 
 ```bash
 export DATAFILE_CACHE_TIME="3600" # 1 hour
+```
+
+### OPTIMIZELY_CONFIG_CACHE_TTL
+
+**Type**: `number`  
+**Default**: `60` (minutes)  
+**Description**: OptimizelyConfig cache TTL in minutes
+
+```bash
+export OPTIMIZELY_CONFIG_CACHE_TTL="120" # 2 hours
+export OPTIMIZELY_CONFIG_CACHE_TTL="0"   # Disable caching
+```
+
+### OPTIMIZELY_CONFIG_RESPONSE_SIZE_LIMIT
+
+**Type**: `number`  
+**Default**: `0` (unlimited)  
+**Description**: Maximum response size for /api/config endpoint in bytes
+
+```bash
+export OPTIMIZELY_CONFIG_RESPONSE_SIZE_LIMIT="5242880" # 5MB limit
+export OPTIMIZELY_CONFIG_RESPONSE_SIZE_LIMIT="0"       # No limit
 ```
 
 ### ENABLE_KV_CACHE

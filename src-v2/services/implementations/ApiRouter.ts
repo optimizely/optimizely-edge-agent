@@ -236,6 +236,8 @@ export class ApiRouter {
         result = await this.handleFlagKeysRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}sdk`)) {
         result = await this.handleSdkInfoRequest(requestAdapter, requestId);
+      } else if (path.endsWith(`${this.apiPathPrefix}config`)) {
+        result = await this.handleConfigRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}variations`)) {
         result = await this.handleVariationsRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}decide`)) {
@@ -984,6 +986,120 @@ export class ApiRouter {
         error_type: 'internal_error'
       });
       return this.createErrorResponse(requestId, 500, "Error processing SDK info request", method);
+    }
+  }
+
+  /**
+   * Handles requests to the config API endpoint.
+   * Provides dynamic access to OptimizelyConfig data with flexible querying.
+   * 
+   * @param requestAdapter - The request adapter
+   * @param requestId - The unique request ID for tracking
+   * @returns A promise resolving to the ResponseResult
+   * @private
+   */
+  private async handleConfigRequest(
+    requestAdapter: IRequestAdapter,
+    requestId: string
+  ): Promise<ResponseResult> {
+    const url = requestAdapter.getUrl();
+    const method = requestAdapter.getMethod();
+    const params = this.parseUrlParams(url.search);
+    
+    // Only support GET requests
+    if (method !== 'GET') {
+      return this.createJsonResponse(
+        requestId, 
+        405, 
+        { error: "Method not allowed. Config endpoint supports GET only." }, 
+        method
+      );
+    }
+    
+    // Check admin authentication
+    const isAdmin = await this.isAdminRequest(requestAdapter);
+    if (!isAdmin) {
+      this.metrics?.incrementCounter('api_errors_total', 1, {
+        endpoint: `${this.apiPathPrefix}config`,
+        method,
+        error_type: 'unauthorized'
+      });
+      return this.createJsonResponse(
+        requestId, 
+        401, 
+        { error: "Admin token required for config endpoint" }, 
+        method
+      );
+    }
+    
+    // Get SDK key from header or query
+    const sdkKeyHeader = requestAdapter.getHeader('x-optimizely-sdk-key');
+    const sdkKey = sdkKeyHeader || params.sdkKey || '';
+    
+    if (!sdkKey) {
+      this.metrics?.incrementCounter('api_errors_total', 1, {
+        endpoint: `${this.apiPathPrefix}config`,
+        method,
+        error_type: 'missing_sdk_key'
+      });
+      return this.createJsonResponse(
+        requestId, 
+        400, 
+        { error: "SDK key is required" }, 
+        method
+      );
+    }
+
+    try {
+      // Get OptimizelyConfig from DecisionService
+      if (!this.decisionService || !this.decisionService.getOptimizelyConfig) {
+        return this.createJsonResponse(
+          requestId, 
+          503, 
+          { error: "Decision service not available" }, 
+          method
+        );
+      }
+
+      const optimizelyConfig = await this.decisionService.getOptimizelyConfig(sdkKey);
+      if (!optimizelyConfig) {
+        this.metrics?.incrementCounter('api_errors_total', 1, {
+          endpoint: `${this.apiPathPrefix}config`,
+          method,
+          error_type: 'config_not_found'
+        });
+        return this.createJsonResponse(
+          requestId, 
+          404, 
+          { error: "Configuration not found for the provided SDK key" }, 
+          method
+        );
+      }
+
+      // Process dynamic query parameters
+      const result = this.processConfigQuery(optimizelyConfig, params, requestId);
+      
+      // Track successful config request
+      this.metrics?.incrementCounter('config_requests_total', 1, {
+        method,
+        query_type: this.getQueryType(params)
+      });
+      
+      return this.createJsonResponse(requestId, 200, result, method);
+      
+    } catch (error) {
+      this.logger.error(`${this.logPrefix} [REQUEST:${requestId}] Error in config request:`, error);
+      this.metrics?.incrementCounter('api_errors_total', 1, {
+        endpoint: `${this.apiPathPrefix}config`,
+        method,
+        error_type: 'internal_error'
+      });
+      return this.createJsonResponse(
+        requestId, 
+        500, 
+        { error: "Failed to retrieve configuration" }, 
+        method
+      );
     }
   }
 
@@ -4086,5 +4202,378 @@ export class ApiRouter {
     if (typeof value === 'boolean') return value;
     if (typeof value === 'string') return value.toLowerCase() === 'true';
     return defaultValue;
+  }
+
+  /**
+   * Processes query parameters to generate dynamic config response.
+   * 
+   * @param config - The OptimizelyConfig object
+   * @param params - Query parameters from the request
+   * @param requestId - Request ID for logging
+   * @returns The processed configuration response
+   * @private
+   */
+  private processConfigQuery(config: any, params: any, requestId: string): any {
+    const result: any = {};
+    
+    this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Processing config query with params:`, params);
+    
+    // Get response size limit from environment or use 0 (unlimited)
+    const responseSizeLimit = parseInt(process.env.OPTIMIZELY_CONFIG_RESPONSE_SIZE_LIMIT || '0', 10);
+    
+    // Handle metadata (include by default unless explicitly excluded)
+    if (params.metadata !== 'false') {
+      result.metadata = {
+        revision: config.revision,
+        sdkKey: config.sdkKey,
+        environmentKey: config.environmentKey,
+        timestamp: new Date().toISOString(),
+        requestId: requestId
+      };
+    }
+
+    // Handle summary mode (returns counts only)
+    if (params.summary === 'true') {
+      return {
+        ...result,
+        summary: {
+          totalFeatures: Object.keys(config.featuresMap || {}).length,
+          totalExperiments: Object.keys(config.experimentsMap || {}).length,
+          totalAttributes: (config.attributes || []).length,
+          totalAudiences: (config.audiences || []).length,
+          totalEvents: (config.events || []).length
+        }
+      };
+    }
+
+    // Handle lookup operations
+    if (params.lookup && params.value && params.type) {
+      return {
+        ...result,
+        lookup: this.performLookup(config, params, requestId)
+      };
+    }
+
+    // Handle reverse lookup operations
+    if (params.reverseLookup && params.key && params.type) {
+      return {
+        ...result,
+        reverseLookup: this.performReverseLookup(config, params, requestId)
+      };
+    }
+
+    // Handle specific resource requests
+    if (params.featureKey) {
+      const feature = config.featuresMap?.[params.featureKey];
+      return feature ? 
+        { ...result, feature: this.formatFeature(feature, params) } : 
+        { ...result, error: `Feature '${params.featureKey}' not found` };
+    }
+
+    if (params.experimentKey) {
+      const experiment = config.experimentsMap?.[params.experimentKey];
+      return experiment ? 
+        { ...result, experiment: this.formatExperiment(experiment, params) } : 
+        { ...result, error: `Experiment '${params.experimentKey}' not found` };
+    }
+
+    if (params.audienceId) {
+      const audience = (config.audiences || []).find((a: any) => a.id === params.audienceId);
+      return audience ? 
+        { ...result, audience } : 
+        { ...result, error: `Audience '${params.audienceId}' not found` };
+    }
+
+    if (params.eventKey) {
+      const event = (config.events || []).find((e: any) => e.key === params.eventKey);
+      return event ? 
+        { ...result, event } : 
+        { ...result, error: `Event '${params.eventKey}' not found` };
+    }
+
+    // Handle include/exclude logic for full response
+    const includeList = params.include ? 
+      params.include.split(',').map((s: string) => s.trim()) : 
+      ['features', 'experiments', 'attributes', 'audiences', 'events'];
+    const excludeList = params.exclude ? 
+      params.exclude.split(',').map((s: string) => s.trim()) : 
+      [];
+    
+    // Build response based on include/exclude
+    if (includeList.includes('features') && !excludeList.includes('features')) {
+      result.features = this.processFeatures(config.featuresMap, params, requestId);
+    }
+    
+    if (includeList.includes('experiments') && !excludeList.includes('experiments')) {
+      result.experiments = this.processExperiments(config.experimentsMap, params, requestId);
+    }
+    
+    if (includeList.includes('attributes') && !excludeList.includes('attributes')) {
+      result.attributes = config.attributes || [];
+    }
+    
+    if (includeList.includes('audiences') && !excludeList.includes('audiences')) {
+      result.audiences = config.audiences || [];
+    }
+    
+    if (includeList.includes('events') && !excludeList.includes('events')) {
+      result.events = config.events || [];
+    }
+
+    // Check response size if limit is set
+    if (responseSizeLimit > 0) {
+      const resultString = JSON.stringify(result);
+      if (resultString.length > responseSizeLimit) {
+        return {
+          error: "Response too large. Use filtering parameters to reduce size.",
+          availableFilters: ["include", "exclude", "summary", "format=minimal"],
+          responseSize: resultString.length,
+          sizeLimit: responseSizeLimit
+        };
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Performs lookup operations (key->object or id->object).
+   * 
+   * @param config - The OptimizelyConfig object
+   * @param params - Query parameters containing lookup, value, and type
+   * @param requestId - Request ID for logging
+   * @returns The lookup result or null if not found
+   * @private
+   */
+  private performLookup(config: any, params: any, requestId: string): any {
+    const { lookup, value, type } = params;
+    
+    this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Performing lookup: ${lookup}=${value} for type=${type}`);
+    
+    switch (type) {
+      case 'feature':
+        if (lookup === 'key') {
+          return config.featuresMap?.[value] || null;
+        }
+        if (lookup === 'id') {
+          const features = Object.values(config.featuresMap || {});
+          return features.find((f: any) => f.id === value) || null;
+        }
+        break;
+        
+      case 'experiment':
+        if (lookup === 'key') {
+          return config.experimentsMap?.[value] || null;
+        }
+        if (lookup === 'id') {
+          const experiments = Object.values(config.experimentsMap || {});
+          return experiments.find((e: any) => e.id === value) || null;
+        }
+        break;
+        
+      case 'audience':
+        if (lookup === 'id') {
+          return (config.audiences || []).find((a: any) => a.id === value) || null;
+        }
+        if (lookup === 'name') {
+          return (config.audiences || []).find((a: any) => a.name === value) || null;
+        }
+        break;
+        
+      case 'event':
+        if (lookup === 'key') {
+          return (config.events || []).find((e: any) => e.key === value) || null;
+        }
+        if (lookup === 'id') {
+          return (config.events || []).find((e: any) => e.id === value) || null;
+        }
+        break;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Performs reverse lookup operations (key->id or id->key).
+   * 
+   * @param config - The OptimizelyConfig object
+   * @param params - Query parameters containing reverseLookup, key, and type
+   * @param requestId - Request ID for logging
+   * @returns The reverse lookup result or null if not found
+   * @private
+   */
+  private performReverseLookup(config: any, params: any, requestId: string): any {
+    const { reverseLookup, key, type } = params;
+    
+    this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Performing reverse lookup: ${reverseLookup} for ${type} key=${key}`);
+    
+    switch (type) {
+      case 'feature':
+        const feature = config.featuresMap?.[key];
+        if (feature) {
+          return reverseLookup === 'id' ? feature.id : feature.key;
+        }
+        break;
+        
+      case 'experiment':
+        const experiment = config.experimentsMap?.[key];
+        if (experiment) {
+          return reverseLookup === 'id' ? experiment.id : experiment.key;
+        }
+        break;
+        
+      case 'audience':
+        const audience = (config.audiences || []).find((a: any) => 
+          reverseLookup === 'id' ? a.name === key : a.id === key
+        );
+        if (audience) {
+          return reverseLookup === 'id' ? audience.id : audience.name;
+        }
+        break;
+        
+      case 'event':
+        const event = (config.events || []).find((e: any) => 
+          reverseLookup === 'id' ? e.key === key : e.id === key
+        );
+        if (event) {
+          return reverseLookup === 'id' ? event.id : event.key;
+        }
+        break;
+    }
+    
+    return null;
+  }
+
+  /**
+   * Processes features based on format parameter.
+   * 
+   * @param featuresMap - The features map from OptimizelyConfig
+   * @param params - Query parameters containing format and exclude options
+   * @param requestId - Request ID for logging
+   * @returns The processed features object
+   * @private
+   */
+  private processFeatures(featuresMap: any, params: any, requestId: string): any {
+    if (!featuresMap) return {};
+    
+    const format = params.format || 'standard';
+    const excludeVariables = params.exclude?.includes('variablesMap');
+    const excludeExperiments = params.exclude?.includes('experimentsMap');
+    
+    switch (format) {
+      case 'minimal':
+        return Object.keys(featuresMap).reduce((acc: any, key: string) => {
+          acc[key] = {
+            id: featuresMap[key].id,
+            key: featuresMap[key].key
+          };
+          return acc;
+        }, {});
+        
+      case 'full':
+        return featuresMap;
+        
+      case 'standard':
+      default:
+        return Object.keys(featuresMap).reduce((acc: any, key: string) => {
+          const feature = { ...featuresMap[key] };
+          if (excludeVariables) delete feature.variablesMap;
+          if (excludeExperiments) delete feature.experimentsMap;
+          acc[key] = feature;
+          return acc;
+        }, {});
+    }
+  }
+
+  /**
+   * Processes experiments based on format parameter.
+   * 
+   * @param experimentsMap - The experiments map from OptimizelyConfig
+   * @param params - Query parameters containing format options
+   * @param requestId - Request ID for logging
+   * @returns The processed experiments object
+   * @private
+   */
+  private processExperiments(experimentsMap: any, params: any, requestId: string): any {
+    if (!experimentsMap) return {};
+    
+    const format = params.format || 'standard';
+    
+    switch (format) {
+      case 'minimal':
+        return Object.keys(experimentsMap).reduce((acc: any, key: string) => {
+          acc[key] = {
+            id: experimentsMap[key].id,
+            key: experimentsMap[key].key
+          };
+          return acc;
+        }, {});
+        
+      case 'full':
+        return experimentsMap;
+        
+      case 'standard':
+      default:
+        return experimentsMap;
+    }
+  }
+
+  /**
+   * Formats a single feature based on parameters.
+   * 
+   * @param feature - The feature object
+   * @param params - Query parameters
+   * @returns The formatted feature
+   * @private
+   */
+  private formatFeature(feature: any, params: any): any {
+    const format = params.format || 'standard';
+    
+    if (format === 'minimal') {
+      return {
+        id: feature.id,
+        key: feature.key
+      };
+    }
+    
+    return feature;
+  }
+
+  /**
+   * Formats a single experiment based on parameters.
+   * 
+   * @param experiment - The experiment object
+   * @param params - Query parameters
+   * @returns The formatted experiment
+   * @private
+   */
+  private formatExperiment(experiment: any, params: any): any {
+    const format = params.format || 'standard';
+    
+    if (format === 'minimal') {
+      return {
+        id: experiment.id,
+        key: experiment.key
+      };
+    }
+    
+    return experiment;
+  }
+
+  /**
+   * Helper method to determine query type for metrics.
+   * 
+   * @param params - Query parameters
+   * @returns The query type string
+   * @private
+   */
+  private getQueryType(params: any): string {
+    if (params.summary === 'true') return 'summary';
+    if (params.lookup) return 'lookup';
+    if (params.reverseLookup) return 'reverse_lookup';
+    if (params.featureKey) return 'feature_specific';
+    if (params.experimentKey) return 'experiment_specific';
+    if (params.include || params.exclude) return 'filtered';
+    return 'full';
   }
 } 

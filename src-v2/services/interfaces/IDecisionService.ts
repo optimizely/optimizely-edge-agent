@@ -167,4 +167,14 @@ export interface IDecisionService {
     userId: string,
     options?: { sdkKey?: string }
   ): Promise<boolean>;
+
+  /**
+   * Retrieves the OptimizelyConfig for the given SDK key.
+   * This provides access to feature flags, experiments, audiences, and other project configuration.
+   * @param sdkKey - The Optimizely SDK key.
+   * @returns A promise resolving to the OptimizelyConfig object or null if not available.
+   */
+  getOptimizelyConfig?(
+    sdkKey: string
+  ): Promise<any | null>;
 } 

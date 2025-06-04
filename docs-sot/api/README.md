@@ -129,6 +129,9 @@ List, update, or filter feature flag keys.
 #### [GET /api/sdk](./data-management/sdk-info.md)
 Get SDK and datafile information.
 
+#### [GET /api/config](./data-management/config.md)
+Get OptimizelyConfig with dynamic querying capabilities.
+
 #### [GET/PUT/POST /api/variations](./data-management/variations.md)
 Manage variations (GET returns 501 Not Implemented).
 

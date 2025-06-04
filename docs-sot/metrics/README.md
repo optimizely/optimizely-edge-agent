@@ -66,7 +66,8 @@ The Edge Agent includes platform-specific adapters:
 | `get_user_context_duration` | Timer | Time to get user context | component |
 | `fallback_decision_creation_duration` | Timer | Time to create fallback decision | component, reason |
 | `forced_variation_duration` | Timer | Time for forced variation operations | component, operation |
-| `cache_size` | Gauge | Current cache size | component |
+| `cache_size` | Gauge | Current cache size | component, cache_type |
+| `cache_items_removed` | Counter | Items removed during cache cleanup | component, cache_type |
 | `cache_size_limit` | Gauge | Cache size limit | component |
 | `cache_ttl_ms` | Gauge | Cache TTL in milliseconds | component |
 | `caching_enabled` | Gauge | Whether caching is enabled (1=yes, 0=no) | component |
@@ -86,6 +87,11 @@ The Edge Agent includes platform-specific adapters:
 | `flagkeys_count` | Histogram | Number of flag keys | endpoint, source |
 | `flagkeys_save_duration` | Timer | Time to save flag keys | - |
 | `cache_clear_duration` | Timer | Time to clear cache | - |
+| `config_requests_total` | Counter | Total config endpoint requests | method, query_type |
+| `optimizely_config_requests` | Counter | OptimizelyConfig retrieval attempts | result, sdkKey (masked) |
+| `optimizely_config_cache_hits` | Counter | Config cache hits | sdkKey (masked) |
+| `optimizely_config_cache_misses` | Counter | Config cache misses | sdkKey (masked) |
+| `optimizely_config_fetch_duration` | Timer | Time to fetch OptimizelyConfig | sdkKey (masked) |
 
 ### Edge Mode Metrics
 

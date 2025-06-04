@@ -2235,6 +2235,261 @@
 					"response": []
 				}
 			]
+		},
+		{
+			"name": "⚙️ Config Endpoint Tests",
+			"description": "Comprehensive tests for the /api/config endpoint with admin token authentication",
+			"item": [
+				{
+					"name": "01. Basic Operations",
+					"item": [
+						{
+							"name": "GET Basic Config - Full Response",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"// Basic response validation",
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Response is JSON\", function () {",
+											"    pm.response.to.be.json;",
+											"});",
+											"",
+											"pm.test(\"Response contains metadata\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.have.property('metadata');",
+											"    pm.expect(response.metadata).to.have.property('revision');",
+											"    pm.expect(response.metadata).to.have.property('sdkKey');",
+											"    pm.expect(response.metadata).to.have.property('timestamp');",
+											"});",
+											"",
+											"pm.test(\"Response contains config data\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.have.property('features');",
+											"    pm.expect(response).to.have.property('experiments');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Optimizely-Enable-FEX",
+										"value": "true",
+										"description": "✅ REQUIRED: Enable Optimizely processing"
+									},
+									{
+										"key": "X-Optimizely-Admin-Token",
+										"value": "{{adminToken}}",
+										"description": "🔒 REQUIRED: Admin token for config access"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/config?sdkKey={{sdkKey}}",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"config"
+									],
+									"query": [
+										{
+											"key": "sdkKey",
+											"value": "{{sdkKey}}",
+											"description": "✅ REQUIRED: Your Optimizely SDK key"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GET Basic Config - Summary Only",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Summary response structure\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.have.property('summary');",
+											"    pm.expect(response.summary).to.have.property('totalFeatures');",
+											"    pm.expect(response.summary).to.have.property('totalExperiments');",
+											"    pm.expect(response.summary).to.have.property('totalAttributes');",
+											"    pm.expect(response.summary).to.have.property('totalAudiences');",
+											"    pm.expect(response.summary).to.have.property('totalEvents');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Optimizely-Enable-FEX",
+										"value": "true",
+										"description": "✅ REQUIRED: Enable Optimizely processing"
+									},
+									{
+										"key": "X-Optimizely-Admin-Token",
+										"value": "{{adminToken}}",
+										"description": "🔒 REQUIRED: Admin token for config access"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/config?sdkKey={{sdkKey}}&summary=true",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"config"
+									],
+									"query": [
+										{
+											"key": "sdkKey",
+											"value": "{{sdkKey}}",
+											"description": "✅ REQUIRED: Your Optimizely SDK key"
+										},
+										{
+											"key": "summary",
+											"value": "true",
+											"description": "✅ Return only counts instead of full data"
+										}
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GET Basic Config - SDK Key in Header",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Response contains config data\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.have.property('features');",
+											"    pm.expect(response).to.have.property('experiments');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Optimizely-Enable-FEX",
+										"value": "true",
+										"description": "✅ REQUIRED: Enable Optimizely processing"
+									},
+									{
+										"key": "X-Optimizely-Admin-Token",
+										"value": "{{adminToken}}",
+										"description": "🔒 REQUIRED: Admin token for config access"
+									},
+									{
+										"key": "X-Optimizely-SDK-Key",
+										"value": "{{sdkKey}}",
+										"description": "✅ Alternative: SDK key via header"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/config",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"config"
+									]
+								}
+							},
+							"response": []
+						},
+						{
+							"name": "GET Basic Config - No Metadata",
+							"event": [
+								{
+									"listen": "test",
+									"script": {
+										"exec": [
+											"pm.test(\"Status code is 200\", function () {",
+											"    pm.response.to.have.status(200);",
+											"});",
+											"",
+											"pm.test(\"Response excludes metadata\", function () {",
+											"    const response = pm.response.json();",
+											"    pm.expect(response).to.not.have.property('metadata');",
+											"});"
+										],
+										"type": "text/javascript"
+									}
+								}
+							],
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "X-Optimizely-Enable-FEX",
+										"value": "true",
+										"description": "✅ REQUIRED: Enable Optimizely processing"
+									},
+									{
+										"key": "X-Optimizely-Admin-Token",
+										"value": "{{adminToken}}",
+										"description": "🔒 REQUIRED: Admin token for config access"
+									}
+								],
+								"url": {
+									"raw": "{{baseUrl}}/api/config?sdkKey={{sdkKey}}&metadata=false",
+									"host": [
+										"{{baseUrl}}"
+									],
+									"path": [
+										"api",
+										"config"
+									],
+									"query": [
+										{
+											"key": "sdkKey",
+											"value": "{{sdkKey}}",
+											"description": "✅ REQUIRED: Your Optimizely SDK key"
+										},
+										{
+											"key": "metadata",
+											"value": "false",
+											"description": "✅ Exclude metadata from response"
+										}
+									]
+								}
+							},
+							"response": []
+						}
+					]
+				}
+			]
 		}
 	],
 	"variable": [

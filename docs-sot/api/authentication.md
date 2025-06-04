@@ -136,6 +136,23 @@ const response = await fetch('/api/datafile?operation=refresh', {
 });
 ```
 
+### Config Endpoint Access
+
+The config endpoint requires admin authentication for security:
+
+```javascript
+const configHeaders = {
+  'X-Optimizely-Enable-FEX': 'true',
+  'X-Optimizely-SDK-Key': SDK_KEY,
+  'X-Optimizely-Admin-Token': ADMIN_TOKEN
+};
+
+const response = await fetch('/api/config?summary=true', {
+  method: 'GET',
+  headers: configHeaders
+});
+```
+
 ### Client with Full Headers
 
 ```javascript
@@ -179,6 +196,26 @@ class OptimizelyClient {
     const response = await fetch(`${this.baseUrl}/api/datafile?operation=refresh`, {
       method: 'PUT',
       headers: this.getHeaders(true) // Include admin token
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error);
+    }
+    
+    return response.json();
+  }
+  
+  async getConfig(options = {}) {
+    const queryParams = new URLSearchParams();
+    
+    if (options.summary) queryParams.append('summary', 'true');
+    if (options.include) queryParams.append('include', options.include);
+    if (options.format) queryParams.append('format', options.format);
+    
+    const response = await fetch(`${this.baseUrl}/api/config?${queryParams}`, {
+      method: 'GET',
+      headers: this.getHeaders(true) // Config endpoint requires admin token
     });
     
     if (!response.ok) {
