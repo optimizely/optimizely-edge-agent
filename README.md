@@ -1,211 +1,393 @@
-# Hybrid Edge Serverless Agent
+# Optimizely Edge Agent v2
 
-## Introduction
+A **TypeScript-based edge computing solution** that delivers A/B testing and feature flagging capabilities directly at the CDN edge, providing ultra-low latency decisions and seamless content personalization.
 
-Welcome to the Hybrid Edge Serverless Agent repository. This project leverages the power of edge computing to perform A/B testing directly at the edge, reducing dependency on central servers and enhancing the efficiency of content delivery. The Hybrid Edge Serverless Agent, developed by Optimizely, is designed to be a comprehensive, ready-to-deploy solution that incorporates caching, cookie management, visitor ID creation and management, with persistence. This repository contains the code and documentation necessary to implement and manage the edge worker for your A/B testing needs.
+## 🚀 Key Features
 
-## Latest Updates
+### **Dual Operating Modes**
+- **Edge Mode**: Automatic request interception for transparent content personalization
+- **Agent Mode**: RESTful API endpoints for programmatic feature flag decisions
 
-🚀 **April 6, 2024**: Added comprehensive metrics system with Cloudflare Analytics Engine integration:
-- Request tracking with detailed dimensions
-- Performance monitoring for key operations
-- Cache hit/miss tracking
-- Error rate monitoring with classification
+### **Universal CDN Support**
+- **Cloudflare Workers** - Native Workers runtime support
+- **Vercel Edge Functions** - Next.js middleware integration
+- **Fastly Compute@Edge** - WebAssembly-optimized deployment
+- **Extensible Architecture** - Plugin system for additional platforms
 
-🚀 **November 26, 2023**: Completed major enhancements to Edge Mode content delivery:
-- Enhanced content type detection and handling
-- Improved caching with metadata preservation
-- Robust origin request forwarding
-- Secure content transformation capabilities
-- Advanced header management
-- Comprehensive error handling and recovery
+### **Enterprise-Grade Capabilities**
+- **Sub-50ms Decision Times** - Cached decisions at the edge
+- **Automatic Failover** - Graceful degradation and error recovery
+- **Real-time Configuration** - Dynamic updates without redeployment
+- **Comprehensive Metrics** - Built-in observability and monitoring
+- **Security-First Design** - Request validation and content protection
 
-✅ **All Optimizely SDK integration tests are passing** (Updated: April 4, 2025)
+## 📋 Table of Contents
 
-The integration with the Optimizely Feature Experimentation SDK has been thoroughly tested and verified in the Cloudflare Workers environment. For detailed test results and verification commands, please see:
+- [Quick Start](#quick-start)
+- [Architecture Overview](#architecture-overview)
+- [Operating Modes](#operating-modes)
+- [API Reference](#api-reference)
+- [Platform Deployment](#platform-deployment)
+- [Configuration](#configuration)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
 
-- [Test Results Documentation](src-v2/docs/test-results.md) - Comprehensive test status and verification commands
-- [Testing Patterns Guide](src-v2/docs/optimizely-testing-patterns.md) - Established patterns for SDK testing
+## 🏃 Quick Start
 
-## Features
+### 1. **Choose Your Platform**
 
-- **Edge-Based A/B Testing**: Perform A/B tests directly at the edge, reducing latency and improving user experience.
-- **Multi-CDN Support**: Native support for Cloudflare Workers, Vercel Edge Functions, and Fastly Compute@Edge environments.
-- **CDN Agnostic Architecture**: Designed with a modular adapter system to work with any CDN provider, ensuring broad compatibility.
-- **Advanced Content Delivery**: Content type detection, secure transformations, and intelligent caching for optimal delivery.
-- **Comprehensive Metrics**: Built-in metrics tracking for performance, request patterns, and system health with Cloudflare Analytics Engine integration.
-- **Comprehensive Functionality**: Includes caching, cookie management, visitor ID creation, and persistence.
-- **Dynamic Configuration**: Easily update A/B test parameters without redeploying the worker.
-- **REST API Integration**: Supports advanced management of experimentation flags and datafiles via a REST API.
-- **Security-Focused Design**: Protected content transformation, sanitized request handling, and proper header management.
+```bash
+# Cloudflare Workers
+npm create cloudflare@latest my-edge-agent -- --template=optimizely-edge-agent
 
-## Architecture Overview
+# Vercel Edge Functions  
+npx create-next-app@latest my-edge-agent --template=optimizely-edge-agent
 
-### Modules and Components
+# Fastly Compute@Edge
+fastly compute init --from=optimizely/edge-agent-template
+```
 
-- **OptimizelyProvider**: Manages interactions with the Optimizely FX SDK, handling decision-making, event dispatch, and other SDK operations.
-- **CoreLogic**: Central processing unit of the edge worker, managing request processing and coordinating with the OptimizelyProvider.
-- **AbstractionHelper**: Provides helper functions and logic to abstract methods and CDN specific fucntionality between CDN providers
-- **CDN Adapters**: Modules tailored for each CDN provider, ensuring optimal integration and functionality, including KV Store abstraction.
-- **RequestConfig**: Manages and applies settings from request headers, query parameters, or POST body content.
-- **OptimizelyHelper**: Provides utility functions for cookie serialization, user profile management, and flag updates.
-- **MetricsAdapter**: Records operational metrics for monitoring, performance tracking, and system health assessment.
+### 2. **Basic Configuration**
 
-### Handling GET Requests (Edge Mode)
+```typescript
+// Minimal required configuration
+const config = {
+  sdkKey: 'your-optimizely-sdk-key',  // Required
+  enableEdgeMode: true,               // Enable automatic request handling
+  enableAgentMode: true               // Enable API endpoints
+};
+```
 
-GET requests utilize a configuration object named `cdnVariationSettings` for each variation. This configuration determines how the edge worker processes these requests, including content fetching, caching, and integration with broader testing strategies.
+### 3. **Deploy and Test**
 
-Example configuration:
-```javascript
-const cdnVariationSettings = {
-  // Core URL patterns
-  "cdnExperimentURL": "https://apidev.expedge.com",
-  "cdnResponseURL": "https://apidev.expedge.com/ui-elements",
+```bash
+# Test a decision API call
+curl -X POST https://your-domain.com/api/decide \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -d '{"userId": "user123", "flagKey": "my_feature"}'
+
+# Test automatic edge mode (GET request)
+curl https://your-domain.com/your-page
+# → Automatically applies variations based on URL patterns
+```
+
+## 🏗️ Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Optimizely Edge Agent v2                   │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────┐              ┌─────────────────────────┐   │
+│  │   Edge Mode     │              │      Agent Mode         │   │
+│  │                 │              │                         │   │
+│  │ • URL Matching  │              │ • REST API Endpoints    │   │
+│  │ • Auto Decisions│              │ • /api/decide          │   │
+│  │ • Content Trans │              │ • /api/datafile        │   │
+│  │ • Cache Control │              │ • /api/admin/*         │   │
+│  └─────────────────┘              └─────────────────────────┘   │
+│           │                                    │                 │
+│  ┌────────┴────────────────────────────────────┴────────────┐   │
+│  │              Core Services Layer                         │   │
+│  │                                                          │   │
+│  │ ┌─────────────┐ ┌──────────────┐ ┌─────────────────────┐ │   │
+│  │ │ Decision    │ │ Configuration│ │    Storage          │ │   │
+│  │ │ Service     │ │ Service      │ │    Service          │ │   │
+│  │ └─────────────┘ └──────────────┘ └─────────────────────┘ │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│           │                                    │                 │
+│  ┌────────┴────────────────────────────────────┴────────────┐   │
+│  │              Platform Adapters                           │   │
+│  │                                                          │   │
+│  │ ┌─────────────┐ ┌──────────────┐ ┌─────────────────────┐ │   │
+│  │ │ Cloudflare  │ │    Vercel    │ │      Fastly         │ │   │
+│  │ │  Workers    │ │ Edge Functions│ │  Compute@Edge       │ │   │
+│  │ └─────────────┘ └──────────────┘ └─────────────────────┘ │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## 🔄 Operating Modes
+
+### **Edge Mode** - Automatic Request Handling
+
+Transparently intercepts normal web requests and applies experimentation logic:
+
+```typescript
+// Automatic URL pattern matching
+const edgeConfig = {
+  urlPatterns: [
+    { pattern: '/home', flags: ['homepage_redesign'] },
+    { pattern: '/products/*', flags: ['product_layout', 'pricing_test'] },
+    { pattern: '/checkout', flags: ['checkout_flow_v2'] }
+  ],
   
-  // Caching configuration
-  "cacheKey": "VARIATION_KEY",
-  "cacheTTL": "3600",
+  // Automatic user identification
+  cookieConfig: {
+    generateUserId: true,
+    persistVariations: true
+  },
   
-  // Request handling
-  "forwardRequestToOrigin": "false",
-  "cacheRequestToOrigin": "true",
-  
-  // Variation flags
-  "isControlVariation": "true",
-  
-  // Advanced URL handling
-  "pathRegex": "^/products/[0-9]+$",
-  "ignoreQueryParams": "false",
-  "requiredQueryParams": "campaign,source",
-  
-  // Response customization
-  "responseHeaders": "{\"X-Variation\": \"test-variation\", \"X-Cache-Control\": \"max-age=3600\"}",
-  "transformContent": "result = content.replace('Original', 'Variation');"
+  // Content transformation
+  transformations: [
+    {
+      search: '{{hero_content}}',
+      replace: (decision) => decision.variables.hero_content
+    }
+  ]
+};
+```
+
+**When a user visits `yoursite.com/products/shoes`:**
+1. Edge Agent automatically detects the URL pattern
+2. Evaluates `product_layout` and `pricing_test` flags
+3. Applies user targeting based on cookies/headers
+4. Transforms content based on assigned variations
+5. Returns personalized experience
+
+### **Agent Mode** - REST API Endpoints
+
+Programmatic access for applications and services:
+
+```bash
+# Single flag decision
+POST /api/decide
+{
+  "flagKey": "checkout_flow",
+  "userId": "user123",
+  "attributes": { "plan": "premium" }
+}
+
+# Multiple flag decisions  
+POST /api/decide-for-keys
+{
+  "flagKeys": ["feature_a", "feature_b", "feature_c"],
+  "userId": "user123"
+}
+
+# All flags decision
+POST /api/decide-all
+{
+  "userId": "user123",
+  "decideOptions": ["ENABLED_FLAGS_ONLY"]
 }
 ```
 
-### Handling POST Requests (Agent Mode)
+## 📡 API Reference
 
-POST requests activate the serverless functionality of the edge worker, operating independently of `cdnVariationSettings`. These requests are processed directly by the edge worker, functioning as a serverless edge microservice with endpoints for:
+### **Decision Endpoints**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/decide` | GET/POST | Single feature flag decision |
+| `/api/decide-all` | GET/POST | All feature flags decisions |
+| `/api/decide-for-keys` | GET/POST | Multiple specific flags decisions |
+| `/api/decide-options` | GET/POST | Available decision options |
 
-- `/decide` - Make a single flag decision
-- `/decide-all` - Make decisions for multiple flags
-- `/track` - Track events with rich metadata
-- `/set-forced-variation` - Force specific variations for testing
-- `/get-forced-variation` - Retrieve currently forced variations
+### **Data Management**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/datafile` | GET/PUT/POST | Optimizely datafile management |
+| `/api/flagkeys` | GET/PUT/POST | Feature flag keys management |
+| `/api/sdk` | GET | SDK and version information |
 
-### REST API and KV Store Integration
+### **Administration**
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/set-forced-variation` | POST/PUT | Force specific variations |
+| `/api/get-forced-variation` | GET/POST | Retrieve forced variations |
+| `/api/debug` | POST | Debug configuration and state |
 
-The edge worker includes a REST API for interacting with the KV store, enabling advanced management of experimentation flags and datafiles. It supports storing and automatic updating of the datafile via webhooks and can load the datafile directly from the KV store or download it from the Optimizely CDN.
+**Complete API documentation**: [`/docs-sot/api/`](./docs-sot/api/)
 
-### Metrics System
+## 🚀 Platform Deployment
 
-The Edge Agent includes a comprehensive metrics system for monitoring performance and operational metrics:
-
-- **Request Metrics**: Tracks API requests, durations, and error rates with detailed dimensions
-- **Cache Metrics**: Monitors cache hits/misses for datafiles and flag keys
-- **Performance Metrics**: Tracks operation durations across components
-- **Error Metrics**: Classifies and counts errors by type and source
-
-In Cloudflare environments, metrics are recorded to the Analytics Engine when available, providing detailed dashboards for monitoring and analysis. In other environments or when Analytics Engine is unavailable, metrics are logged to the console.
-
-For detailed information, see the [Metrics Documentation](src-v2/docs/metrics.md).
-
-## Benefits of Edge-Based A/B Testing
-
-- **Immediate Decision Making**: Reduces latency by making decisions at the edge.
-- **Scalability and Efficiency**: Naturally scales with traffic increases, managing load without significant infrastructure changes.
-- **Reduced Costs**: Lowers bandwidth costs and operational overhead by reducing data transfers to and from the origin server.
-- **Enhanced Performance**: Provides lower latency and higher throughput by processing data at the edge.
-- **Content Optimization**: Transforms and optimizes content delivery right at the edge.
-
-## Comparison with Traditional Server-Based Architectures
-
-The Hybrid Edge Serverless Agent offers significant improvements over traditional server setups:
-- **Infrastructure Simplicity**: Reduces complexity and cost associated with maintaining traditional servers.
-- **Operational Efficiency**: Decentralizes decision-making processes, enhancing system responsiveness.
-- **Enhanced Performance**: Processes data at the edge, providing lower latency and higher throughput.
-- **Reduced Origin Load**: Caches and serves content at the edge, significantly reducing origin server load.
-
-## Development and Testing
-
-### Running Tests
-
-Run the Optimizely SDK integration tests with:
+### **Cloudflare Workers**
 
 ```bash
-# Run all Optimizely tests
-npx vitest run src-v2/tests/services/optimizely
+# Deploy to Cloudflare
+npx wrangler deploy
 
-# Run specific test files
-npx vitest run src-v2/tests/services/optimizely/config.test.ts
+# Configure environment variables
+npx wrangler secret put OPTIMIZELY_SDK_KEY
+npx wrangler secret put OPTIMIZELY_ADMIN_TOKEN
+```
 
-# Run metrics tests
-npx vitest run src-v2/tests/metrics
+**Features**: KV Store integration, Analytics Engine metrics, global edge network
 
-# Run integration tests against a live deployment
+### **Vercel Edge Functions**
+
+```typescript
+// middleware.ts
+import { createVercelHandler } from '@optimizely/edge-agent';
+
+export default async function middleware(request: NextRequest) {
+  const handler = createVercelHandler(process.env);
+  return await handler.handleRequest(request);
+}
+
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)']
+};
+```
+
+**Features**: Next.js integration, Edge Config, global edge deployment
+
+### **Fastly Compute@Edge**
+
+```bash
+# Deploy to Fastly
+fastly compute publish
+
+# Configure secrets
+fastly secret-store create --name optimizely-secrets
+fastly secret-store-entry create --store-id=<store-id> --name=sdk-key
+```
+
+**Features**: WebAssembly performance, advanced VCL integration, enterprise features
+
+**Complete deployment guides**: [`/docs-sot/cdn-adapters/`](./docs-sot/cdn-adapters/)
+
+## ⚙️ Configuration
+
+### **Environment Variables**
+
+```bash
+# Required
+OPTIMIZELY_SDK_KEY=your-sdk-key
+
+# Optional - Feature Control  
+OPTIMIZELY_ENABLE_EDGE_MODE=true
+OPTIMIZELY_ENABLE_AGENT_MODE=true
+OPTIMIZELY_LOG_LEVEL=warn
+
+# Optional - Performance
+OPTIMIZELY_CACHE_TTL=300
+OPTIMIZELY_AUTO_DATAFILE_UPDATES=true
+
+# Optional - Security
+OPTIMIZELY_ADMIN_TOKEN=your-admin-token
+OPTIMIZELY_ENABLE_DEBUG_HEADERS=false
+```
+
+### **Multi-Source Configuration**
+
+Configuration precedence (highest to lowest):
+1. **HTTP Headers** - `X-Optimizely-SDK-Key: override-key`
+2. **Query Parameters** - `?sdkKey=test-key`  
+3. **Request Body** - `{"sdkKey": "body-key"}`
+4. **Environment Variables** - `OPTIMIZELY_SDK_KEY=env-key`
+5. **Default Values** - Built-in secure defaults
+
+**Complete configuration guide**: [`/docs-sot/configuration/`](./docs-sot/configuration/)
+
+## 📊 Monitoring & Metrics
+
+### **Built-in Metrics**
+
+- **Request Metrics**: API calls, durations, success rates
+- **Decision Metrics**: Flag evaluations, bucketing performance  
+- **Cache Metrics**: Hit/miss rates, storage efficiency
+- **Error Metrics**: Classified errors with detailed context
+
+### **Platform Integration**
+
+```typescript
+// Cloudflare Analytics Engine
+interface EdgeMetrics {
+  'api.decide.duration': number;
+  'api.decide.count': number;
+  'cache.datafile.hit_rate': number;
+  'error.decision.count': number;
+}
+
+// Custom metrics tracking
+metrics.recordTiming('decision_duration', 45);
+metrics.incrementCounter('api_requests', { endpoint: 'decide' });
+```
+
+**Complete metrics documentation**: [`/docs-sot/metrics/`](./docs-sot/metrics/)
+
+## 📚 Documentation
+
+### **Complete Documentation Set**
+
+Our comprehensive documentation covers every aspect of the Edge Agent:
+
+| Category | Status | Description |
+|----------|---------|-------------|
+| **[API Reference](./docs-sot/api/)** | ✅ Complete | All endpoints, parameters, examples |
+| **[Architecture](./docs-sot/architecture/)** | ✅ Complete | System design, request lifecycle |
+| **[CDN Adapters](./docs-sot/cdn-adapters/)** | ✅ Complete | Platform-specific deployment |
+| **[Configuration](./docs-sot/configuration/)** | ✅ Complete | All settings and options |
+| **[Metrics](./docs-sot/metrics/)** | ✅ Complete | Monitoring and observability |
+
+### **Getting Started Guides**
+
+- **[Quick Start Guide](./docs-sot/quick-start/)** - Get running in 5 minutes
+- **[Migration Guide](./docs-sot/migration/)** - Upgrade from v1 to v2
+- **[Troubleshooting](./docs-sot/troubleshooting/)** - Common issues and solutions
+
+### **Developer Resources**
+
+- **[Development Guide](./docs-sot/development/)** - Local setup and contribution
+- **[Examples](./docs-sot/examples/)** - Real-world implementation patterns
+- **[Security Guide](./docs-sot/security/)** - Best practices and considerations
+
+## 🔧 Development
+
+### **Local Development**
+
+```bash
+# Install dependencies
+npm install
+
+# Run tests
+npm test
+
+# Run specific test suites
+npm run test:unit
 npm run test:integration
+npm run test:e2e
+
+# Build for all platforms
+npm run build
+npm run build:cloudflare
+npm run build:vercel  
+npm run build:fastly
 ```
 
-For more detailed test commands and considerations, see the [Test Results Documentation](src-v2/docs/test-results.md).
+### **Testing**
 
-### Working with Metrics
-
-The Edge Agent provides a metrics system that tracks various operational metrics. When developing locally or in environments without Cloudflare Analytics Engine, metrics are logged to the console. In Cloudflare environments with Analytics Engine, metrics are recorded for real-time monitoring.
-
-To enable metrics in your Cloudflare deployment, make sure your wrangler.toml includes:
-
-```toml
-analytics_engine_datasets = [
-  { binding = "ANALYTICS_ENGINE", dataset = "optimizely_edge_agent_metrics" }
-]
+```bash
+# Test against live deployment
+curl -X POST https://your-deployment.com/api/decide \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-key" \
+  -d '{"userId": "test", "flagKey": "test_flag"}'
 ```
 
-For detailed information about available metrics and how to use them, see the [Metrics Documentation](src-v2/docs/metrics.md).
+## 🤝 Contributing
 
-## Debug Headers
+We welcome contributions! Please see our [Contributing Guide](./CONTRIBUTING.md) for:
 
-Debug headers provide detailed information about decisions, configurations, and other internal state that can help with troubleshooting. By default, debug headers are **disabled** in production environments for security and performance reasons.
+- Code style and standards
+- Testing requirements  
+- Pull request process
+- Issue reporting guidelines
 
-### Enabling Debug Headers
+## 📄 License
 
-You can enable debug headers in several ways:
+This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
 
-1. **HTTP Header**: Add `X-Optimizely-Enable-Debug-Headers: true` to your request
-2. **Query Parameter**: Add `?enableDebugHeaders=true` to your request URL
-3. **Request Body**: Include `"enableDebugHeaders": true` in your JSON request body
-4. **Environment Variable**: Set `OPTIMIZELY_ENABLE_DEBUG_HEADERS=true` in your environment
+## 🆘 Support
 
-### Available Debug Headers
-
-When enabled, the following debug headers are included in responses:
-
-- `X-Optimizely-Debug-Config`: Information about configuration settings and flags
-- `X-Optimizely-Debug-Decision-Format`: Details about decision structure and format
-- `X-{Decisions-Header-Name}`: Sample decisions content (when debug headers are enabled but no production headers are set)
-
-### Security Considerations
-
-Debug headers may expose sensitive implementation details. Only enable them in development and testing environments, not in production.
-
-## Conclusion
-
-The Hybrid Edge Serverless Agent merges advanced A/B testing capabilities with the efficiency of edge computing, providing businesses with a powerful tool to optimize user experiences in real-time. This innovative approach accelerates experimentation, enhances performance, and simplifies infrastructure requirements, making it an indispensable solution for modern digital enterprises.
-
-## Getting Started
-
-To get started with the Hybrid Edge Serverless Agent, refer to the [Setup Guide](SETUP.md) for installation and configuration instructions.
-
-## Contributing
-
-We welcome contributions from the community. Please read our [Contributing Guide](CONTRIBUTING.md) for guidelines on how to contribute to this project.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE.md) file for details.
-
-For more detailed information, refer to the [Detailed Architecture and Operational Guide](docs/ARCHITECTURE.md).
+- **Documentation**: [Complete docs in `/docs-sot/`](./docs-sot/)
+- **Issues**: [GitHub Issues](https://github.com/optimizely/edge-agent/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/optimizely/edge-agent/discussions)
 
 ---
 
-Feel free to reach out with any questions or feedback. We hope you find the Hybrid Edge Serverless Agent to be a valuable addition to your A/B testing toolkit.
+**Ready to get started?** Jump to our [Quick Start Guide](./docs-sot/quick-start/) or explore the [complete documentation](./docs-sot/) for in-depth guidance.
