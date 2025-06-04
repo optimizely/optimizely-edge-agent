@@ -10,6 +10,14 @@ Forced variations allow you to override Optimizely's bucketing algorithm and ass
 - **Demos** - Show specific variations to stakeholders
 - **Development** - Test variation-specific code changes
 
+## Methods for Forcing Variations
+
+### 1. Inline Forced Decisions (Recommended)
+Pass forced decisions directly in decision requests without using API endpoints. See [Request Parameters](../../configuration/request-parameters.md#forced-decisions) for details.
+
+### 2. API Endpoints
+Use dedicated API endpoints to set persistent forced variations that apply across multiple requests
+
 ## Endpoints
 
 | Endpoint | Method | Description |

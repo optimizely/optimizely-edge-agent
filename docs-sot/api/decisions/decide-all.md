@@ -43,6 +43,7 @@ Get decisions for all feature flags.
 | `userId` | string | ✅ Yes | Unique identifier for the user |
 | `attributes` | object | ❌ No | User attributes for targeting |
 | `decideOptions` | string[] | ❌ No | Array of decision options |
+| `forcedDecisions` | object/array | ❌ No | Force specific variations for testing |
 | `sdkKey` | string | ❌ No | Override SDK key (uses header by default) |
 
 ### Decision Options
@@ -129,6 +130,26 @@ curl -X POST "https://your-deployment/api/decide-all" \
   -d '{
     "userId": "user123",
     "decideOptions": ["INCLUDE_REASONS", "EXCLUDE_VARIABLES"]
+  }'
+```
+
+### With Forced Decisions
+```bash
+# Force specific variations for testing
+curl -X POST "https://your-deployment/api/decide-all" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -d '{
+    "userId": "qa_tester",
+    "forcedDecisions": {
+      "checkout_flow_v2": {
+        "variationKey": "express_checkout"
+      },
+      "premium_features": {
+        "variationKey": "premium_plus"
+      }
+    }
   }'
 ```
 

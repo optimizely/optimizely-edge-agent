@@ -45,6 +45,7 @@ Get decisions for specific feature flags.
 | `userId` | string | ✅ Yes | Unique identifier for the user |
 | `attributes` | object | ❌ No | User attributes for targeting |
 | `decideOptions` | string[] | ❌ No | Array of decision options |
+| `forcedDecisions` | object/array | ❌ No | Force specific variations for testing |
 | `sdkKey` | string | ❌ No | Override SDK key (uses header by default) |
 
 ### Decision Options
@@ -139,6 +140,27 @@ curl -X POST "https://your-deployment/api/decide-for-keys" \
     "flagKeys": ["problematic_feature"],
     "userId": "test_user",
     "decideOptions": ["INCLUDE_REASONS", "EXCLUDE_VARIABLES"]
+  }'
+```
+
+### With Forced Decisions
+```bash
+# Force specific variations for QA testing
+curl -X POST "https://your-deployment/api/decide-for-keys" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -d '{
+    "flagKeys": ["checkout_flow_v2", "payment_methods_v3"],
+    "userId": "qa_tester",
+    "forcedDecisions": {
+      "checkout_flow_v2": {
+        "variationKey": "express_checkout"
+      },
+      "payment_methods_v3": {
+        "variationKey": "all_payment_options"
+      }
+    }
   }'
 ```
 

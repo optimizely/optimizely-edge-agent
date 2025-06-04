@@ -53,6 +53,23 @@ curl -X POST https://edge.example.com/api/decide \
   }'
 ```
 
+### Decision with Forced Variation
+
+```bash
+# Force a specific variation for testing
+curl -X POST https://edge.example.com/api/decide \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -d '{
+    "userId": "qa_tester",
+    "flagKey": "checkout_flow",
+    "forcedDecisions": {
+      "checkout_flow": {"variationKey": "express_checkout"}
+    }
+  }'
+```
+
 ### Response
 
 ```json

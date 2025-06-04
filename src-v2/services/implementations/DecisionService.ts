@@ -927,14 +927,6 @@ export class DecisionService implements IDecisionService {
       }
 
       try {
-        // Apply forced variations from attributes
-        if (userContext.forcedDecisions && Object.keys(userContext.forcedDecisions).length > 0) {
-          const forcedVariation = userContext.forcedDecisions[flagKey]?.variationKey;
-          if (forcedVariation !== undefined) {
-            await this.applyForcedVariations(client, flagKey, userContext.userId, forcedVariation);
-          }
-        }
-
         // Process attributes for enhanced audience targeting
         const processAttributesTimer = this.metrics?.startTimer('process_attributes_duration', {
           flag_key: flagKey
@@ -955,6 +947,29 @@ export class DecisionService implements IDecisionService {
         );
         if (userContextTimer) {
           userContextTimer.stop();
+        }
+        
+        // Apply forced decisions to the user context
+        if (userContext.forcedDecisions && Object.keys(userContext.forcedDecisions).length > 0) {
+          this.logger.info(`${this.LOG_PREFIX} Found forced decisions for user ${userContext.userId}:`, userContext.forcedDecisions);
+          
+          // Apply all forced decisions to the user context
+          for (const [forcedFlagKey, decision] of Object.entries(userContext.forcedDecisions)) {
+            if (decision && decision.variationKey) {
+              this.logger.info(`${this.LOG_PREFIX} Setting forced decision for flag ${forcedFlagKey}: ${decision.variationKey}`);
+              
+              // Use the SDK's setForcedDecision method on the user context
+              const forcedDecisionContext = { flagKey: forcedFlagKey };
+              const forcedDecision = { variationKey: decision.variationKey };
+              
+              if (optimizelyUserContext.setForcedDecision) {
+                const result = optimizelyUserContext.setForcedDecision(forcedDecisionContext, forcedDecision);
+                this.logger.info(`${this.LOG_PREFIX} Set forced decision result: ${result}`);
+              } else {
+                this.logger.warn(`${this.LOG_PREFIX} User context does not support setForcedDecision method`);
+              }
+            }
+          }
         }
         
         if (!optimizelyUserContext) {

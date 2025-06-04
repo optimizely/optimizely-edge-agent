@@ -1511,8 +1511,16 @@ export class ConfigurationService implements IConfigurationService {
 		
 		// Handle forcedDecisions - it's an object in config but array in metadata
 		if (this.config.forcedDecisions && typeof this.config.forcedDecisions === 'object') {
-			// Keep metadata.forcedDecisions as an empty array to maintain type compatibility
-			this.metadata.forcedDecisions = [];
+			// Convert object to array format for metadata display
+			if (Array.isArray(this.config.forcedDecisions)) {
+				this.metadata.forcedDecisions = this.config.forcedDecisions;
+			} else {
+				// Convert object format to array format
+				this.metadata.forcedDecisions = Object.entries(this.config.forcedDecisions).map(([flagKey, decision]) => ({
+					flagKey,
+					...decision
+				}));
+			}
 		}
 		
 		// Array fields

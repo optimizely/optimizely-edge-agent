@@ -2271,9 +2271,10 @@ export class ApiRouter {
           }
           
           if (Object.keys(userContextForcedDecisions).length > 0) {
-            this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Processed forced decisions from config:`, {
+            this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Processed forced decisions from config:`, {
               flagCount: Object.keys(userContextForcedDecisions).length,
-              flags: Object.keys(userContextForcedDecisions)
+              flags: Object.keys(userContextForcedDecisions),
+              decisions: userContextForcedDecisions
             });
           }
         }

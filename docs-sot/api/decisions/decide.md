@@ -59,6 +59,7 @@ Make a decision for a single feature flag. Both GET and POST methods are support
 |-----------|------|---------|-------------|
 | `attributes` | object | • Header: `X-Optimizely-Attributes` (URL-encoded JSON)<br>• Query: `?attributes={"key":"value"}`<br>• Body: `{ "attributes": {...} }` | User attributes for targeting |
 | `decideOptions` | string[] | • Header: `X-Optimizely-Decide-Options`<br>• Query: `?decideOptions=INCLUDE_REASONS,EXCLUDE_VARIABLES`<br>• Body: `{ "decideOptions": [...] }` | Array of decision options |
+| `forcedDecisions` | object/array | • Header: `X-Optimizely-Forced-Decisions` (JSON)<br>• Query: `?forced_decisions={"flag1":{"variationKey":"on"}}`<br>• Body: `{ "forcedDecisions": {...} }` | Force specific variations for testing |
 | `trimmedDecisions` | boolean | • Header: `X-Optimizely-Trimmed-Decisions`<br>• Query: `?trimmedDecisions=true`<br>• Body: `{ "trimmedDecisions": true }` | Return minimal response format |
 | `overrideVisitorId` | boolean | • Header: `X-Optimizely-Override-Visitor-Id`<br>• Query: `?overrideVisitorId=true`<br>• Body: `{ "overrideVisitorId": true }` | Generate new visitor ID |
 
@@ -217,6 +218,76 @@ attributes={\"country\":\"US\",\"age\":25}&\
 decideOptions=INCLUDE_REASONS,EXCLUDE_VARIABLES&\
 trimmedDecisions=true" \
   -H "X-Optimizely-Enable-FEX: true"
+```
+
+### Forced Decisions for Testing
+
+Force specific variations for testing, QA, or debugging purposes.
+
+#### Object Format
+```bash
+# Force a single flag to a specific variation
+curl -X POST "https://your-deployment/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedDecisions": {
+      "checkout_flow": {
+        "variationKey": "express_checkout"
+      }
+    }
+  }'
+```
+
+#### Array Format
+```bash
+# Force multiple flags using array format
+curl -X POST "https://your-deployment/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedDecisions": [
+      {
+        "flagKey": "checkout_flow",
+        "variationKey": "express_checkout"
+      },
+      {
+        "flagKey": "payment_methods",
+        "variationKey": "all_methods"
+      }
+    ]
+  }'
+```
+
+#### Via Headers
+```bash
+# Force decisions via header (highest precedence)
+curl -X POST "https://your-deployment/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -H 'X-Optimizely-Forced-Decisions: {"checkout_flow":{"variationKey":"express_checkout"}}' \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "user123"
+  }'
+```
+
+#### Via Query Parameters
+```bash
+# Force decisions via URL-encoded query parameter
+curl -X POST "https://your-deployment/api/decide?\
+flagKey=checkout_flow&\
+userId=user123&\
+forced_decisions=%7B%22checkout_flow%22%3A%7B%22variationKey%22%3A%22express_checkout%22%7D%7D" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key"
 ```
 
 ## Edge vs Agent Mode Behavior
