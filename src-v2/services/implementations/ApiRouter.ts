@@ -2632,8 +2632,42 @@ export class ApiRouter {
           
           this.logger.debug(`${this.logPrefix} Found ${flagKeys.length} flag keys for SDK key ${this.hashSensitiveValue(sdkKey)}`);
           
-          // Create user context
-          const userContext = { userId: finalUserId, attributes };
+          // Extract forced decisions from configuration and prepare user context
+          const config = this.configService.getConfig();
+          let userContextForcedDecisions: Record<string, { variationKey: string }> = {};
+          
+          if (config.forcedDecisions) {
+            // Convert configuration forced decisions to the format expected by DecisionService
+            if (Array.isArray(config.forcedDecisions)) {
+              // Array format: [{ flagKey: "flag1", variationKey: "var1" }, ...]
+              for (const decision of config.forcedDecisions) {
+                if (decision.flagKey && decision.variationKey) {
+                  userContextForcedDecisions[decision.flagKey] = { variationKey: decision.variationKey };
+                }
+              }
+            } else if (typeof config.forcedDecisions === 'object') {
+              // Object format: { "flag1": { "variationKey": "var1" }, ... }
+              for (const [flagKey, decision] of Object.entries(config.forcedDecisions)) {
+                if (decision && typeof decision === 'object' && (decision as any).variationKey) {
+                  userContextForcedDecisions[flagKey] = { variationKey: (decision as any).variationKey };
+                }
+              }
+            }
+            
+            if (Object.keys(userContextForcedDecisions).length > 0) {
+              this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Processed forced decisions from config:`, {
+                flagCount: Object.keys(userContextForcedDecisions).length,
+                flags: Object.keys(userContextForcedDecisions)
+              });
+            }
+          }
+          
+          // Create user context with forced decisions
+          const userContext = { 
+            userId: finalUserId, 
+            attributes,
+            forcedDecisions: userContextForcedDecisions
+          };
           
           // Collect decide options from all input sources ONCE per request
           const decideOptionsArr = this.collectDecideOptions(requestAdapter, requestBody || {}, urlParams);
