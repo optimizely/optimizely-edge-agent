@@ -1,9 +1,11 @@
 {
 	"info": {
-		"_postman_id": "optimizely-edge-agent-v2-working",
+		"_postman_id": "0117e16e-4bcf-45aa-8e17-093905c6d699",
 		"name": "Optimizely Edge Agent v2 API - Complete Collection",
 		"description": "Complete API collection for Optimizely Edge Agent v2 with ALL documented headers, query parameters, and request body parameters",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "4266623",
+		"_collection_link": "https://speeding-water-342126.postman.co/workspace/16c8d192-f9f5-423b-ae04-375d5f6f3732/collection/4266623-0117e16e-4bcf-45aa-8e17-093905c6d699?action=share&source=collection_link&creator=4266623"
 	},
 	"item": [
 		{
@@ -95,6 +97,899 @@
 									"    pm.expect(jsonData).to.have.property('variationKey');",
 									"    pm.expect(jsonData).to.have.property('reasons');",
 									"    pm.expect(jsonData.reasons).to.be.an('array');",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Optimizely-Enable-FEX",
+								"value": "true",
+								"description": "✅ REQUIRED: Enable Optimizely processing"
+							},
+							{
+								"key": "X-Optimizely-SDK-Key",
+								"value": "{{sdkKey}}",
+								"description": "✅ REQUIRED: Your Optimizely SDK key"
+							},
+							{
+								"key": "X-Optimizely-Visitor-Id",
+								"value": "",
+								"description": "📝 Optional: User ID via header (highest precedence)",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-User-Id",
+								"value": "",
+								"description": "📝 Optional: Alternative user ID header",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Flag-Key",
+								"value": "",
+								"description": "📝 Optional: Flag key via header (highest precedence)",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Attributes",
+								"value": "",
+								"description": "📝 Optional: URL-encoded JSON attributes via header",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Event-Key",
+								"value": "",
+								"description": "📝 Optional: Event key for tracking",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Event-Tags",
+								"value": "",
+								"description": "📝 Optional: Event tags as JSON",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-DISABLE_DECISION_EVENT",
+								"value": "DISABLE_DECISION_EVENT",
+								"description": "✅ Enable to skip sending decision events",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-ENABLED_FLAGS_ONLY",
+								"value": "ENABLED_FLAGS_ONLY",
+								"description": "✅ Enable to only return enabled flags",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-INCLUDE_REASONS",
+								"value": "INCLUDE_REASONS",
+								"description": "✅ Enable to include decision reasons",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-EXCLUDE_VARIABLES",
+								"value": "EXCLUDE_VARIABLES",
+								"description": "✅ Enable to exclude variables",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-IGNORE_USER_PROFILE_SERVICE",
+								"value": "IGNORE_USER_PROFILE_SERVICE",
+								"description": "✅ Enable to skip user profile service",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Trimmed-Decisions",
+								"value": "true",
+								"description": "✅ Enable for minimal response format",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Override-Visitor-Id",
+								"value": "true",
+								"description": "✅ Enable to generate new visitor ID",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Response-Headers",
+								"value": "true",
+								"description": "✅ Enable to add decision info to response headers",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Response-Cookies",
+								"value": "true",
+								"description": "✅ Enable to set decision cookies",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Request-Headers",
+								"value": "true",
+								"description": "✅ Enable to set request headers",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Request-Cookies",
+								"value": "true",
+								"description": "✅ Enable to set request cookies",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Enable-Response-Metadata",
+								"value": "true",
+								"description": "✅ Enable to include metadata in response",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Client-Engine",
+								"value": "",
+								"description": "📝 Optional: Client name (e.g., 'my-app')",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Client-Version",
+								"value": "",
+								"description": "📝 Optional: Client version",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Override-Cache",
+								"value": "false",
+								"description": "✅ Enable to bypass cache",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Flags-From-KV",
+								"value": "false",
+								"description": "✅ Enable to force flag retrieval from KV storage",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Datafile-From-KV",
+								"value": "false",
+								"description": "✅ Enable to force datafile retrieval from KV storage",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Debug-Headers",
+								"value": "false",
+								"description": "✅ Enable debug headers in response",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Server-Mode",
+								"value": "",
+								"description": "📝 Optional: Server mode configuration",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Datafile-Access-Token",
+								"value": "",
+								"description": "📝 Optional: Datafile access token",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Implementation-Version",
+								"value": "",
+								"description": "📝 Optional: Implementation version identifier",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Admin-Token",
+								"value": "{{adminToken}}",
+								"description": "🔒 Admin operations only: Admin authorization token",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-CDN-Settings",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"flagKey\": \"your_flag_key\",\n  \"userId\": \"user123\",\n  \"visitorId\": null,\n  \"attributes\": {\n    \"device\": \"mobile\",\n    \"plan\": \"premium\",\n    \"country\": \"US\",\n    \"age\": 25,\n    \"beta_tester\": true\n  },\n  \"decideOptions\": [],\n  \"sdkKey\": null,\n  \"trimmedDecisions\": null,\n  \"overrideVisitorId\": null,\n  \"setResponseHeaders\": null,\n  \"setResponseCookies\": null,\n  \"setRequestHeaders\": null,\n  \"setRequestCookies\": null,\n  \"enableResponseMetadata\": null,\n  \"clientEngine\": null,\n  \"clientVersion\": null,\n  \"eventKey\": null,\n  \"eventTags\": null\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/decide?flagKey=test-flag&userId=user123",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"decide"
+							],
+							"query": [
+								{
+									"key": "flagKey",
+									"value": "test-flag",
+									"description": "Feature flag key to evaluate"
+								},
+								{
+									"key": "key",
+									"value": "",
+									"description": "Alternative parameter name for flagKey",
+									"disabled": true
+								},
+								{
+									"key": "userId",
+									"value": "user123",
+									"description": "User identifier"
+								},
+								{
+									"key": "visitorId",
+									"value": "",
+									"description": "Alternative parameter name for userId",
+									"disabled": true
+								},
+								{
+									"key": "sdkKey",
+									"value": "{{sdkKey}}",
+									"description": "SDK key (if not provided in header)",
+									"disabled": true
+								},
+								{
+									"key": "attributes",
+									"value": "{\"device\":\"mobile\",\"plan\":\"premium\"}",
+									"description": "User attributes as URL-encoded JSON",
+									"disabled": true
+								},
+								{
+									"key": "decideOptions",
+									"value": "INCLUDE_REASONS,EXCLUDE_VARIABLES",
+									"description": "Comma-separated decision options",
+									"disabled": true
+								},
+								{
+									"key": "trimmedDecisions",
+									"value": "true",
+									"description": "Return minimal response format",
+									"disabled": true
+								},
+								{
+									"key": "overrideVisitorId",
+									"value": "true",
+									"description": "Generate new visitor ID",
+									"disabled": true
+								},
+								{
+									"key": "setResponseHeaders",
+									"value": "true",
+									"description": "Add decision info to response headers",
+									"disabled": true
+								},
+								{
+									"key": "setResponseCookies",
+									"value": "true",
+									"description": "Set decision cookies",
+									"disabled": true
+								},
+								{
+									"key": "setRequestHeaders",
+									"value": "true",
+									"description": "Set request headers",
+									"disabled": true
+								},
+								{
+									"key": "setRequestCookies",
+									"value": "true",
+									"description": "Set request cookies",
+									"disabled": true
+								},
+								{
+									"key": "enableResponseMetadata",
+									"value": "true",
+									"description": "Include metadata in response",
+									"disabled": true
+								},
+								{
+									"key": "clientEngine",
+									"value": "",
+									"description": "Client name (e.g., 'my-app')",
+									"disabled": true
+								},
+								{
+									"key": "clientVersion",
+									"value": "",
+									"description": "Client version",
+									"disabled": true
+								},
+								{
+									"key": "overrideCache",
+									"value": "false",
+									"description": "Bypass cache",
+									"disabled": true
+								},
+								{
+									"key": "flagsFromKV",
+									"value": "false",
+									"description": "Force flag retrieval from KV storage",
+									"disabled": true
+								},
+								{
+									"key": "datafileFromKV",
+									"value": "false",
+									"description": "Force datafile retrieval from KV storage",
+									"disabled": true
+								},
+								{
+									"key": "serverMode",
+									"value": "",
+									"description": "Server mode configuration",
+									"disabled": true
+								},
+								{
+									"key": "eventKey",
+									"value": "",
+									"description": "Event key for tracking",
+									"disabled": true
+								},
+								{
+									"key": "eventTags",
+									"value": "",
+									"description": "Event tags as JSON",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Decide for Keys",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response has decision objects\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(typeof jsonData).to.equal('object');",
+									"    ",
+									"    // Check that each property is a decision object",
+									"    Object.values(jsonData).forEach(decision => {",
+									"        pm.expect(decision).to.have.property('enabled');",
+									"        pm.expect(decision).to.have.property('flagKey');",
+									"        pm.expect(decision).to.have.property('variationKey');",
+									"    });",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						},
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"/**",
+									" * Checks if a specific header is enabled in the request headers.",
+									" * ",
+									" * @param {string} headerKey - The key of the header to validate.",
+									" * @returns {boolean} - Returns false if the header is found and disabled, true otherwise.",
+									" */",
+									"function validateHeaderEnabled(headerKey, headers) {",
+									"    // Find the header by key",
+									"    const headerName = headers.find(h => {",
+									"          //console.log(h.value, headerKey, h.disabled)",
+									"          const result = h.value === headerKey && h.disabled === undefined;",
+									"          if (result) {",
+									"            console.log(h.value, headerKey, \"result= \" + result)",
+									"          }",
+									"          return result;",
+									"        });",
+									"    ",
+									"    // Check if the header is found and if it is disabled",
+									"    if (!headerName) {",
+									"        return false;           ",
+									"    }",
+									"",
+									"    return true;",
+									"}",
+									"",
+									"",
+									"// Define the available header values",
+									"const headerValues = [",
+									"  \"DISABLE_DECISION_EVENT\",",
+									"  \"ENABLED_FLAGS_ONLY\",",
+									"  \"INCLUDE_REASONS\",",
+									"  \"EXCLUDE_VARIABLES\",",
+									"  \"IGNORE_USER_PROFILE_SERVICE\"",
+									"];",
+									"",
+									"// Get the selected header values from the checkboxes",
+									"const selectedValues = [];",
+									"",
+									"const allHeaders = pm.request.headers.all();",
+									"// console.log(allHeaders);",
+									"headerValues.forEach(value => {",
+									"  const checkboxValue = pm.request.headers.get(`X-Optimizely-Decide-Options-${value}`);",
+									"  // console.log(value + \" - \" + checkboxValue)",
+									"  if (validateHeaderEnabled(checkboxValue, allHeaders)) {",
+									"    selectedValues.push(value);",
+									"  }",
+									"});",
+									"",
+									"// Set the concatenated header value",
+									"pm.request.headers.remove('X-Optimizely-Decide-Options');",
+									"pm.request.headers.add({",
+									"  key: 'X-Optimizely-Decide-Options',",
+									"  value: JSON.stringify(selectedValues)",
+									"});",
+									"",
+									"// Remove the individual headers",
+									"headerValues.forEach(value => {",
+									"  pm.request.headers.remove(`X-Optimizely-Decide-Options-${value}`);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "X-Optimizely-Enable-FEX",
+								"value": "true",
+								"description": "✅ REQUIRED: Enable Optimizely processing"
+							},
+							{
+								"key": "X-Optimizely-SDK-Key",
+								"value": "{{sdkKey}}",
+								"description": "✅ REQUIRED: Your Optimizely SDK key"
+							},
+							{
+								"key": "X-Optimizely-Visitor-Id",
+								"value": "",
+								"description": "📝 Optional: User ID via header (highest precedence)",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-User-Id",
+								"value": "",
+								"description": "📝 Optional: Alternative user ID header",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Flag-Key",
+								"value": "",
+								"description": "📝 Optional: Flag key via header (highest precedence)",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Attributes",
+								"value": "",
+								"description": "📝 Optional: URL-encoded JSON attributes via header",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Event-Key",
+								"value": "",
+								"description": "📝 Optional: Event key for tracking",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Event-Tags",
+								"value": "",
+								"description": "📝 Optional: Event tags as JSON",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-DISABLE_DECISION_EVENT",
+								"value": "DISABLE_DECISION_EVENT",
+								"description": "✅ Enable to skip sending decision events",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-ENABLED_FLAGS_ONLY",
+								"value": "ENABLED_FLAGS_ONLY",
+								"description": "✅ Enable to only return enabled flags",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-INCLUDE_REASONS",
+								"value": "INCLUDE_REASONS",
+								"description": "✅ Enable to include decision reasons",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-EXCLUDE_VARIABLES",
+								"value": "EXCLUDE_VARIABLES",
+								"description": "✅ Enable to exclude variables",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-IGNORE_USER_PROFILE_SERVICE",
+								"value": "IGNORE_USER_PROFILE_SERVICE",
+								"description": "✅ Enable to skip user profile service",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Trimmed-Decisions",
+								"value": "true",
+								"description": "✅ Enable for minimal response format",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Override-Visitor-Id",
+								"value": "true",
+								"description": "✅ Enable to generate new visitor ID",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Response-Headers",
+								"value": "true",
+								"description": "✅ Enable to add decision info to response headers",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Response-Cookies",
+								"value": "true",
+								"description": "✅ Enable to set decision cookies",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Request-Headers",
+								"value": "true",
+								"description": "✅ Enable to set request headers",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Set-Request-Cookies",
+								"value": "true",
+								"description": "✅ Enable to set request cookies",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Enable-Response-Metadata",
+								"value": "true",
+								"description": "✅ Enable to include metadata in response",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Client-Engine",
+								"value": "",
+								"description": "📝 Optional: Client name (e.g., 'my-app')",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Client-Version",
+								"value": "",
+								"description": "📝 Optional: Client version",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Override-Cache",
+								"value": "false",
+								"description": "✅ Enable to bypass cache",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Flags-From-KV",
+								"value": "false",
+								"description": "✅ Enable to force flag retrieval from KV storage",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Datafile-From-KV",
+								"value": "false",
+								"description": "✅ Enable to force datafile retrieval from KV storage",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Debug-Headers",
+								"value": "false",
+								"description": "✅ Enable debug headers in response",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Server-Mode",
+								"value": "",
+								"description": "📝 Optional: Server mode configuration",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Datafile-Access-Token",
+								"value": "",
+								"description": "📝 Optional: Datafile access token",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Implementation-Version",
+								"value": "",
+								"description": "📝 Optional: Implementation version identifier",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Admin-Token",
+								"value": "{{adminToken}}",
+								"description": "🔒 Admin operations only: Admin authorization token",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-CDN-Settings",
+								"value": "",
+								"type": "text",
+								"disabled": true
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"userId\": \"user123\",\n  \"visitorId\": null,\n  \"attributes\": {\n    \"device\": \"mobile\",\n    \"plan\": \"premium\",\n    \"country\": \"US\",\n    \"age\": 25,\n    \"beta_tester\": true\n  },\n  \"decideOptions\": [],\n  \"sdkKey\": null,\n  \"trimmedDecisions\": null,\n  \"overrideVisitorId\": null,\n  \"setResponseHeaders\": null,\n  \"setResponseCookies\": null,\n  \"setRequestHeaders\": null,\n  \"setRequestCookies\": null,\n  \"enableResponseMetadata\": null,\n  \"clientEngine\": null,\n  \"clientVersion\": null,\n  \"eventKey\": null,\n  \"eventTags\": null,\n  \"flagKeys\": [\n    \"your_flag_key_1\",\n    \"your_flag_key_2\"\n  ]\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{baseUrl}}/api/decide-for-keys?flagKey=test-flag&userId=user123",
+							"host": [
+								"{{baseUrl}}"
+							],
+							"path": [
+								"api",
+								"decide-for-keys"
+							],
+							"query": [
+								{
+									"key": "flagKey",
+									"value": "test-flag",
+									"description": "Feature flag key to evaluate"
+								},
+								{
+									"key": "key",
+									"value": "",
+									"description": "Alternative parameter name for flagKey",
+									"disabled": true
+								},
+								{
+									"key": "userId",
+									"value": "user123",
+									"description": "User identifier"
+								},
+								{
+									"key": "visitorId",
+									"value": "",
+									"description": "Alternative parameter name for userId",
+									"disabled": true
+								},
+								{
+									"key": "sdkKey",
+									"value": "{{sdkKey}}",
+									"description": "SDK key (if not provided in header)",
+									"disabled": true
+								},
+								{
+									"key": "attributes",
+									"value": "{\"device\":\"mobile\",\"plan\":\"premium\"}",
+									"description": "User attributes as URL-encoded JSON",
+									"disabled": true
+								},
+								{
+									"key": "decideOptions",
+									"value": "INCLUDE_REASONS,EXCLUDE_VARIABLES",
+									"description": "Comma-separated decision options",
+									"disabled": true
+								},
+								{
+									"key": "trimmedDecisions",
+									"value": "true",
+									"description": "Return minimal response format",
+									"disabled": true
+								},
+								{
+									"key": "overrideVisitorId",
+									"value": "true",
+									"description": "Generate new visitor ID",
+									"disabled": true
+								},
+								{
+									"key": "setResponseHeaders",
+									"value": "true",
+									"description": "Add decision info to response headers",
+									"disabled": true
+								},
+								{
+									"key": "setResponseCookies",
+									"value": "true",
+									"description": "Set decision cookies",
+									"disabled": true
+								},
+								{
+									"key": "setRequestHeaders",
+									"value": "true",
+									"description": "Set request headers",
+									"disabled": true
+								},
+								{
+									"key": "setRequestCookies",
+									"value": "true",
+									"description": "Set request cookies",
+									"disabled": true
+								},
+								{
+									"key": "enableResponseMetadata",
+									"value": "true",
+									"description": "Include metadata in response",
+									"disabled": true
+								},
+								{
+									"key": "clientEngine",
+									"value": "",
+									"description": "Client name (e.g., 'my-app')",
+									"disabled": true
+								},
+								{
+									"key": "clientVersion",
+									"value": "",
+									"description": "Client version",
+									"disabled": true
+								},
+								{
+									"key": "overrideCache",
+									"value": "false",
+									"description": "Bypass cache",
+									"disabled": true
+								},
+								{
+									"key": "flagsFromKV",
+									"value": "false",
+									"description": "Force flag retrieval from KV storage",
+									"disabled": true
+								},
+								{
+									"key": "datafileFromKV",
+									"value": "false",
+									"description": "Force datafile retrieval from KV storage",
+									"disabled": true
+								},
+								{
+									"key": "serverMode",
+									"value": "",
+									"description": "Server mode configuration",
+									"disabled": true
+								},
+								{
+									"key": "eventKey",
+									"value": "",
+									"description": "Event key for tracking",
+									"disabled": true
+								},
+								{
+									"key": "eventTags",
+									"value": "",
+									"description": "Event tags as JSON",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Decide All",
+					"event": [
+						{
+							"listen": "prerequest",
+							"script": {
+								"exec": [
+									"/**",
+									" * Checks if a specific header is enabled in the request headers.",
+									" * ",
+									" * @param {string} headerKey - The key of the header to validate.",
+									" * @returns {boolean} - Returns false if the header is found and disabled, true otherwise.",
+									" */",
+									"function validateHeaderEnabled(headerKey, headers) {",
+									"    // Find the header by key",
+									"    const headerName = headers.find(h => {",
+									"          //console.log(h.value, headerKey, h.disabled)",
+									"          const result = h.value === headerKey && h.disabled === undefined;",
+									"          if (result) {",
+									"            console.log(h.value, headerKey, \"result= \" + result)",
+									"          }",
+									"          return result;",
+									"        });",
+									"    ",
+									"    // Check if the header is found and if it is disabled",
+									"    if (!headerName) {",
+									"        return false;           ",
+									"    }",
+									"",
+									"    return true;",
+									"}",
+									"",
+									"",
+									"// Define the available header values",
+									"const headerValues = [",
+									"  \"DISABLE_DECISION_EVENT\",",
+									"  \"ENABLED_FLAGS_ONLY\",",
+									"  \"INCLUDE_REASONS\",",
+									"  \"EXCLUDE_VARIABLES\",",
+									"  \"IGNORE_USER_PROFILE_SERVICE\"",
+									"];",
+									"",
+									"// Get the selected header values from the checkboxes",
+									"const selectedValues = [];",
+									"",
+									"const allHeaders = pm.request.headers.all();",
+									"// console.log(allHeaders);",
+									"headerValues.forEach(value => {",
+									"  const checkboxValue = pm.request.headers.get(`X-Optimizely-Decide-Options-${value}`);",
+									"  // console.log(value + \" - \" + checkboxValue)",
+									"  if (validateHeaderEnabled(checkboxValue, allHeaders)) {",
+									"    selectedValues.push(value);",
+									"  }",
+									"});",
+									"",
+									"// Set the concatenated header value",
+									"pm.request.headers.remove('X-Optimizely-Decide-Options');",
+									"pm.request.headers.add({",
+									"  key: 'X-Optimizely-Decide-Options',",
+									"  value: JSON.stringify(selectedValues)",
+									"});",
+									"",
+									"// Remove the individual headers",
+									"headerValues.forEach(value => {",
+									"  pm.request.headers.remove(`X-Optimizely-Decide-Options-${value}`);",
+									"});"
+								],
+								"type": "text/javascript",
+								"packages": {}
+							}
+						},
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"pm.test(\"Status code is 200\", function () {",
+									"    pm.response.to.have.status(200);",
+									"});",
+									"",
+									"pm.test(\"Response is object with flag decisions\", function () {",
+									"    const jsonData = pm.response.json();",
+									"    pm.expect(jsonData).to.be.an('object');",
+									"    ",
+									"    // Check that at least one flag exists",
+									"    const flagKeys = Object.keys(jsonData);",
+									"    pm.expect(flagKeys.length).to.be.greaterThan(0);",
+									"    ",
+									"    // Check each flag has proper structure",
+									"    flagKeys.forEach(flagKey => {",
+									"        const decision = jsonData[flagKey];",
+									"        pm.expect(decision).to.have.property('enabled');",
+									"        pm.expect(decision).to.have.property('flagKey', flagKey);",
+									"        pm.expect(decision).to.have.property('reasons');",
+									"        pm.expect(decision.reasons).to.be.an('array');",
+									"    });",
 									"});"
 								],
 								"type": "text/javascript"
@@ -288,11 +1183,17 @@
 								"value": "{{adminToken}}",
 								"description": "🔒 Admin operations only: Admin authorization token",
 								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-CDN-Settings",
+								"value": "",
+								"type": "text",
+								"disabled": true
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n  \"flagKey\": \"your_flag_key\",\n  \"userId\": \"user123\",\n  \"visitorId\": null,\n  \"attributes\": {\n    \"device\": \"mobile\",\n    \"plan\": \"premium\",\n    \"country\": \"US\",\n    \"age\": 25,\n    \"beta_tester\": true\n  },\n  \"decideOptions\": [],\n  \"sdkKey\": null,\n  \"trimmedDecisions\": null,\n  \"overrideVisitorId\": null,\n  \"setResponseHeaders\": null,\n  \"setResponseCookies\": null,\n  \"setRequestHeaders\": null,\n  \"setRequestCookies\": null,\n  \"enableResponseMetadata\": null,\n  \"clientEngine\": null,\n  \"clientVersion\": null,\n  \"eventKey\": null,\n  \"eventTags\": null\n}",
+							"raw": "{\n  \"userId\": \"user123\",\n  \"visitorId\": null,\n  \"attributes\": {\n    \"device\": \"mobile\",\n    \"plan\": \"premium\",\n    \"country\": \"US\",\n    \"age\": 25,\n    \"beta_tester\": true\n  },\n  \"decideOptions\": [],\n  \"sdkKey\": null,\n  \"trimmedDecisions\": null,\n  \"overrideVisitorId\": null,\n  \"setResponseHeaders\": null,\n  \"setResponseCookies\": null,\n  \"setRequestHeaders\": null,\n  \"setRequestCookies\": null,\n  \"enableResponseMetadata\": null,\n  \"clientEngine\": null,\n  \"clientVersion\": null,\n  \"eventKey\": null,\n  \"eventTags\": null\n}",
 							"options": {
 								"raw": {
 									"language": "json"
@@ -300,18 +1201,18 @@
 							}
 						},
 						"url": {
-							"raw": "{{baseUrl}}/api/decide?flagKey=your_flag_key&userId=user123",
+							"raw": "{{baseUrl}}/api/decide-all?flagKey=test-flag&userId=user123",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
 								"api",
-								"decide"
+								"decide-all"
 							],
 							"query": [
 								{
 									"key": "flagKey",
-									"value": "your_flag_key",
+									"value": "test-flag",
 									"description": "Feature flag key to evaluate"
 								},
 								{
@@ -445,202 +1346,7 @@
 					"response": []
 				},
 				{
-					"name": "Decide for Keys",
-					"event": [
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response has decision objects\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(typeof jsonData).to.equal('object');",
-									"    ",
-									"    // Check that each property is a decision object",
-									"    Object.values(jsonData).forEach(decision => {",
-									"        pm.expect(decision).to.have.property('enabled');",
-									"        pm.expect(decision).to.have.property('flagKey');",
-									"        pm.expect(decision).to.have.property('variationKey');",
-									"    });",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "X-Optimizely-Enable-FEX",
-								"value": "true",
-								"description": "✅ REQUIRED: Enable Optimizely processing"
-							},
-							{
-								"key": "X-Optimizely-SDK-Key",
-								"value": "{{sdkKey}}",
-								"description": "✅ REQUIRED: Your Optimizely SDK key"
-							},
-							{
-								"key": "X-Optimizely-Visitor-Id",
-								"value": "",
-								"description": "📝 Optional: User ID via header (highest precedence)",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-User-Id",
-								"value": "",
-								"description": "📝 Optional: Alternative user ID header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Flag-Keys",
-								"value": "",
-								"description": "📝 Optional: Multiple flag keys as JSON array via header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Attributes",
-								"value": "",
-								"description": "📝 Optional: URL-encoded JSON attributes via header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options",
-								"value": "",
-								"description": "📝 Optional: Decision options as JSON array",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Trimmed-Decisions",
-								"value": "true",
-								"description": "✅ Enable for minimal response format",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Override-Visitor-Id",
-								"value": "true",
-								"description": "✅ Enable to generate new visitor ID",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Set-Response-Headers",
-								"value": "true",
-								"description": "✅ Enable to add decision info to response headers",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Set-Response-Cookies",
-								"value": "true",
-								"description": "✅ Enable to set decision cookies",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Enable-Response-Metadata",
-								"value": "true",
-								"description": "✅ Enable to include metadata in response",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Client-Engine",
-								"value": "",
-								"description": "📝 Optional: Client name (e.g., 'my-app')",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Client-Version",
-								"value": "",
-								"description": "📝 Optional: Client version",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Override-Cache",
-								"value": "false",
-								"description": "✅ Enable to bypass cache",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Flags-From-KV",
-								"value": "false",
-								"description": "✅ Enable to force flag retrieval from KV storage",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Datafile-From-KV",
-								"value": "false",
-								"description": "✅ Enable to force datafile retrieval from KV storage",
-								"disabled": true
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"flagKeys\": [\"feature_a\", \"feature_b\", \"checkout_flow\"],\n  \"userId\": \"user123\",\n  \"attributes\": {\n    \"device\": \"mobile\",\n    \"plan\": \"premium\",\n    \"country\": \"US\"\n  },\n  \"decideOptions\": [\"ENABLED_FLAGS_ONLY\"],\n  \"trimmedDecisions\": false,\n  \"enableResponseMetadata\": false\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/decide-for-keys",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"decide-for-keys"
-							],
-							"query": [
-								{
-									"key": "userId",
-									"value": "user123",
-									"description": "User identifier",
-									"disabled": true
-								},
-								{
-									"key": "flagKeys",
-									"value": "[\"feature_a\",\"feature_b\"]",
-									"description": "Flag keys as JSON array",
-									"disabled": true
-								},
-								{
-									"key": "attributes",
-									"value": "{\"device\":\"mobile\"}",
-									"description": "User attributes as URL-encoded JSON",
-									"disabled": true
-								},
-								{
-									"key": "decideOptions",
-									"value": "ENABLED_FLAGS_ONLY,EXCLUDE_VARIABLES",
-									"description": "Comma-separated decision options",
-									"disabled": true
-								},
-								{
-									"key": "trimmedDecisions",
-									"value": "true",
-									"description": "Return minimal response format",
-									"disabled": true
-								},
-								{
-									"key": "enableResponseMetadata",
-									"value": "true",
-									"description": "Include metadata in response",
-									"disabled": true
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Decide All",
+					"name": "Decide (GET)",
 					"event": [
 						{
 							"listen": "prerequest",
@@ -718,22 +1424,13 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test(\"Response is object with flag decisions\", function () {",
+									"pm.test(\"Response has decision fields\", function () {",
 									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.be.an('object');",
-									"    ",
-									"    // Check that at least one flag exists",
-									"    const flagKeys = Object.keys(jsonData);",
-									"    pm.expect(flagKeys.length).to.be.greaterThan(0);",
-									"    ",
-									"    // Check each flag has proper structure",
-									"    flagKeys.forEach(flagKey => {",
-									"        const decision = jsonData[flagKey];",
-									"        pm.expect(decision).to.have.property('enabled');",
-									"        pm.expect(decision).to.have.property('flagKey', flagKey);",
-									"        pm.expect(decision).to.have.property('reasons');",
-									"        pm.expect(decision.reasons).to.be.an('array');",
-									"    });",
+									"    pm.expect(jsonData).to.have.property('enabled');",
+									"    pm.expect(jsonData).to.have.property('flagKey');",
+									"    pm.expect(jsonData).to.have.property('variationKey');",
+									"    pm.expect(jsonData).to.have.property('reasons');",
+									"    pm.expect(jsonData.reasons).to.be.an('array');",
 									"});"
 								],
 								"type": "text/javascript"
@@ -744,7 +1441,7 @@
 						"auth": {
 							"type": "noauth"
 						},
-						"method": "POST",
+						"method": "GET",
 						"header": [
 							{
 								"key": "Content-Type",
@@ -752,57 +1449,36 @@
 							},
 							{
 								"key": "X-Optimizely-Enable-FEX",
-								"value": "true"
+								"value": "true",
+								"description": "✅ REQUIRED: Enable Optimizely processing"
 							},
 							{
 								"key": "X-Optimizely-SDK-Key",
-								"value": "{{sdkKey}}"
+								"value": "{{sdkKey}}",
+								"description": "✅ REQUIRED: Your Optimizely SDK key"
 							},
 							{
 								"key": "X-Optimizely-Visitor-Id",
 								"value": "",
-								"description": "Optional: User ID via header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Attributes",
-								"value": "",
-								"description": "Optional: URL-encoded JSON attributes",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-DISABLE_DECISION_EVENT",
-								"value": "DISABLE_DECISION_EVENT",
-								"description": "✅ Enable to skip decision events",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-ENABLED_FLAGS_ONLY",
-								"value": "ENABLED_FLAGS_ONLY",
-								"description": "✅ Enable to only return enabled flags"
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-INCLUDE_REASONS",
-								"value": "INCLUDE_REASONS",
-								"description": "✅ Enable to include reasons",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-EXCLUDE_VARIABLES",
-								"value": "EXCLUDE_VARIABLES",
-								"description": "✅ Enable to exclude variables",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-IGNORE_USER_PROFILE_SERVICE",
-								"value": "IGNORE_USER_PROFILE_SERVICE",
-								"description": "✅ Enable to skip user profile service",
+								"description": "📝 Optional: User ID via header (highest precedence)",
 								"disabled": true
 							},
 							{
 								"key": "X-Optimizely-User-Id",
 								"value": "",
 								"description": "📝 Optional: Alternative user ID header",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Flag-Key",
+								"value": "",
+								"description": "📝 Optional: Flag key via header (highest precedence)",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Attributes",
+								"value": "",
+								"description": "📝 Optional: URL-encoded JSON attributes via header",
 								"disabled": true
 							},
 							{
@@ -815,6 +1491,36 @@
 								"key": "X-Optimizely-Event-Tags",
 								"value": "",
 								"description": "📝 Optional: Event tags as JSON",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-DISABLE_DECISION_EVENT",
+								"value": "DISABLE_DECISION_EVENT",
+								"description": "✅ Enable to skip sending decision events",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-ENABLED_FLAGS_ONLY",
+								"value": "ENABLED_FLAGS_ONLY",
+								"description": "✅ Enable to only return enabled flags",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-INCLUDE_REASONS",
+								"value": "INCLUDE_REASONS",
+								"description": "✅ Enable to include decision reasons",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-EXCLUDE_VARIABLES",
+								"value": "EXCLUDE_VARIABLES",
+								"description": "✅ Enable to exclude variables",
+								"disabled": true
+							},
+							{
+								"key": "X-Optimizely-Decide-Options-IGNORE_USER_PROFILE_SERVICE",
+								"value": "IGNORE_USER_PROFILE_SERVICE",
+								"description": "✅ Enable to skip user profile service",
 								"disabled": true
 							},
 							{
@@ -916,59 +1622,63 @@
 							{
 								"key": "X-Optimizely-Admin-Token",
 								"value": "{{adminToken}}",
-								"description": "🔒 Admin operations only",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Forced-Decisions",
-								"value": "",
-								"description": "📝 Optional: Forced decision overrides as JSON",
+								"description": "🔒 Admin operations only: Admin authorization token",
 								"disabled": true
 							},
 							{
 								"key": "X-Optimizely-CDN-Settings",
 								"value": "",
-								"description": "📝 Optional: CDN-specific settings",
+								"type": "text",
 								"disabled": true
 							}
 						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"userId\": \"user123\",\n  \"visitorId\": null,\n  \"attributes\": {\n    \"device\": \"mobile\",\n    \"plan\": \"premium\",\n    \"country\": \"US\"\n  },\n  \"decideOptions\": [\"ENABLED_FLAGS_ONLY\"],\n  \"trimmedDecisions\": null,\n  \"overrideVisitorId\": null,\n  \"setResponseHeaders\": null,\n  \"setResponseCookies\": null,\n  \"setRequestHeaders\": null,\n  \"setRequestCookies\": null,\n  \"enableResponseMetadata\": null,\n  \"clientEngine\": null,\n  \"clientVersion\": null,\n  \"overrideCache\": null,\n  \"flagsFromKV\": null,\n  \"datafileFromKV\": null,\n  \"serverMode\": null,\n  \"eventKey\": null,\n  \"eventTags\": null\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
 						"url": {
-							"raw": "{{baseUrl}}/api/decide-all?userId=user123",
+							"raw": "{{baseUrl}}/api/decide?flagKey=test-flag&userId=user123",
 							"host": [
 								"{{baseUrl}}"
 							],
 							"path": [
 								"api",
-								"decide-all"
+								"decide"
 							],
 							"query": [
 								{
+									"key": "flagKey",
+									"value": "test-flag",
+									"description": "Feature flag key to evaluate"
+								},
+								{
+									"key": "key",
+									"value": "",
+									"description": "Alternative parameter name for flagKey",
+									"disabled": true
+								},
+								{
 									"key": "userId",
-									"value": "user123"
+									"value": "user123",
+									"description": "User identifier"
 								},
 								{
 									"key": "visitorId",
-									"value": "user123",
-									"description": "Alternative to userId",
+									"value": "",
+									"description": "Alternative parameter name for userId",
+									"disabled": true
+								},
+								{
+									"key": "sdkKey",
+									"value": "{{sdkKey}}",
+									"description": "SDK key (if not provided in header)",
 									"disabled": true
 								},
 								{
 									"key": "attributes",
-									"value": "{\"device\":\"mobile\"}",
+									"value": "{\"device\":\"mobile\",\"plan\":\"premium\"}",
+									"description": "User attributes as URL-encoded JSON",
 									"disabled": true
 								},
 								{
 									"key": "decideOptions",
-									"value": "ENABLED_FLAGS_ONLY,INCLUDE_REASONS",
+									"value": "INCLUDE_REASONS,EXCLUDE_VARIABLES",
 									"description": "Comma-separated decision options",
 									"disabled": true
 								},
@@ -997,6 +1707,18 @@
 									"disabled": true
 								},
 								{
+									"key": "setRequestHeaders",
+									"value": "true",
+									"description": "Set request headers",
+									"disabled": true
+								},
+								{
+									"key": "setRequestCookies",
+									"value": "true",
+									"description": "Set request cookies",
+									"disabled": true
+								},
+								{
 									"key": "enableResponseMetadata",
 									"value": "true",
 									"description": "Include metadata in response",
@@ -1004,679 +1726,51 @@
 								},
 								{
 									"key": "clientEngine",
-									"value": "my-app",
-									"description": "Client name",
+									"value": "",
+									"description": "Client name (e.g., 'my-app')",
 									"disabled": true
 								},
 								{
 									"key": "clientVersion",
-									"value": "1.0.0",
+									"value": "",
 									"description": "Client version",
 									"disabled": true
 								},
 								{
 									"key": "overrideCache",
-									"value": "true",
+									"value": "false",
 									"description": "Bypass cache",
 									"disabled": true
 								},
 								{
 									"key": "flagsFromKV",
-									"value": "true",
-									"description": "Force flags from KV storage",
+									"value": "false",
+									"description": "Force flag retrieval from KV storage",
 									"disabled": true
 								},
 								{
 									"key": "datafileFromKV",
-									"value": "true",
-									"description": "Force datafile from KV storage",
+									"value": "false",
+									"description": "Force datafile retrieval from KV storage",
 									"disabled": true
 								},
 								{
 									"key": "serverMode",
-									"value": "production",
+									"value": "",
 									"description": "Server mode configuration",
 									"disabled": true
 								},
 								{
 									"key": "eventKey",
-									"value": "purchase",
+									"value": "",
 									"description": "Event key for tracking",
 									"disabled": true
 								},
 								{
 									"key": "eventTags",
-									"value": "{\"revenue\":29.99}",
+									"value": "",
 									"description": "Event tags as JSON",
 									"disabled": true
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Decide for Keys",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"/**",
-									" * Checks if a specific header is enabled in the request headers.",
-									" * ",
-									" * @param {string} headerKey - The key of the header to validate.",
-									" * @returns {boolean} - Returns false if the header is found and disabled, true otherwise.",
-									" */",
-									"function validateHeaderEnabled(headerKey, headers) {",
-									"    // Find the header by key",
-									"    const headerName = headers.find(h => {",
-									"          //console.log(h.value, headerKey, h.disabled)",
-									"          const result = h.value === headerKey && h.disabled === undefined;",
-									"          if (result) {",
-									"            console.log(h.value, headerKey, \"result= \" + result)",
-									"          }",
-									"          return result;",
-									"        });",
-									"    ",
-									"    // Check if the header is found and if it is disabled",
-									"    if (!headerName) {",
-									"        return false;           ",
-									"    }",
-									"",
-									"    return true;",
-									"}",
-									"",
-									"",
-									"// Define the available header values",
-									"const headerValues = [",
-									"  \"DISABLE_DECISION_EVENT\",",
-									"  \"ENABLED_FLAGS_ONLY\",",
-									"  \"INCLUDE_REASONS\",",
-									"  \"EXCLUDE_VARIABLES\",",
-									"  \"IGNORE_USER_PROFILE_SERVICE\"",
-									"];",
-									"",
-									"// Get the selected header values from the checkboxes",
-									"const selectedValues = [];",
-									"",
-									"const allHeaders = pm.request.headers.all();",
-									"// console.log(allHeaders);",
-									"headerValues.forEach(value => {",
-									"  const checkboxValue = pm.request.headers.get(`X-Optimizely-Decide-Options-${value}`);",
-									"  // console.log(value + \" - \" + checkboxValue)",
-									"  if (validateHeaderEnabled(checkboxValue, allHeaders)) {",
-									"    selectedValues.push(value);",
-									"  }",
-									"});",
-									"",
-									"// Set the concatenated header value",
-									"pm.request.headers.remove('X-Optimizely-Decide-Options');",
-									"pm.request.headers.add({",
-									"  key: 'X-Optimizely-Decide-Options',",
-									"  value: JSON.stringify(selectedValues)",
-									"});",
-									"",
-									"// Remove the individual headers",
-									"headerValues.forEach(value => {",
-									"  pm.request.headers.remove(`X-Optimizely-Decide-Options-${value}`);",
-									"});"
-								],
-								"type": "text/javascript",
-								"packages": {}
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "POST",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "X-Optimizely-Enable-FEX",
-								"value": "true"
-							},
-							{
-								"key": "X-Optimizely-SDK-Key",
-								"value": "{{sdkKey}}"
-							},
-							{
-								"key": "X-Optimizely-Visitor-Id",
-								"value": "",
-								"description": "Optional: User ID via header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Flag-Keys",
-								"value": "[\"test-flag\", \"feature_a\"]",
-								"description": "Optional: Flag keys via header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-DISABLE_DECISION_EVENT",
-								"value": "DISABLE_DECISION_EVENT",
-								"description": "✅ Enable to skip decision events",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-ENABLED_FLAGS_ONLY",
-								"value": "ENABLED_FLAGS_ONLY",
-								"description": "✅ Enable to only return enabled flags"
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-INCLUDE_REASONS",
-								"value": "INCLUDE_REASONS",
-								"description": "✅ Enable to include reasons",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-EXCLUDE_VARIABLES",
-								"value": "EXCLUDE_VARIABLES",
-								"description": "✅ Enable to exclude variables",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-IGNORE_USER_PROFILE_SERVICE",
-								"value": "IGNORE_USER_PROFILE_SERVICE",
-								"description": "✅ Enable to skip user profile service",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Enable-Response-Metadata",
-								"value": "true",
-								"disabled": true
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n  \"flagKeys\": [\"test-flag\", \"feature_a\"],\n  \"userId\": \"user123\",\n  \"attributes\": {\n    \"device\": \"mobile\"\n  }\n}",
-							"options": {
-								"raw": {
-									"language": "json"
-								}
-							}
-						},
-						"url": {
-							"raw": "{{baseUrl}}/api/decide-for-keys?flagKeys=test-flag,feature_a&userId=user123",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"decide-for-keys"
-							],
-							"query": [
-								{
-									"key": "flagKeys",
-									"value": "test-flag,feature_a",
-									"description": "Comma-separated flag keys"
-								},
-								{
-									"key": "userId",
-									"value": "user123"
-								},
-								{
-									"key": "attributes",
-									"value": "{\"device\":\"mobile\"}",
-									"disabled": true
-								}
-							]
-						}
-					},
-					"response": []
-				},
-				{
-					"name": "Decide (GET)",
-					"event": [
-						{
-							"listen": "prerequest",
-							"script": {
-								"exec": [
-									"/**",
-									" * Checks if a specific header is enabled in the request headers.",
-									" * ",
-									" * @param {string} headerKey - The key of the header to validate.",
-									" * @returns {boolean} - Returns false if the header is found and disabled, true otherwise.",
-									" */",
-									"function validateHeaderEnabled(headerKey, headers) {",
-									"    // Find the header by key",
-									"    const headerName = headers.find(h => {",
-									"          //console.log(h.value, headerKey, h.disabled)",
-									"          const result = h.value === headerKey && h.disabled === undefined;",
-									"          if (result) {",
-									"            console.log(h.value, headerKey, \"result= \" + result)",
-									"          }",
-									"          return result;",
-									"        });",
-									"    ",
-									"    // Check if the header is found and if it is disabled",
-									"    if (!headerName) {",
-									"        return false;           ",
-									"    }",
-									"",
-									"    return true;",
-									"}",
-									"",
-									"",
-									"// Define the available header values",
-									"const headerValues = [",
-									"  \"DISABLE_DECISION_EVENT\",",
-									"  \"ENABLED_FLAGS_ONLY\",",
-									"  \"INCLUDE_REASONS\",",
-									"  \"EXCLUDE_VARIABLES\",",
-									"  \"IGNORE_USER_PROFILE_SERVICE\"",
-									"];",
-									"",
-									"// Get the selected header values from the checkboxes",
-									"const selectedValues = [];",
-									"",
-									"const allHeaders = pm.request.headers.all();",
-									"// console.log(allHeaders);",
-									"headerValues.forEach(value => {",
-									"  const checkboxValue = pm.request.headers.get(`X-Optimizely-Decide-Options-${value}`);",
-									"  // console.log(value + \" - \" + checkboxValue)",
-									"  if (validateHeaderEnabled(checkboxValue, allHeaders)) {",
-									"    selectedValues.push(value);",
-									"  }",
-									"});",
-									"",
-									"// Set the concatenated header value",
-									"pm.request.headers.remove('X-Optimizely-Decide-Options');",
-									"pm.request.headers.add({",
-									"  key: 'X-Optimizely-Decide-Options',",
-									"  value: JSON.stringify(selectedValues)",
-									"});",
-									"",
-									"// Remove the individual headers",
-									"headerValues.forEach(value => {",
-									"  pm.request.headers.remove(`X-Optimizely-Decide-Options-${value}`);",
-									"});"
-								],
-								"type": "text/javascript",
-								"packages": {}
-							}
-						},
-						{
-							"listen": "test",
-							"script": {
-								"exec": [
-									"pm.test(\"Status code is 200\", function () {",
-									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test(\"Response has decision fields\", function () {",
-									"    const jsonData = pm.response.json();",
-									"    pm.expect(jsonData).to.have.property('enabled');",
-									"    pm.expect(jsonData).to.have.property('flagKey');",
-									"    pm.expect(jsonData).to.have.property('variationKey');",
-									"    pm.expect(jsonData).to.have.property('reasons');",
-									"    pm.expect(jsonData.reasons).to.be.an('array');",
-									"});"
-								],
-								"type": "text/javascript"
-							}
-						}
-					],
-					"request": {
-						"auth": {
-							"type": "noauth"
-						},
-						"method": "GET",
-						"header": [
-							{
-								"key": "X-Optimizely-Enable-FEX",
-								"value": "true",
-								"description": "✅ REQUIRED: Enable Optimizely processing"
-							},
-							{
-								"key": "X-Optimizely-SDK-Key",
-								"value": "{{sdkKey}}",
-								"description": "✅ REQUIRED: Your Optimizely SDK key"
-							},
-							{
-								"key": "X-Optimizely-Visitor-Id",
-								"value": "",
-								"description": "📝 Optional: User ID via header (highest precedence)",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-User-Id",
-								"value": "",
-								"description": "📝 Optional: Alternative user ID header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Flag-Key",
-								"value": "",
-								"description": "📝 Optional: Flag key via header (highest precedence)",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Attributes",
-								"value": "",
-								"description": "📝 Optional: URL-encoded JSON attributes via header",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Event-Key",
-								"value": "",
-								"description": "📝 Optional: Event key for tracking",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Event-Tags",
-								"value": "",
-								"description": "📝 Optional: Event tags as JSON",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-DISABLE_DECISION_EVENT",
-								"value": "DISABLE_DECISION_EVENT",
-								"description": "✅ Enable to skip sending decision events",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-ENABLED_FLAGS_ONLY",
-								"value": "ENABLED_FLAGS_ONLY",
-								"description": "✅ Enable to only return enabled flags",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-INCLUDE_REASONS",
-								"value": "INCLUDE_REASONS",
-								"description": "✅ Enable to include decision reasons",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-EXCLUDE_VARIABLES",
-								"value": "EXCLUDE_VARIABLES",
-								"description": "✅ Enable to exclude variables",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Decide-Options-IGNORE_USER_PROFILE_SERVICE",
-								"value": "IGNORE_USER_PROFILE_SERVICE",
-								"description": "✅ Enable to skip user profile service",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Trimmed-Decisions",
-								"value": "true",
-								"description": "✅ Enable for minimal response format",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Override-Visitor-Id",
-								"value": "true",
-								"description": "✅ Enable to generate new visitor ID",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Set-Response-Headers",
-								"value": "true",
-								"description": "✅ Enable to set response headers",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Set-Response-Cookies",
-								"value": "true",
-								"description": "✅ Enable to set response cookies",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Set-Request-Headers",
-								"value": "true",
-								"description": "✅ Enable to set request headers",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Set-Request-Cookies",
-								"value": "true",
-								"description": "✅ Enable to set request cookies",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Response-Metadata",
-								"value": "true",
-								"description": "✅ Enable to include response metadata",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Override-Cache",
-								"value": "false",
-								"description": "✅ Enable to bypass cache",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Flags-From-KV",
-								"value": "false",
-								"description": "✅ Enable to use flags from KV storage",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Datafile-From-KV",
-								"value": "false",
-								"description": "✅ Enable to use datafile from KV storage",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Debug-Headers",
-								"value": "false",
-								"description": "✅ Enable debug headers in response",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Client-Engine",
-								"value": "",
-								"description": "📝 Optional: Client engine name (e.g., 'javascript')",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Client-Version",
-								"value": "",
-								"description": "📝 Optional: Client version (e.g., '4.9.4')",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Implementation-Version",
-								"value": "",
-								"description": "📝 Optional: Implementation version",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Server-Mode",
-								"value": "false",
-								"description": "✅ Enable server mode processing",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Datafile-Access-Token",
-								"value": "",
-								"description": "🔒 Admin: Datafile access token",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Forced-Decisions",
-								"value": "",
-								"description": "📝 Optional: Forced decisions as JSON",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-CDN-Settings",
-								"value": "",
-								"description": "📝 Optional: CDN configuration as JSON",
-								"disabled": true
-							},
-							{
-								"key": "X-Optimizely-Admin-Token",
-								"value": "",
-								"description": "🔒 Admin: Admin access token",
-								"disabled": true
-							}
-						],
-						"url": {
-							"raw": "{{baseUrl}}/api/decide?flagKey=your_flag_key&userId=user123&attributes={\"platform\":\"mobile\"}&decideOptions=[\"INCLUDE_REASONS\"]&trimmedDecisions=false&overrideVisitorId=false&setResponseHeaders=false&setResponseCookies=false&setRequestHeaders=false&setRequestCookies=false&responseMetadata=true&overrideCache=false&flagsFromKV=false&datafileFromKV=false&debugHeaders=false&clientEngine=&clientVersion=&implementationVersion=&serverMode=false&datafileAccessToken=&forcedDecisions={}&cdnSettings={}",
-							"host": [
-								"{{baseUrl}}"
-							],
-							"path": [
-								"api",
-								"decide"
-							],
-							"query": [
-								{
-									"key": "flagKey",
-									"value": "your_flag_key",
-									"description": "📝 REQUIRED: Flag key to decide (can also use 'key')"
-								},
-								{
-									"key": "userId",
-									"value": "user123",
-									"description": "📝 Optional: User ID for decision (can also use 'visitorId')"
-								},
-								{
-									"key": "visitorId",
-									"value": "visitor123",
-									"description": "📝 Optional: Visitor ID alternative to userId",
-									"disabled": true
-								},
-								{
-									"key": "key",
-									"value": "alternative_flag_key",
-									"description": "📝 Optional: Alternative parameter name for flagKey",
-									"disabled": true
-								},
-								{
-									"key": "sdkKey",
-									"value": "{{sdkKey}}",
-									"description": "📝 Optional: SDK key via query (lower precedence than header)",
-									"disabled": true
-								},
-								{
-									"key": "attributes",
-									"value": "{\"platform\":\"mobile\"}",
-									"description": "📝 Optional: User attributes as JSON"
-								},
-								{
-									"key": "eventKey",
-									"value": "",
-									"description": "📝 Optional: Event key for tracking",
-									"disabled": true
-								},
-								{
-									"key": "eventTags",
-									"value": "",
-									"description": "📝 Optional: Event tags as JSON",
-									"disabled": true
-								},
-								{
-									"key": "decideOptions",
-									"value": "[\"INCLUDE_REASONS\"]",
-									"description": "📝 Optional: Array of decide options as JSON"
-								},
-								{
-									"key": "trimmedDecisions",
-									"value": "false",
-									"description": "✅ Optional: Return minimal response format"
-								},
-								{
-									"key": "overrideVisitorId",
-									"value": "false",
-									"description": "✅ Optional: Auto-generate new visitor ID"
-								},
-								{
-									"key": "setResponseHeaders",
-									"value": "false",
-									"description": "✅ Optional: Enable response headers",
-									"disabled": true
-								},
-								{
-									"key": "setResponseCookies",
-									"value": "false",
-									"description": "✅ Optional: Enable response cookies",
-									"disabled": true
-								},
-								{
-									"key": "setRequestHeaders",
-									"value": "false",
-									"description": "✅ Optional: Enable request headers",
-									"disabled": true
-								},
-								{
-									"key": "setRequestCookies",
-									"value": "false",
-									"description": "✅ Optional: Enable request cookies",
-									"disabled": true
-								},
-								{
-									"key": "responseMetadata",
-									"value": "true",
-									"description": "✅ Optional: Include response metadata"
-								},
-								{
-									"key": "overrideCache",
-									"value": "false",
-									"description": "✅ Optional: Bypass cache"
-								},
-								{
-									"key": "flagsFromKV",
-									"value": "false",
-									"description": "✅ Optional: Use flags from KV storage"
-								},
-								{
-									"key": "datafileFromKV",
-									"value": "false",
-									"description": "✅ Optional: Use datafile from KV storage"
-								},
-								{
-									"key": "debugHeaders",
-									"value": "false",
-									"description": "✅ Optional: Enable debug headers in response"
-								},
-								{
-									"key": "clientEngine",
-									"value": "",
-									"description": "📝 Optional: Client engine name (e.g., 'javascript')",
-									"disabled": true
-								},
-								{
-									"key": "clientVersion",
-									"value": "",
-									"description": "📝 Optional: Client version (e.g., '4.9.4')",
-									"disabled": true
-								},
-								{
-									"key": "implementationVersion",
-									"value": "",
-									"description": "📝 Optional: Implementation version",
-									"disabled": true
-								},
-								{
-									"key": "serverMode",
-									"value": "false",
-									"description": "✅ Optional: Enable server mode processing",
-									"disabled": true
-								},
-								{
-									"key": "datafileAccessToken",
-									"value": "",
-									"description": "🔒 Admin: Datafile access token",
-									"disabled": true
-								},
-								{
-									"key": "forcedDecisions",
-									"value": "{}",
-									"description": "📝 Optional: Forced decisions as JSON"
-								},
-								{
-									"key": "cdnSettings",
-									"value": "{}",
-									"description": "📝 Optional: CDN configuration as JSON"
 								}
 							]
 						}
@@ -2238,7 +2332,6 @@
 		},
 		{
 			"name": "⚙️ Config Endpoint Tests",
-			"description": "Comprehensive tests for the /api/config endpoint with admin token authentication",
 			"item": [
 				{
 					"name": "01. Basic Operations",
@@ -2489,7 +2582,8 @@
 						}
 					]
 				}
-			]
+			],
+			"description": "Comprehensive tests for the /api/config endpoint with admin token authentication"
 		}
 	],
 	"variable": [
