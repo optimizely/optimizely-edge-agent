@@ -195,7 +195,7 @@ POST /api/decide-all
 | `/api/get-forced-variation` | GET/POST | Retrieve forced variations |
 | `/api/debug` | POST | Debug configuration and state |
 
-**Complete API documentation**: [`/docs-sot/api/`](./docs-sot/api/README.md)
+**Complete API documentation**: [API Reference](docs-sot/api)
 
 ## 🚀 Platform Deployment
 
@@ -243,7 +243,7 @@ fastly secret-store-entry create --store-id=<store-id> --name=sdk-key
 
 **Features**: WebAssembly performance, advanced VCL integration, enterprise features
 
-**Complete deployment guides**: [`/docs-sot/cdn-adapters/`](./docs-sot/cdn-adapters/README.md)
+**Complete deployment guides**: [CDN Adapters Guide](docs-sot/cdn-adapters)
 
 ## ⚙️ Configuration
 
@@ -276,7 +276,7 @@ Configuration precedence (highest to lowest):
 4. **Environment Variables** - `OPTIMIZELY_SDK_KEY=env-key`
 5. **Default Values** - Built-in secure defaults
 
-**Complete configuration guide**: [`/docs-sot/configuration/`](./docs-sot/configuration/README.md)
+**Complete configuration guide**: [Configuration Guide](docs-sot/configuration)
 
 ## 📊 Monitoring & Metrics
 
@@ -313,7 +313,7 @@ metrics.incrementCounter('api_requests', { endpoint: 'decide' });
 metrics.setGauge('cache.hit_rate', 0.95);
 ```
 
-**Complete metrics documentation**: [`/docs-sot/metrics/`](./docs-sot/metrics/README.md)
+**Complete metrics documentation**: [Metrics Guide](docs-sot/metrics)
 
 ## 📚 Documentation
 
@@ -323,23 +323,23 @@ Our comprehensive documentation covers every aspect of the Edge Agent:
 
 | Category | Status | Description |
 |----------|---------|-------------|
-| **[API Reference](./docs-sot/api/README.md)** | ✅ Complete | All endpoints, parameters, examples |
-| **[Architecture](./docs-sot/architecture/README.md)** | ✅ Complete | System design, request lifecycle |
-| **[CDN Adapters](./docs-sot/cdn-adapters/README.md)** | ✅ Complete | Platform-specific deployment |
-| **[Configuration](./docs-sot/configuration/README.md)** | ✅ Complete | All settings and options |
-| **[Metrics](./docs-sot/metrics/README.md)** | ✅ Complete | Monitoring and observability |
+| **[API Reference](docs-sot/api)** | ✅ Complete | All endpoints, parameters, examples |
+| **[Architecture](docs-sot/architecture)** | ✅ Complete | System design, request lifecycle |
+| **[CDN Adapters](docs-sot/cdn-adapters)** | ✅ Complete | Platform-specific deployment |
+| **[Configuration](docs-sot/configuration)** | ✅ Complete | All settings and options |
+| **[Metrics](docs-sot/metrics)** | ✅ Complete | Monitoring and observability |
 
 ### **Getting Started Guides**
 
-- **[Quick Start Guide](./docs-sot/quick-start/README.md)** - Get running in 5 minutes
-- **[Migration Guide](./docs-sot/MIGRATION_PLAN.md)** - Upgrade from v1 to v2
-- **[Troubleshooting](./docs-sot/README.md#troubleshooting)** - Common issues and solutions
+- **[Quick Start Guide](docs-sot/quick-start)** - Get running in 5 minutes
+- **[Migration Guide](docs-sot/MIGRATION_PLAN.md)** - Upgrade from v1 to v2
+- **[Troubleshooting](docs-sot#troubleshooting)** - Common issues and solutions
 
 ### **Developer Resources**
 
-- **[Development Guide](./docs-sot/README.md#development)** - Local setup and contribution
-- **[Examples](./docs-sot/api/examples/README.md)** - Real-world implementation patterns
-- **[Security Guide](./docs-sot/configuration/security-configuration.md)** - Best practices and considerations
+- **[Development Guide](docs-sot#development)** - Local setup and contribution
+- **[Examples](docs-sot/api/examples)** - Real-world implementation patterns
+- **[Security Guide](docs-sot/configuration/security-configuration.md)** - Best practices and considerations
 
 ## 🔧 Development
 
@@ -390,10 +390,10 @@ This project is licensed under the MIT License - see the [LICENSE](./LICENSE) fi
 
 ## 🆘 Support
 
-- **Documentation**: [Complete docs in `/docs-sot/`](./docs-sot/README.md)
+- **Documentation**: [Complete docs in `/docs-sot/`](docs-sot)
 - **Issues**: [GitHub Issues](https://github.com/optimizely/edge-agent/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/optimizely/edge-agent/discussions)
 
 ---
 
-**Ready to get started?** Jump to our [Quick Start Guide](./docs-sot/quick-start/README.md) or explore the [complete documentation](./docs-sot/README.md) for in-depth guidance.
+**Ready to get started?** Jump to our [Quick Start Guide](docs-sot/quick-start) or explore the [complete documentation](docs-sot) for in-depth guidance.
