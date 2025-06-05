@@ -36,16 +36,16 @@ interface HistogramData {
  * with optional logging. This implementation is suitable for most environments.
  */
 export class StandardMetricsAdapter implements IMetricsAdapter {
-  private enabled: boolean = false;
-  private configuration: MetricsConfiguration;
-  private logger: ILoggerAdapter;
-  private metrics: MetricValue[] = [];
-  private counters: Map<string, number> = new Map();
-  private gauges: Map<string, number> = new Map();
-  private histograms: Map<string, HistogramData> = new Map();
-  private sets: Map<string, Set<string>> = new Map();
-  private flushTimerId: ReturnType<typeof setTimeout> | null = null;
-  private readonly logPrefix = '[StandardMetricsAdapter]';
+  protected enabled: boolean = false;
+  protected configuration: MetricsConfiguration;
+  protected logger: ILoggerAdapter;
+  protected metrics: MetricValue[] = [];
+  protected counters: Map<string, number> = new Map();
+  protected gauges: Map<string, number> = new Map();
+  protected histograms: Map<string, HistogramData> = new Map();
+  protected sets: Map<string, Set<string>> = new Map();
+  protected flushTimerId: ReturnType<typeof setTimeout> | null = null;
+  protected readonly logPrefix = '[StandardMetricsAdapter]';
 
   /**
    * Creates a new instance of StandardMetricsAdapter.

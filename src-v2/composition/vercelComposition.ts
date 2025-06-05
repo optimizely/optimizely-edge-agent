@@ -18,6 +18,7 @@ import { IEnvironmentAdapter } from "../adapters/interfaces/IEnvironmentAdapter"
 import { ILoggerAdapter } from "../adapters/interfaces/ILoggerAdapter";
 import { IStorageAdapter } from "../adapters/interfaces/IStorageAdapter";
 import { IRequestAdapter } from "../adapters/interfaces/IRequestAdapter";
+import { IMetricsAdapter } from "../adapters/interfaces/IMetricsAdapter";
 import { CacheService } from "../services/implementations/CacheService";
 import { ICacheService } from "../services/interfaces/ICacheService";
 import { DatafileService } from "../services/implementations/DatafileService";
@@ -48,6 +49,7 @@ function composeVercelApplication(factoryInputs: VercelAdapterFactoryInputs): Ve
   let environmentAdapter: IEnvironmentAdapter;
   let storageAdapter: IStorageAdapter;
   let requestAdapter: IRequestAdapter;
+  let metricsAdapter: IMetricsAdapter | undefined;
   let eventService: IEventService;
 
   // Create Vercel adapter factory
@@ -56,11 +58,17 @@ function composeVercelApplication(factoryInputs: VercelAdapterFactoryInputs): Ve
   environmentAdapter = vercelFactory.createEnvironmentAdapter();
   storageAdapter = vercelFactory.createStorageAdapter(CONFIG_KV_BINDING_NAME);
   requestAdapter = vercelFactory.createRequestAdapter();
+  metricsAdapter = vercelFactory.createMetricsAdapter();
   
   // Create EventDispatcher for Vercel
   eventService = new EventDispatcher(logger, environmentAdapter);
 
   logger.debug("Vercel Composition: VERCEL adapters created/retrieved.");
+  if (metricsAdapter) {
+    logger.info("Metrics adapter successfully created and configured");
+  } else {
+    logger.info("No metrics adapter configured - metrics collection disabled");
+  }
 
   // Create Services (inject dependencies)
   const cacheService = new CacheService(storageAdapter, logger);
@@ -80,7 +88,7 @@ function composeVercelApplication(factoryInputs: VercelAdapterFactoryInputs): Ve
     storageAdapter, 
     environmentAdapter, 
     logger, 
-    undefined, // metricsAdapter - Vercel doesn't have metrics yet
+    metricsAdapter, // Now using the configured metrics adapter
     flagStorageService,  // Pass FlagStorageService as 5th parameter
     undefined  // ConfigurationService will be injected later to avoid circular dependency
   );

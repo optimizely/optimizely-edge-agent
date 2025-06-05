@@ -1,0 +1,75 @@
+# AI Assistant Instructions for Rex Tracker Light
+
+## Command Recognition
+
+When the user says any of these commands, you should initialize Rex Tracker Light:
+- "Rex init"
+- "Rex tracker init"
+- "Initialize Rex Tracker"
+- "Rex status"
+
+## Initialization Protocol
+
+When any Rex command is given:
+
+1. **Locate Rex Tracker Light**
+   - Default location: `./rex-tracker-light/`
+   - If not found, check parent directories or ask user for location
+
+2. **Read Core Documents** (in this order)
+   - `./rex-tracker-light/OPERATIONAL-RULES.md`
+   - `./rex-tracker-light/SESSION-INIT.md`
+   - `./rex-tracker-light/CONTEXT-RECOVERY.md`
+
+3. **Check Current State**
+   - Read `./rex-tracker-light/current/active-plan.json`
+   - Read `./rex-tracker-light/current/context.json`
+   - Run `node ./rex-tracker-light/scripts/plan-manager.js status`
+
+4. **Provide Visual Summary**
+   ```
+   🚀 Rex Tracker Light Initialized
+   
+   📊 Current State:
+   - Active Plan: [plan-name or "None"]
+   - Current Task: [task-id and progress]
+   - Overall Progress: [X/Y tasks]
+   
+   Ready for instructions.
+   ```
+
+## System Description
+
+Rex Tracker Light is a prescriptive implementation tracking system that:
+- Manages software development through detailed implementation plans
+- Tracks progress at the atomic action level
+- Maintains context across sessions
+- Enforces exact implementation without architectural decisions
+
+## Key Commands After Initialization
+
+- "What plans are available?" - List all plans
+- "Show current status" - Display detailed progress
+- "Start next task" - Begin next available task
+- "Continue working" - Resume from last action
+- "Create a plan for [feature]" - Start new plan
+
+## Important Rules
+
+1. Rex Tracker is the single source of truth
+2. Follow prescriptive details exactly
+3. Update progress after each atomic action
+4. Never skip steps or improvise
+5. Stop at blockers and report them
+
+## File Locations
+
+All Rex Tracker files are relative to the rex-tracker-light directory:
+- Plans: `plans/*.json`
+- Current state: `current/active-plan.json`
+- Context: `current/context.json`
+- Scripts: `scripts/plan-manager.js`
+
+---
+
+Note: This is a project-specific tool. If the user hasn't mentioned Rex Tracker or implementation plans, don't automatically suggest using it.

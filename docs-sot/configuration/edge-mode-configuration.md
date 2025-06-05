@@ -2,31 +2,31 @@
 
 ## Overview
 
-Edge Mode enables the Optimizely Edge Agent to intercept and modify content delivery at the edge, providing personalized experiences without client-side code. This document covers all Edge Mode configuration options, URL matching patterns, and content transformation rules.
+Edge Mode enables the Optimizely Edge Agent to intercept requests and serve different content variants based on experimentation decisions. Rather than transforming content, it determines which content source to use (origin server vs alternative URLs) based on the `cdnVariationSettings` configuration. This document covers all Edge Mode configuration options, URL matching patterns, and content routing rules.
 
 ## Edge Mode Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          Edge Mode Request Flow                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│  Request ──▶ URL Matcher ──▶ Decision Engine ──▶ Content Transform ──▶ Response │
-│                   │                 │                    │                      │
-│                   ▼                 ▼                    ▼                      │
-│            Pattern Rules      User Context        Transformation             │
-│              Matching          Decisions             Rules                   │
-│                                                                          │
-│  Configuration Points:                                                   │
-│  ┌─────────────────┬────────────────────┬─────────────────────┐       │
-│  │  URL Patterns   │  Decision Rules    │  Transform Rules    │       │
-│  ├─────────────────┼────────────────────┼─────────────────────┤       │
-│  │ • Path matching │ • Flag mappings    │ • Content replace   │       │
-│  │ • Query params  │ • User attributes  │ • Header injection  │       │
-│  │ • Headers       │ • Forced decisions │ • Cookie setting    │       │
-│  └─────────────────┴────────────────────┴─────────────────────┘       │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Edge Mode Request Flow                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Request ──▶ URL Matcher ──▶ Decision Engine ──▶ Content Router ──▶ Response │
+│                   │                 │                    │                   │
+│                   ▼                 ▼                    ▼                   │
+│            Pattern Rules      User Context        cdnVariationSettings      │
+│              Matching          Decisions           Content Source           │
+│                                                                              │
+│  Configuration Points:                                                       │
+│  ┌─────────────────┬────────────────────┬─────────────────────┐           │
+│  │  URL Patterns   │  Decision Rules    │  Content Routing    │           │
+│  ├─────────────────┼────────────────────┼─────────────────────┤           │
+│  │ • Path matching │ • Flag mappings    │ • Origin vs CDN     │           │
+│  │ • Query params  │ • User attributes  │ • Cache control     │           │
+│  │ • Headers       │ • Forced decisions │ • Response URLs     │           │
+│  └─────────────────┴────────────────────┴─────────────────────┘           │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Basic Configuration
@@ -67,7 +67,6 @@ const config = {
 interface URLPattern {
   pattern: string;           // Pattern to match
   flags?: string[];         // Feature flags to evaluate
-  transform?: boolean;      // Enable content transformation
   cache?: number;          // Cache TTL override
 }
 
@@ -132,98 +131,73 @@ const advancedConfig: AdvancedMatchConfig[] = [
 ];
 ```
 
-## Content Transformation
+## Content Routing with cdnVariationSettings
 
-### Transformation Rules
+### Overview
 
-```typescript
-// From: /src-v2/services/implementations/ContentTransformer.ts
-interface TransformationRule {
-  // What to find
-  search: string | RegExp;
-  
-  // What to replace with
-  replace: string | ((match: string, decision: OptimizelyDecision) => string);
-  
-  // Conditions
-  condition?: (decision: OptimizelyDecision) => boolean;
-  
-  // Options
-  options?: {
-    caseSensitive: boolean;
-    multiline: boolean;
-    limit: number;  // Max replacements
-  };
+Edge Mode uses the `cdnVariationSettings` variable from feature flags to determine content routing. This is NOT content transformation - it's intelligent content source selection.
+
+### cdnVariationSettings Structure
+
+```javascript
+// From feature flag variable configuration
+{
+  "cdnVariationSettings": {
+    "cdnExperimentURL": "https://example.com/products/*",    // URL pattern to intercept
+    "cdnResponseURL": "https://example.com/products-v2/*",   // Alternative content source
+    "cacheKey": "products_experiment_v2",                     // Unique cache identifier
+    "cacheTTL": 3600,                                         // Cache duration in seconds
+    "forwardRequestToOrigin": "true",                         // Fetch from origin if true
+    "cacheRequestToOrigin": "true",                           // Cache the origin response
+    "isControlVariation": "false"                             // Indicates control/treatment
+  }
 }
 ```
 
-### Placeholder Syntax
+### Field Descriptions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cdnExperimentURL` | string | URL pattern that triggers this experiment |
+| `cdnResponseURL` | string | Alternative content source URL |
+| `cacheKey` | string | Unique identifier for caching this variation |
+| `cacheTTL` | number | Time-to-live for cached content (seconds) |
+| `forwardRequestToOrigin` | string | "true" to fetch from origin, "false" to use cdnResponseURL |
+| `cacheRequestToOrigin` | string | "true" to cache the fetched content |
+| `isControlVariation` | string | "true" for control, "false" for treatment |
+
+### Content Routing Logic
 
 ```typescript
-// Simple placeholders
-const content = `
-  <div class="{{optimizely:homepage_hero}}">
-    {{optimizely:welcome_message}}
-  </div>
-`;
-
-// With defaults
-const content = `
-  {{optimizely:cta_text|default:Click Here}}
-`;
-
-// Conditional content
-const content = `
-  {{#optimizely:show_banner}}
-    <div class="banner">Special Offer!</div>
-  {{/optimizely:show_banner}}
-`;
-
-// Variable injection
-const content = `
-  <script>
-    window.optimizely = {
-      decisions: {{optimizely:decisions:json}}
-    };
-  </script>
-`;
-```
-
-### Transformation Configuration
-
-```typescript
-interface TransformConfig {
-  // Enable transformations
-  enableTransformations: boolean;  // Default: true
+// Simplified routing logic in EdgeModeHandler
+async function routeContent(request: Request, cdnSettings: CdnVariationSettings) {
+  // Check cache first
+  const cachedContent = await cache.get(cdnSettings.cacheKey);
+  if (cachedContent && !isExpired(cachedContent, cdnSettings.cacheTTL)) {
+    return cachedContent;
+  }
   
-  // Placeholder format
-  placeholderFormat: 'double-curly' | 'single-curly' | 'square';
+  // Determine content source
+  let contentUrl: string;
+  if (cdnSettings.forwardRequestToOrigin === "true") {
+    // Use original request URL (origin)
+    contentUrl = request.url;
+  } else {
+    // Use alternative content source
+    contentUrl = cdnSettings.cdnResponseURL;
+  }
   
-  // Transform options
-  transformOptions: {
-    // Process JavaScript
-    transformScripts: boolean;     // Default: false
-    
-    // Process styles
-    transformStyles: boolean;      // Default: true
-    
-    // Process meta tags
-    transformMeta: boolean;        // Default: true
-    
-    // Custom processors
-    processors: TransformProcessor[];
-  };
-}
-
-// Custom processor example
-class CustomTransformProcessor implements TransformProcessor {
-  process(content: string, decisions: Map<string, OptimizelyDecision>): string {
-    // Custom transformation logic
-    return content.replace(/\{\{price:(\w+)\}\}/g, (match, flagKey) => {
-      const decision = decisions.get(flagKey);
-      return decision?.variables?.price || '0.00';
+  // Fetch content
+  const response = await fetch(contentUrl);
+  
+  // Cache if configured
+  if (cdnSettings.cacheRequestToOrigin === "true") {
+    await cache.put(cdnSettings.cacheKey, response, {
+      expirationTtl: cdnSettings.cacheTTL
     });
   }
+  
+  return response;
 }
 ```
 
@@ -320,53 +294,51 @@ Vary: Cookie, X-Optimizely-User-Id
 
 ## Performance Configuration
 
-### Streaming Transformations
+### Caching Strategy
 
 ```typescript
-interface StreamingConfig {
-  // Enable streaming
-  enableStreaming: boolean;        // Default: true
+interface EdgeCacheConfig {
+  // Cache configuration from cdnVariationSettings
+  useCdnCache: boolean;           // Default: true
   
-  // Buffer size
-  bufferSize: number;             // Default: 16384 (16KB)
+  // Cache key generation
+  cacheKeyFactors: string[];      // Default: ['url', 'userId', 'flagKey']
   
-  // Chunk processing
-  processChunks: boolean;         // Default: true
+  // Cache headers
+  varyHeaders: string[];          // Default: ['Cookie', 'X-Optimizely-User-Id']
   
-  // Head injection
-  injectInHead: boolean;          // Default: true
-  headInjectionTimeout: number;   // Default: 100ms
+  // Default TTL if not specified in cdnVariationSettings
+  defaultCacheTTL: number;        // Default: 300 (5 minutes)
 }
 
-// Streaming transformation
-class StreamingTransformer {
-  transform(stream: ReadableStream, decisions: Map<string, OptimizelyDecision>): ReadableStream {
-    return stream.pipeThrough(new TransformStream({
-      transform: (chunk, controller) => {
-        const text = new TextDecoder().decode(chunk);
-        const transformed = this.transformContent(text, decisions);
-        controller.enqueue(new TextEncoder().encode(transformed));
-      }
-    }));
+// Cache implementation
+class EdgeCacheManager {
+  async getCachedResponse(cacheKey: string, cacheTTL: number): Promise<Response | null> {
+    const cached = await cache.match(cacheKey);
+    if (!cached) return null;
+    
+    const age = Date.now() - cached.headers.get('X-Cache-Time');
+    if (age > cacheTTL * 1000) {
+      await cache.delete(cacheKey);
+      return null;
+    }
+    
+    return cached;
   }
-}
-```
-
-### Edge Mode Cache
-
-```typescript
-interface EdgeModeCacheConfig {
-  // Cache transformed content
-  cacheTransformed: boolean;      // Default: true
   
-  // Cache key includes
-  cacheKeyFactors: string[];      // Default: ['url', 'variations']
-  
-  // Vary headers
-  varyHeaders: string[];          // Default: ['Cookie', 'Accept']
-  
-  // Edge-specific TTL
-  edgeCacheTTL: number;          // Default: 300 (5 minutes)
+  async cacheResponse(cacheKey: string, response: Response, cacheTTL: number): Promise<void> {
+    const headers = new Headers(response.headers);
+    headers.set('X-Cache-Time', Date.now().toString());
+    headers.set('Cache-Control', `public, max-age=${cacheTTL}`);
+    
+    const cachedResponse = new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    });
+    
+    await cache.put(cacheKey, cachedResponse);
+  }
 }
 ```
 
@@ -380,13 +352,13 @@ interface EdgeSecurityConfig {
   updateCSP: boolean;             // Default: true
   cspNonce: boolean;             // Default: true
   
-  // Script injection
-  allowScriptInjection: boolean;  // Default: false
-  trustedScripts: string[];      // Allowed script sources
+  // Trusted sources
+  trustedOrigins: string[];       // Allowed content sources
+  allowedResponseURLs: string[];  // Validated cdnResponseURL patterns
   
-  // Transform validation
-  validateTransforms: boolean;    // Default: true
-  maxTransformSize: number;      // Default: 10485760 (10MB)
+  // Request validation
+  validateRequests: boolean;      // Default: true
+  maxResponseSize: number;        // Default: 10485760 (10MB)
 }
 ```
 

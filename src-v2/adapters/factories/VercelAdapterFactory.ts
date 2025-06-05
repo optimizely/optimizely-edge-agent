@@ -3,6 +3,7 @@ import { IStorageAdapter } from "../interfaces/IStorageAdapter";
 import { IEnvironmentAdapter } from "../interfaces/IEnvironmentAdapter";
 import { ILoggerAdapter } from "../interfaces/ILoggerAdapter";
 import { IResponseAdapter } from "../interfaces/IResponseAdapter";
+import { IMetricsAdapter } from "../interfaces/IMetricsAdapter";
 
 import { VercelRequestAdapter } from "../implementations/vercel/VercelRequestAdapter";
 import { VercelStorageAdapter } from "../implementations/vercel/VercelStorageAdapter";
@@ -10,6 +11,11 @@ import { VercelEnvironmentAdapter, VercelEnv, VercelExecutionContext } from "../
 import { VercelLoggerAdapter } from "../implementations/vercel/VercelLoggerAdapter";
 import { VercelResponseAdapter } from "../implementations/vercel/VercelResponseAdapter";
 import { VercelKVNamespace } from "../implementations/vercel/VercelStorageAdapter";
+
+// Import metrics adapters
+import { PrometheusMetricsAdapter } from "../implementations/metrics/PrometheusMetricsAdapter";
+import { DataDogMetricsAdapter } from "../implementations/metrics/DataDogMetricsAdapter";
+import { NewRelicMetricsAdapter } from "../implementations/metrics/NewRelicMetricsAdapter";
 
 // Interface defining the inputs required by the Vercel factory
 export interface VercelAdapterFactoryInputs {
@@ -77,5 +83,34 @@ export class VercelAdapterFactory {
 
   createLoggerAdapter(): ILoggerAdapter {
     return this.getLoggerAdapter(); // Return cached instance
+  }
+
+  createMetricsAdapter(): IMetricsAdapter | undefined {
+    const environmentAdapter = this.getEnvironmentAdapter();
+    const logger = this.getLoggerAdapter();
+    const metricsProvider = environmentAdapter.getVariable('METRICS_PROVIDER');
+    
+    if (!metricsProvider) {
+      logger.warn('No metrics provider configured (METRICS_PROVIDER environment variable not set)');
+      return undefined;
+    }
+    
+    switch (metricsProvider.toLowerCase()) {
+      case 'prometheus':
+        logger.info('Creating PrometheusMetricsAdapter');
+        return new PrometheusMetricsAdapter(logger, environmentAdapter);
+      
+      case 'datadog':
+        logger.info('Creating DataDogMetricsAdapter');
+        return new DataDogMetricsAdapter(logger, environmentAdapter);
+      
+      case 'newrelic':
+        logger.info('Creating NewRelicMetricsAdapter');
+        return new NewRelicMetricsAdapter(logger, environmentAdapter);
+      
+      default:
+        logger.warn(`Unknown metrics provider: ${metricsProvider}. Available options: prometheus, datadog, newrelic`);
+        return undefined;
+    }
   }
 } 

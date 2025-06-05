@@ -1,0 +1,150 @@
+{
+  "id": "feature-name-plan",
+  "name": "Feature Name Implementation Plan",
+  "description": "Brief description of what this plan achieves",
+  "createdAt": "2025-01-29T10:00:00Z",
+  "updatedAt": "2025-01-29T10:00:00Z",
+  "metadata": {
+    "author": "Your Name",
+    "version": "1.0.0",
+    "tags": ["feature", "category"],
+    "priority": "HIGH"
+  },
+  "config": {
+    "requiresApproval": ["TASK003", "TASK005"],
+    "protectedFiles": ["src/core/config.ts", "src/types/index.ts"],
+    "constraints": [
+      "Do not modify existing public APIs",
+      "Maintain backward compatibility",
+      "Follow existing code style"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "TASK001",
+      "title": "Task title here",
+      "description": "Detailed description of what this task accomplishes",
+      "status": "PENDING",
+      "dependencies": [],
+      
+      "prescriptiveDetails": {
+        "summary": "One-line summary of the task",
+        
+        "requiredPackages": [
+          {
+            "name": "package-name",
+            "version": "1.2.3",
+            "installCommand": "npm install package-name@1.2.3"
+          }
+        ],
+        
+        "targetFiles": [
+          {
+            "path": "src/feature/index.ts",
+            "action": "CREATE",
+            "description": "Main feature entry point"
+          }
+        ],
+        
+        "codePatterns": [
+          {
+            "file": "src/feature/index.ts",
+            "description": "Complete implementation",
+            "language": "typescript",
+            "pattern": "// Exact code to implement\nimport { Something } from './types';\n\nexport class Feature {\n  // Implementation details\n}"
+          }
+        ],
+        
+        "apiSpecifications": [
+          {
+            "method": "POST",
+            "path": "/api/feature",
+            "description": "Feature endpoint",
+            "requestBody": {
+              "type": "object",
+              "properties": {
+                "data": { "type": "string" }
+              }
+            },
+            "responseBody": {
+              "type": "object",
+              "properties": {
+                "result": { "type": "string" }
+              }
+            }
+          }
+        ],
+        
+        "dataSchemas": [
+          {
+            "name": "FeatureConfig",
+            "description": "Configuration schema",
+            "schema": {
+              "enabled": "boolean",
+              "options": "object"
+            }
+          }
+        ],
+        
+        "environmentVariables": [
+          {
+            "name": "FEATURE_ENABLED",
+            "description": "Enable/disable feature",
+            "example": "true",
+            "required": false
+          }
+        ],
+        
+        "constraints": [
+          "Do NOT use library X",
+          "Do NOT modify existing types",
+          "Must maintain compatibility with v1"
+        ],
+        
+        "testCases": [
+          {
+            "description": "Feature initializes correctly",
+            "type": "unit",
+            "expectedBehavior": "Returns instance without errors"
+          }
+        ]
+      },
+      
+      "atomicActions": [
+        {
+          "id": "ACTION001",
+          "description": "Install required package",
+          "completed": false
+        },
+        {
+          "id": "ACTION002",
+          "description": "Create feature directory",
+          "completed": false
+        },
+        {
+          "id": "ACTION003",
+          "description": "Create index.ts file",
+          "completed": false
+        }
+      ],
+      
+      "verificationCriteria": [
+        "Package installed in package.json",
+        "Feature class exports correctly",
+        "TypeScript compilation succeeds"
+      ],
+      
+      "implementationNotes": [],
+      "estimatedTime": "2h",
+      "actualTime": null,
+      "completedAt": null
+    }
+  ],
+  
+  "globalPatterns": {
+    "errorHandling": "try {\n  // code\n} catch (error) {\n  logger.error('Context', error);\n  throw new AppError(error.message);\n}",
+    "logging": "logger.info('Component:Action', { data });",
+    "naming": "Use camelCase for functions, PascalCase for classes",
+    "fileStructure": "Group by feature in src/features/"
+  }
+}

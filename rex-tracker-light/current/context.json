@@ -1,0 +1,12 @@
+{
+  "project": "optimizely-edge-agent",
+  "workingDirectory": "/mnt/c/Users/LAH/Documents/__Development/Optimizely/optimizely-edge-agent/optimizely-edge-agent",
+  "environment": "development",
+  "lastActivity": null,
+  "preferences": {
+    "verboseLogging": false,
+    "autoSave": true,
+    "confirmBeforeDelete": true
+  },
+  "notes": []
+}

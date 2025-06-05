@@ -26,10 +26,13 @@ All metrics collection is done through the `IMetricsAdapter` interface, which pr
 The Edge Agent includes platform-specific adapters:
 
 - **CloudflareMetricsAdapter**: Integrates with Cloudflare Analytics Engine
-- **FastlyMetricsAdapter**: Integrates with Fastly's real-time analytics
-- **VercelMetricsAdapter**: Integrates with Vercel's monitoring
+- **PrometheusMetricsAdapter**: Sends metrics to Prometheus Push Gateway
+- **DataDogMetricsAdapter**: Sends metrics to DataDog via HTTP API  
+- **NewRelicMetricsAdapter**: Sends metrics to New Relic via Metric API
 - **StandardMetricsAdapter**: Generic adapter for custom implementations
 - **NoOpMetricsAdapter**: Disables metrics collection
+
+**For Vercel and Fastly**: Use one of the external adapters (Prometheus, DataDog, or New Relic) as these platforms don't have native analytics engines like Cloudflare.
 
 ## Collected Metrics
 
@@ -384,6 +387,37 @@ The metrics system is designed for minimal overhead:
 3. Filter unnecessary metrics:
    - Disable histogram collection if not needed
    - Use metric-specific options
+
+## Quick Start Guides
+
+### For Developers
+- **[Metrics Adapters Setup Guide](./metrics-adapters-setup-guide.md)** - Complete setup instructions for all providers
+- **[Implementation Documentation](./metrics-adapters-implementation.md)** - Technical details for developers
+
+### Choose Your Provider
+- **DataDog** (Recommended): Production-ready with excellent edge support
+- **New Relic**: Great for APM and observability platforms  
+- **Prometheus**: Best for self-hosted/on-premise environments
+
+### Environment Variables Quick Reference
+
+```env
+# Enable metrics and choose provider
+OPTIMIZELY_METRICS_ENABLED=true
+METRICS_PROVIDER=datadog  # Options: prometheus, datadog, newrelic
+
+# DataDog setup
+DD_API_KEY=your-datadog-api-key
+DD_SITE=datadoghq.com
+DD_ENV=production
+
+# New Relic setup  
+NEW_RELIC_LICENSE_KEY=your-license-key
+NEW_RELIC_REGION=US
+
+# Prometheus setup
+PROMETHEUS_PUSH_GATEWAY_URL=http://your-pushgateway:9091
+```
 
 ## See Also
 

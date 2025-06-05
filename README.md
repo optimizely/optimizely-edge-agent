@@ -113,39 +113,35 @@ curl https://your-domain.com/your-page
 
 ### **Edge Mode** - Automatic Request Handling
 
-Transparently intercepts normal web requests and applies experimentation logic:
+Transparently intercepts web requests and serves content based on experimentation decisions:
 
-```typescript
-// Automatic URL pattern matching
-const edgeConfig = {
-  urlPatterns: [
-    { pattern: '/home', flags: ['homepage_redesign'] },
-    { pattern: '/products/*', flags: ['product_layout', 'pricing_test'] },
-    { pattern: '/checkout', flags: ['checkout_flow_v2'] }
-  ],
-  
-  // Automatic user identification
-  cookieConfig: {
-    generateUserId: true,
-    persistVariations: true
-  },
-  
-  // Content transformation
-  transformations: [
-    {
-      search: '{{hero_content}}',
-      replace: (decision) => decision.variables.hero_content
-    }
-  ]
-};
+```javascript
+// Edge mode intercepts requests and uses cdnVariationSettings to determine content source
+// Example cdnVariationSettings from a feature flag variable:
+{
+  "cdnVariationSettings": {
+    "cdnExperimentURL": "https://example.com/home",      // URL pattern to match
+    "cdnResponseURL": "https://example.com/home-variant", // Alternative content source
+    "cacheKey": "home_variant_a",                         // Cache identifier
+    "cacheTTL": 3600,                                     // Cache duration in seconds
+    "forwardRequestToOrigin": "true",                     // Whether to fetch from origin
+    "cacheRequestToOrigin": "true",                       // Whether to cache origin response
+    "isControlVariation": "false"                         // Control vs treatment indicator
+  }
+}
 ```
 
-**When a user visits `yoursite.com/products/shoes`:**
-1. Edge Agent automatically detects the URL pattern
-2. Evaluates `product_layout` and `pricing_test` flags
-3. Applies user targeting based on cookies/headers
-4. Transforms content based on assigned variations
-5. Returns personalized experience
+**When a user visits `yoursite.com/home`:**
+1. Edge Agent intercepts the request
+2. Evaluates the relevant feature flag(s) for this URL
+3. Retrieves the `cdnVariationSettings` from the decision
+4. Based on settings, either:
+   - Serves content from cache (if available and not expired)
+   - Fetches content from the configured `cdnResponseURL`
+   - Forwards to origin server if `forwardRequestToOrigin` is true
+5. Caches the response according to `cacheTTL` settings
+
+**Key Point**: Edge Mode does NOT transform content. It determines which content to serve (origin vs alternative URLs) based on the `cdnVariationSettings` variable in your feature flags.
 
 ### **Agent Mode** - REST API Endpoints
 
