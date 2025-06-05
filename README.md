@@ -23,14 +23,16 @@ A **TypeScript-based edge computing solution** that delivers A/B testing and fea
 
 ## 📋 Table of Contents
 
-- [Quick Start](#quick-start)
-- [Architecture Overview](#architecture-overview)
-- [Operating Modes](#operating-modes)
-- [API Reference](#api-reference)
-- [Platform Deployment](#platform-deployment)
-- [Configuration](#configuration)
-- [Documentation](#documentation)
-- [Contributing](#contributing)
+- [Quick Start](#-quick-start)
+- [Architecture Overview](#️-architecture-overview)
+- [Operating Modes](#-operating-modes)
+- [API Reference](#-api-reference)
+- [Platform Deployment](#-platform-deployment)
+- [Configuration](#️-configuration)
+- [Monitoring & Metrics](#-monitoring--metrics)
+- [Documentation](#-documentation)
+- [Development](#-development)
+- [Contributing](#-contributing)
 
 ## 🏃 Quick Start
 
