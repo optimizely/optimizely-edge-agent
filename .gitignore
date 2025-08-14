@@ -11,6 +11,10 @@ lerna-debug.log*
 wrangler.toml
 wrangler*.toml
 .wrangler/
+
+# Edge Mode Demo Pages (separate git repo)
+edge-mode-demo-pages/
+
 #Custom Settings
 
 # Diagnostic reports (https://nodejs.org/api/report.html)
