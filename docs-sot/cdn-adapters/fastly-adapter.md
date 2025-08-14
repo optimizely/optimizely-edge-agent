@@ -967,10 +967,322 @@ class BackendBatcher {
    }
    ```
 
+## Testing and QA Features
+
+### Forced Decisions
+
+The Fastly adapter fully supports forced decisions for testing and QA scenarios. This allows you to override normal feature flag bucketing to test specific variations.
+
+#### Using Forced Decisions with Fastly Compute@Edge
+
+```typescript
+// Example: Fastly Compute@Edge with forced decisions
+import { Router } from "@fastly/expressly";
+
+const router = new Router();
+
+router.post("/api/decide", async (req, res) => {
+  // Example 1: Force variation via headers (highest precedence)
+  const forceVariation = req.headers.get('X-Optimizely-Force-Variation');
+  
+  // Example 2: Force variation via query parameters
+  const url = new URL(req.url);
+  const queryForceVariation = url.searchParams.get('forceVariation');
+  
+  // Example 3: Force variation in request body
+  const body = await req.json();
+  const bodyForceVariation = body.forcedVariationKey;
+  
+  // Apply precedence: headers > query > body
+  const finalForceVariation = forceVariation || queryForceVariation || bodyForceVariation;
+  
+  if (finalForceVariation) {
+    // Add to decision request
+    req.headers.set('X-Optimizely-Force-Variation', finalForceVariation);
+  }
+  
+  // Forward to decision service
+  const response = await handleDecision(req);
+  res.send(response);
+});
+```
+
+#### Testing Script for Fastly
+
+```bash
+#!/bin/bash
+# Test forced decisions on Fastly Compute@Edge deployment
+
+FASTLY_URL="https://your-service.edgecompute.app"
+SDK_KEY="your-sdk-key"
+
+# Test 1: Force variation via header
+echo "Testing forced variation via header..."
+curl -X POST "$FASTLY_URL/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -H "X-Optimizely-Force-Variation: treatment" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001"
+  }'
+
+# Test 2: Force variation via query parameter
+echo -e "\n\nTesting forced variation via query parameter..."
+curl -X GET "$FASTLY_URL/api/decide?\
+flagKey=checkout_flow&\
+userId=qa_tester_001&\
+forceVariation=control&\
+sdkKey=$SDK_KEY" \
+  -H "X-Optimizely-Enable-FEX: true"
+
+# Test 3: Force variation via request body
+echo -e "\n\nTesting forced variation via request body..."
+curl -X POST "$FASTLY_URL/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedVariationKey": "express_checkout"
+  }'
+
+# Test 4: Test precedence (header should win)
+echo -e "\n\nTesting precedence (header > query > body)..."
+curl -X POST "$FASTLY_URL/api/decide?forceVariation=query_variation" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -H "X-Optimizely-Force-Variation: header_variation" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedVariationKey": "body_variation"
+  }'
+```
+
+#### VCL Integration for QA Testing
+
+```vcl
+# fastly.vcl - Add QA override support
+sub vcl_recv {
+  # Check for QA test user
+  if (req.http.Cookie ~ "qa_user_id=") {
+    set req.http.X-QA-User = regsub(req.http.Cookie, 
+      ".*qa_user_id=([^;]+).*", "\1");
+  }
+  
+  # Apply QA overrides from Config Store
+  if (req.http.X-QA-User) {
+    declare local var.qa_override STRING;
+    set var.qa_override = config_store.get(
+      concat("qa_override_", req.http.X-QA-User)
+    );
+    
+    if (var.qa_override) {
+      set req.http.X-Optimizely-Force-Variation = var.qa_override;
+    }
+  }
+}
+```
+
+#### Config Store Based QA Overrides
+
+```typescript
+// Manage QA overrides in Config Store
+class FastlyQAManager {
+  async setQAOverride(
+    userId: string, 
+    flagKey: string, 
+    variation: string
+  ): Promise<void> {
+    const key = `qa_override_${userId}_${flagKey}`;
+    
+    // Update Config Store via API
+    const response = await fetch(
+      `https://api.fastly.com/config-stores/${STORE_ID}/items/${key}`,
+      {
+        method: 'PUT',
+        headers: {
+          'Fastly-Key': process.env.FASTLY_API_TOKEN,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          item_value: variation,
+          item_key: key 
+        })
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error('Failed to set QA override');
+    }
+  }
+  
+  async getQAOverrides(userId: string): Promise<Record<string, string>> {
+    const prefix = `qa_override_${userId}_`;
+    
+    // List all items with prefix
+    const response = await fetch(
+      `https://api.fastly.com/config-stores/${STORE_ID}/items`,
+      {
+        headers: {
+          'Fastly-Key': process.env.FASTLY_API_TOKEN
+        }
+      }
+    );
+    
+    const items = await response.json();
+    const overrides: Record<string, string> = {};
+    
+    for (const item of items) {
+      if (item.item_key.startsWith(prefix)) {
+        const flagKey = item.item_key.replace(prefix, '');
+        overrides[flagKey] = item.item_value;
+      }
+    }
+    
+    return overrides;
+  }
+}
+```
+
+#### Edge Testing Dashboard
+
+```typescript
+// Fastly edge testing dashboard handler
+router.get("/qa-dashboard", async (req, res) => {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>QA Testing Dashboard</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .form-group { margin-bottom: 15px; }
+        input, select, button { padding: 5px 10px; }
+        .result { background: #f0f0f0; padding: 10px; margin-top: 20px; }
+      </style>
+    </head>
+    <body>
+      <h1>Fastly Edge Agent QA Dashboard</h1>
+      
+      <div class="form-group">
+        <label>User ID: <input type="text" id="userId" value="qa_tester_001"></label>
+      </div>
+      
+      <div class="form-group">
+        <label>Flag Key: <input type="text" id="flagKey" value="checkout_flow"></label>
+      </div>
+      
+      <div class="form-group">
+        <label>Force Variation: 
+          <select id="variation">
+            <option value="">None</option>
+            <option value="control">Control</option>
+            <option value="treatment">Treatment</option>
+            <option value="variant_a">Variant A</option>
+            <option value="variant_b">Variant B</option>
+          </select>
+        </label>
+      </div>
+      
+      <button onclick="testDecision()">Test Decision</button>
+      
+      <div id="result" class="result" style="display:none;"></div>
+      
+      <script>
+        async function testDecision() {
+          const userId = document.getElementById('userId').value;
+          const flagKey = document.getElementById('flagKey').value;
+          const variation = document.getElementById('variation').value;
+          
+          const headers = {
+            'Content-Type': 'application/json',
+            'X-Optimizely-Enable-FEX': 'true'
+          };
+          
+          if (variation) {
+            headers['X-Optimizely-Force-Variation'] = variation;
+          }
+          
+          const response = await fetch('/api/decide', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ flagKey, userId })
+          });
+          
+          const decision = await response.json();
+          
+          document.getElementById('result').style.display = 'block';
+          document.getElementById('result').innerHTML = 
+            '<pre>' + JSON.stringify(decision, null, 2) + '</pre>';
+        }
+      </script>
+    </body>
+    </html>
+  `;
+  
+  res.status(200).set('Content-Type', 'text/html').send(html);
+});
+```
+
+#### Automated Testing
+
+```javascript
+// test/fastly-forced-decisions.test.js
+const { describe, test, expect } = require('@jest/globals');
+
+describe('Fastly Forced Decisions', () => {
+  const baseUrl = 'https://test.edgecompute.app';
+  
+  test('should respect forced variation from header', async () => {
+    const response = await fetch(`${baseUrl}/api/decide`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Optimizely-Enable-FEX': 'true',
+        'X-Optimizely-SDK-Key': 'test-key',
+        'X-Optimizely-Force-Variation': 'variant_b'
+      },
+      body: JSON.stringify({
+        flagKey: 'test_feature',
+        userId: 'test_user'
+      })
+    });
+    
+    const decision = await response.json();
+    expect(decision.variationKey).toBe('variant_b');
+  });
+  
+  test('should handle forced decisions with real-time stats', async () => {
+    // Test that forced decisions are tracked correctly
+    const response = await fetch(`${baseUrl}/api/decide`, {
+      method: 'POST',
+      headers: {
+        'X-Optimizely-Force-Variation': 'treatment',
+        'X-Optimizely-Enable-FEX': 'true'
+      },
+      body: JSON.stringify({
+        flagKey: 'test_flag',
+        userId: 'stats_test_user'
+      })
+    });
+    
+    // Check that stats include forced decision indicator
+    const stats = response.headers.get('X-Stats-Forced');
+    expect(stats).toBe('true');
+  });
+});
+```
+
 ## See Also
 
 - [Fastly Compute@Edge Documentation](https://docs.fastly.com/products/compute-at-edge)
 - [Fastly JavaScript SDK](https://github.com/fastly/js-compute-runtime)
 - [Config Store Guide](https://docs.fastly.com/en/guides/working-with-config-stores)
+- [API Decision Endpoints](../api/decisions/decide.md)
 - [Adapter Development Guide](./adapter-development.md)
 - Implementation: `/src-v2/adapters/implementations/fastly/`

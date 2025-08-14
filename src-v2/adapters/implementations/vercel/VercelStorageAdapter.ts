@@ -29,15 +29,20 @@ export interface VercelKVNamespace {
  * This adapter integrates with @vercel/kv for production use.
  */
 export class VercelStorageAdapter implements IStorageAdapter {
-  private kv: VercelKVClient;
+  private kv: VercelKVClient | null;
+  private memoryStore: Map<string, { value: string; expiry?: number }>;
 
   /**
    * Creates an instance of the adapter.
-   * @param kv - The Vercel KV client instance from @vercel/kv.
+   * @param kv - The Vercel KV client instance from @vercel/kv, or null for memory storage.
    */
-  constructor(kv: VercelKVClient | VercelKVNamespace) {
+  constructor(kv: VercelKVClient | VercelKVNamespace | null) {
+    this.memoryStore = new Map();
+    
     if (!kv) {
-      throw new Error("Vercel KV client cannot be null or undefined.");
+      // Use in-memory storage for development/testing
+      this.kv = null;
+      return;
     }
     
     // If it's the old interface, adapt it
@@ -97,7 +102,26 @@ export class VercelStorageAdapter implements IStorageAdapter {
   async get(key: string, type: 'stream'): Promise<ReadableStream | null>;
   async get(key: string, type: 'text' | 'json' | 'arrayBuffer' | 'stream'): Promise<any> {
     try {
-      const result = await this.kv.get(key);
+      let result: string | null;
+      
+      if (this.kv === null) {
+        // Use memory store
+        const stored = this.memoryStore.get(key);
+        if (!stored) {
+          return null;
+        }
+        
+        // Check expiry
+        if (stored.expiry && Date.now() > stored.expiry) {
+          this.memoryStore.delete(key);
+          return null;
+        }
+        
+        result = stored.value;
+      } else {
+        // Use Vercel KV
+        result = await this.kv.get(key);
+      }
       
       if (result === null) {
         return null;
@@ -175,14 +199,23 @@ export class VercelStorageAdapter implements IStorageAdapter {
         stringValue = JSON.stringify(value);
       }
 
-      // Prepare Vercel KV options
-      const kvOptions: any = {};
-      
-      if (options?.expirationTtl) {
-        kvOptions.ex = options.expirationTtl; // Expiration in seconds
-      }
+      if (this.kv === null) {
+        // Use memory store
+        const expiry = options?.expirationTtl 
+          ? Date.now() + (options.expirationTtl * 1000)
+          : undefined;
+        
+        this.memoryStore.set(key, { value: stringValue, expiry });
+      } else {
+        // Use Vercel KV
+        const kvOptions: any = {};
+        
+        if (options?.expirationTtl) {
+          kvOptions.ex = options.expirationTtl; // Expiration in seconds
+        }
 
-      await this.kv.set(key, stringValue, kvOptions);
+        await this.kv.set(key, stringValue, kvOptions);
+      }
     } catch (error) {
       console.error(`Error storing key ${key} in Vercel KV:`, error);
       throw error;
@@ -191,7 +224,11 @@ export class VercelStorageAdapter implements IStorageAdapter {
 
   async delete(key: string): Promise<void> {
     try {
-      await this.kv.del(key);
+      if (this.kv === null) {
+        this.memoryStore.delete(key);
+      } else {
+        await this.kv.del(key);
+      }
     } catch (error) {
       console.error(`Error deleting key ${key} from Vercel KV:`, error);
       throw error;
@@ -217,7 +254,21 @@ export class VercelStorageAdapter implements IStorageAdapter {
         scanOptions.match = `${prefix}*`;
       }
 
-      const [nextCursor, keys] = await this.kv.scan(cursor, scanOptions);
+      let nextCursor: number;
+      let keys: string[];
+      
+      if (this.kv === null) {
+        // Use memory store
+        const allKeys = Array.from(this.memoryStore.keys());
+        const filteredKeys = prefix ? allKeys.filter(key => key.startsWith(prefix)) : allKeys;
+        const startIndex = cursor;
+        const endIndex = Math.min(startIndex + limit, filteredKeys.length);
+        
+        keys = filteredKeys.slice(startIndex, endIndex);
+        nextCursor = endIndex < filteredKeys.length ? endIndex : 0;
+      } else {
+        [nextCursor, keys] = await this.kv.scan(cursor, scanOptions);
+      }
       
       // Convert keys to the expected format
       const formattedKeys = keys.map(key => ({
@@ -242,7 +293,16 @@ export class VercelStorageAdapter implements IStorageAdapter {
    */
   async getTTL(key: string): Promise<number> {
     try {
-      return await this.kv.ttl(key);
+      if (this.kv === null) {
+        const stored = this.memoryStore.get(key);
+        if (!stored || !stored.expiry) {
+          return -1;
+        }
+        const remaining = Math.max(0, stored.expiry - Date.now());
+        return Math.floor(remaining / 1000);
+      } else {
+        return await this.kv.ttl(key);
+      }
     } catch (error) {
       console.error(`Error getting TTL for key ${key}:`, error);
       return -1;
@@ -254,8 +314,21 @@ export class VercelStorageAdapter implements IStorageAdapter {
    */
   async exists(key: string): Promise<boolean> {
     try {
-      const result = await this.kv.exists(key);
-      return result === 1;
+      if (this.kv === null) {
+        const stored = this.memoryStore.get(key);
+        if (!stored) {
+          return false;
+        }
+        // Check if expired
+        if (stored.expiry && Date.now() > stored.expiry) {
+          this.memoryStore.delete(key);
+          return false;
+        }
+        return true;
+      } else {
+        const result = await this.kv.exists(key);
+        return result === 1;
+      }
     } catch (error) {
       console.error(`Error checking existence of key ${key}:`, error);
       return false;
@@ -267,8 +340,17 @@ export class VercelStorageAdapter implements IStorageAdapter {
    */
   async expire(key: string, seconds: number): Promise<boolean> {
     try {
-      const result = await this.kv.expire(key, seconds);
-      return result === 1;
+      if (this.kv === null) {
+        const stored = this.memoryStore.get(key);
+        if (!stored) {
+          return false;
+        }
+        stored.expiry = Date.now() + (seconds * 1000);
+        return true;
+      } else {
+        const result = await this.kv.expire(key, seconds);
+        return result === 1;
+      }
     } catch (error) {
       console.error(`Error setting expiration for key ${key}:`, error);
       return false;
@@ -281,11 +363,29 @@ export class VercelStorageAdapter implements IStorageAdapter {
  * This would be used in production with the actual @vercel/kv package
  */
 export function createVercelKVAdapter(): VercelStorageAdapter {
-  // In production, this would import and use the real Vercel KV client:
-  // import { kv } from '@vercel/kv';
-  // return new VercelStorageAdapter(kv);
+  // Try to use real Vercel KV if available
+  try {
+    // Check if we have KV environment variables
+    const kvUrl = process.env.KV_URL || process.env.KV_REST_API_URL;
+    const kvToken = process.env.KV_REST_API_TOKEN;
+    
+    if (kvUrl && kvToken) {
+      // Try to import real Vercel KV
+      try {
+        const { kv } = require('@vercel/kv');
+        console.log('[VercelKV] Using real Vercel KV storage');
+        return new VercelStorageAdapter(kv);
+      } catch (importError) {
+        console.warn('[VercelKV] @vercel/kv package not available, falling back to mock');
+      }
+    } else {
+      console.log('[VercelKV] No KV credentials found, using mock for development');
+    }
+  } catch (error) {
+    console.warn('[VercelKV] Error setting up real KV, falling back to mock:', error);
+  }
   
-  // For now, return a mock implementation that logs
+  // Fallback to mock implementation that logs
   const mockKV: VercelKVClient = {
     get: async (key: string) => {
       console.log(`[MockKV] GET ${key}`);

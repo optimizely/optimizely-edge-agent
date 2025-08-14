@@ -1,0 +1,52 @@
+{
+  "adapters": {
+    "cloudflare": {
+      "name": "Cloudflare Workers",
+      "requiredEnvVars": ["CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_API_TOKEN"],
+      "buildCommand": "npm run build:cloudflare",
+      "deployCommand": "wrangler deploy",
+      "localCommand": "wrangler dev --local",
+      "features": {
+        "kvStorage": true,
+        "edgeCache": true,
+        "customHeaders": true,
+        "cookies": true,
+        "metrics": ["prometheus", "datadog"]
+      },
+      "specificTests": ["kv-storage", "worker-cache", "durable-objects"]
+    },
+    "vercel": {
+      "name": "Vercel Edge Functions",
+      "requiredEnvVars": ["VERCEL_TOKEN", "VERCEL_PROJECT_ID"],
+      "buildCommand": "npm run build:vercel",
+      "deployCommand": "vercel --prod --yes",
+      "localCommand": "vercel dev --listen 9797",
+      "features": {
+        "kvStorage": true,
+        "edgeCache": false,
+        "customHeaders": true,
+        "cookies": true,
+        "metrics": ["datadog", "newrelic", "prometheus"],
+        "edgeMode": true,
+        "compressionIssueFixed": true
+      },
+      "specificTests": ["vercel-kv", "edge-config", "middleware-chain", "edge-mode-github"],
+      "status": "FIXED: 2025-08-14 - Compression headers issue resolved"
+    },
+    "fastly": {
+      "name": "Fastly Compute@Edge",
+      "requiredEnvVars": ["FASTLY_API_TOKEN", "FASTLY_SERVICE_ID"],
+      "buildCommand": "npm run build:fastly",
+      "deployCommand": "fastly compute publish",
+      "localCommand": "fastly compute serve",
+      "features": {
+        "kvStorage": true,
+        "edgeCache": true,
+        "customHeaders": true,
+        "cookies": true,
+        "metrics": ["prometheus"]
+      },
+      "specificTests": ["fastly-kv", "cache-api", "backend-requests"]
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "environments": {
+    "local": {
+      "name": "Local Development",
+      "url": "http://localhost:9797",
+      "contentOrigin": "https://edge-agent-demo-simone-tutorial.pages.dev",
+      "adapter": "cloudflare",
+      "wranglerCommand": "wrangler dev --local --port 9797",
+      "buildCommand": "npm run build:cloudflare"
+    },
+    "staging-cloudflare": {
+      "name": "Cloudflare Staging",
+      "url": "https://edge-agent-staging.workers.dev",
+      "contentOrigin": "https://demo-content.github.io/edge-test",
+      "adapter": "cloudflare"
+    },
+    "local-vercel": {
+      "name": "Local Vercel Development",
+      "url": "http://localhost:8789",
+      "contentOrigin": "https://edge-agent-demo-simone-tutorial.pages.dev",
+      "adapter": "vercel",
+      "vercelCommand": "node test-vercel-edge.js",
+      "buildCommand": "tsc -p tsconfig.vercel.json"
+    },
+    "staging-vercel": {
+      "name": "Vercel Staging",
+      "url": "https://edge-agent-staging.vercel.app",
+      "contentOrigin": "https://demo-content.github.io/edge-test",
+      "adapter": "vercel"
+    },
+    "production-vercel": {
+      "name": "Vercel Production (Fixed)",
+      "url": "https://optimizely-edge-agent-3zfhww5it-simones-projects-0a246ebe.vercel.app",
+      "contentOrigin": "https://simone-coelho.github.io/optimizely-edge-mode-demo",
+      "adapter": "vercel",
+      "notes": "Fixed 2025-08-14: Compression headers issue resolved"
+    },
+    "staging-fastly": {
+      "name": "Fastly Staging",
+      "url": "https://edge-agent.fastly-edge.com",
+      "contentOrigin": "https://demo-content.github.io/edge-test",
+      "adapter": "fastly"
+    },
+    "production": {
+      "name": "Production",
+      "url": "https://edge-agent.production.com",
+      "contentOrigin": "https://content.production.com",
+      "adapter": "cloudflare"
+    }
+  },
+  "default": "local"
+}

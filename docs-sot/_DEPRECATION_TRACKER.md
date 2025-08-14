@@ -96,10 +96,10 @@ These documents have significant value and should be preserved:
 | `/api/decide-for-keys` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
 | `/api/decide-options` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
 | `/api/sdk` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
-| `/api/set-forced-variation` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
-| `/api/get-forced-variation` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
-| `/api/remove-forced-variation` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
-| `/api/remove-all-forced-decisions` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
+| `/api/set-forced-variation` | ⚠️ **DEPRECATED** | ✅ Complete docs with migration guide | **DEPRECATED - MIGRATE TO /api/decide** |
+| `/api/get-forced-variation` | ⚠️ **DEPRECATED** | ✅ Complete docs with migration guide | **DEPRECATED - MIGRATE TO /api/decide** |
+| `/api/remove-forced-variation` | ⚠️ **DEPRECATED** | ✅ Complete docs with migration guide | **DEPRECATED - MIGRATE TO /api/decide** |
+| `/api/remove-all-forced-decisions` | ⚠️ **DEPRECATED** | ✅ Complete docs with migration guide | **DEPRECATED - MIGRATE TO /api/decide** |
 | `/api/debug` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
 | `/api/admin/*` | ❌ Not documented | 📝 **NEXT: Planned** | **PLANNED** |
 
@@ -132,6 +132,7 @@ These documents have significant value and should be preserved:
 | 2025-05-27 | Created tracker | N/A | Initial deprecation tracking setup |
 | 2025-05-27 | Added datafile docs | `/docs-sot/api/data-management/datafile.md` | Complete implementation-based API docs |
 | 2025-05-27 | Added flagkeys docs | `/docs-sot/api/data-management/flagkeys.md` | Complete implementation-based API docs |
+| 2025-06-07 | Deprecated forced variation endpoints | `/docs-sot/api/admin/forced-variations.md` | Added deprecation notices and migration guide |
 
 ---
 

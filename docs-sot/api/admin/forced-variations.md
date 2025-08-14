@@ -1,5 +1,13 @@
 # Forced Variations API
 
+> **⚠️ DEPRECATED ENDPOINTS** 
+> 
+> The standalone forced variation endpoints (`/api/set-forced-variation`, `/api/get-forced-variation`, `/api/remove-forced-variation`, `/api/remove-all-forced-decisions`) are **deprecated** and will be removed in a future version.
+>
+> **Migration Required**: Please migrate to the integrated approach using the `/api/decide` endpoint with the `forcedDecisions` parameter. See the [Migration Guide](#migration-guide) below.
+>
+> **Sunset Date**: December 31, 2025
+
 Manage forced variations for testing, QA, and debugging purposes.
 
 ## Overview
@@ -10,22 +18,152 @@ Forced variations allow you to override Optimizely's bucketing algorithm and ass
 - **Demos** - Show specific variations to stakeholders
 - **Development** - Test variation-specific code changes
 
+## Migration Guide
+
+**Recommended Approach**: Use the `/api/decide` endpoint with the `forcedDecisions` parameter instead of the deprecated standalone endpoints.
+
+### Old vs New Approach
+
+#### ❌ Deprecated Approach (Don't Use)
+```bash
+# Step 1: Set forced variation
+curl -X POST "/api/set-forced-variation" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "test_user",
+    "flagKey": "checkout_flow",
+    "variationKey": "treatment"
+  }'
+
+# Step 2: Make decision (in separate request)
+curl -X POST "/api/decide" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "test_user",
+    "flagKey": "checkout_flow"
+  }'
+```
+
+#### ✅ New Integrated Approach (Recommended)
+```bash
+# Single request with forced decision
+curl -X POST "/api/decide" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "test_user",
+    "flagKey": "checkout_flow",
+    "forcedDecisions": [
+      {
+        "flagKey": "checkout_flow",
+        "variationKey": "treatment"
+      }
+    ]
+  }'
+```
+
+### Migration Examples
+
+#### 1. Setting Forced Variations
+**Old:**
+```javascript
+// DEPRECATED - Don't use
+await fetch('/api/set-forced-variation', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    userId: 'user123',
+    flagKey: 'feature_x',
+    variationKey: 'treatment'
+  })
+});
+```
+
+**New:**
+```javascript
+// Use integrated approach
+const decision = await fetch('/api/decide', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    userId: 'user123',
+    flagKey: 'feature_x',
+    forcedDecisions: [{
+      flagKey: 'feature_x',
+      variationKey: 'treatment'
+    }]
+  })
+});
+```
+
+#### 2. Testing Multiple Variations
+**Old:**
+```javascript
+// DEPRECATED - Multiple requests required
+await setForcedVariation('user1', 'feature_a', 'variant_1');
+await setForcedVariation('user1', 'feature_b', 'variant_2');
+const decisions = await makeDecisions('user1', ['feature_a', 'feature_b']);
+```
+
+**New:**
+```javascript
+// Single request with multiple forced decisions
+const decisions = await fetch('/api/decide-all', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    userId: 'user1',
+    flagKeys: ['feature_a', 'feature_b'],
+    forcedDecisions: [
+      { flagKey: 'feature_a', variationKey: 'variant_1' },
+      { flagKey: 'feature_b', variationKey: 'variant_2' }
+    ]
+  })
+});
+```
+
+#### 3. QA Testing Workflow
+**Old:**
+```bash
+# DEPRECATED - Multi-step process
+curl -X POST "/api/set-forced-variation" -d '{"userId":"qa1","flagKey":"checkout","variationKey":"v2"}'
+# ... perform testing ...
+curl -X POST "/api/remove-forced-variation" -d '{"userId":"qa1","flagKey":"checkout"}'
+```
+
+**New:**
+```bash
+# Direct testing without persistent state
+curl -X POST "/api/decide" -d '{
+  "userId": "qa1",
+  "flagKey": "checkout",
+  "forcedDecisions": [{"flagKey": "checkout", "variationKey": "v2"}]
+}'
+```
+
+### Benefits of the New Approach
+
+1. **Single Request**: No need for separate set/get/remove operations
+2. **Stateless**: No persistent forced variations to clean up
+3. **Atomic**: Forced decisions and regular decisions in one call
+4. **Flexible**: Can force some flags while allowing normal bucketing for others
+5. **Performance**: Fewer network requests and server-side operations
+
 ## Methods for Forcing Variations
 
 ### 1. Inline Forced Decisions (Recommended)
 Pass forced decisions directly in decision requests without using API endpoints. See [Request Parameters](../../configuration/request-parameters.md#forced-decisions) for details.
 
-### 2. API Endpoints
-Use dedicated API endpoints to set persistent forced variations that apply across multiple requests
+### 2. API Endpoints (Deprecated)
+> **⚠️ These endpoints are deprecated.** Use dedicated API endpoints to set persistent forced variations that apply across multiple requests
 
 ## Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/set-forced-variation` | POST/PUT | Set a forced variation |
-| `/api/get-forced-variation` | GET/POST | Get current forced variation |
-| `/api/remove-forced-variation` | POST/DELETE | Remove a forced variation |
-| `/api/remove-all-forced-decisions` | POST/DELETE | Remove all forced decisions for a user |
+| Endpoint | Method | Status | Description |
+|----------|--------|--------|-------------|
+| `/api/set-forced-variation` | POST/PUT | ⚠️ **DEPRECATED** | Set a forced variation |
+| `/api/get-forced-variation` | GET/POST | ⚠️ **DEPRECATED** | Get current forced variation |
+| `/api/remove-forced-variation` | POST/DELETE | ⚠️ **DEPRECATED** | Remove a forced variation |
+| `/api/remove-all-forced-decisions` | POST/DELETE | ⚠️ **DEPRECATED** | Remove all forced decisions for a user |
 
 ## Authentication
 
@@ -68,6 +206,8 @@ Required for all operations:
 ---
 
 ## POST/PUT /api/set-forced-variation
+
+> **⚠️ DEPRECATED**: This endpoint is deprecated. Use `/api/decide` with `forcedDecisions` parameter instead.
 
 Set a forced variation for a specific user and flag.
 
@@ -152,6 +292,8 @@ curl -X POST "https://your-deployment/api/set-forced-variation" \
 
 ## GET/POST /api/get-forced-variation
 
+> **⚠️ DEPRECATED**: This endpoint is deprecated. Use `/api/decide` with `forcedDecisions` parameter instead.
+
 Retrieve the forced variation for a user and flag.
 
 ### Parameters
@@ -205,6 +347,8 @@ curl -X POST "https://your-deployment/api/get-forced-variation" \
 ---
 
 ## POST/DELETE /api/remove-forced-variation
+
+> **⚠️ DEPRECATED**: This endpoint is deprecated. Use `/api/decide` with `forcedDecisions` parameter instead.
 
 Remove a forced variation for a specific user and flag.
 
@@ -265,6 +409,8 @@ curl -X DELETE "https://your-deployment/api/remove-forced-variation?userId=user1
 ---
 
 ## POST/DELETE /api/remove-all-forced-decisions
+
+> **⚠️ DEPRECATED**: This endpoint is deprecated. Use `/api/decide` with `forcedDecisions` parameter instead.
 
 Remove all forced decisions for a specific user across all flags.
 

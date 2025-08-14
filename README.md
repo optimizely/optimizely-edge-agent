@@ -158,6 +158,24 @@ POST /api/decide
   "attributes": { "plan": "premium" }
 }
 
+# Single flag decision with forced variation (for testing/QA)
+POST /api/decide
+{
+  "flagKey": "checkout_flow",
+  "userId": "user123",
+  "attributes": { "plan": "premium" },
+  "forcedVariationKey": "treatment"  # Force specific variation
+}
+
+# Using headers for forced decisions (highest precedence)
+curl -X POST /api/decide \
+  -H "X-Optimizely-Force-Variation: treatment" \
+  -H "X-Optimizely-Force-Rule: experiment_123" \
+  -d '{"flagKey": "checkout_flow", "userId": "user123"}'
+
+# Using query parameters for forced decisions (GET requests)
+GET /api/decide?flagKey=checkout_flow&userId=user123&forceVariation=treatment
+
 # Multiple flag decisions  
 POST /api/decide-for-keys
 {
@@ -178,10 +196,15 @@ POST /api/decide-all
 ### **Decision Endpoints**
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/decide` | GET/POST | Single feature flag decision |
+| `/api/decide` | GET/POST | Single feature flag decision with forced variation support |
 | `/api/decide-all` | GET/POST | All feature flags decisions |
 | `/api/decide-for-keys` | GET/POST | Multiple specific flags decisions |
 | `/api/decide-options` | GET/POST | Available decision options |
+
+**Forced Decisions**: The `/api/decide` endpoint supports forcing specific variations for testing:
+- **Headers**: `X-Optimizely-Force-Variation`, `X-Optimizely-Force-Rule` (highest precedence)
+- **Query**: `forceVariation`, `forceRule` (for GET requests)
+- **Body**: `forcedVariationKey`, `forcedRuleKey` (for POST requests)
 
 ### **Data Management**
 | Endpoint | Method | Description |
@@ -191,11 +214,11 @@ POST /api/decide-all
 | `/api/sdk` | GET | SDK and version information |
 
 ### **Administration**
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/set-forced-variation` | POST/PUT | Force specific variations |
-| `/api/get-forced-variation` | GET/POST | Retrieve forced variations |
-| `/api/debug` | POST | Debug configuration and state |
+| Endpoint | Method | Status | Description |
+|----------|--------|--------|-------------|
+| `/api/set-forced-variation` | POST/PUT | ⚠️ **DEPRECATED** | Force specific variations (use `/api/decide` with `forcedDecisions`) |
+| `/api/get-forced-variation` | GET/POST | ⚠️ **DEPRECATED** | Retrieve forced variations (use `/api/decide` with `forcedDecisions`) |
+| `/api/debug` | POST | ✅ Active | Debug configuration and state |
 
 **Complete API documentation**: [API Reference](docs-sot/api)
 

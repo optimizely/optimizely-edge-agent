@@ -1,0 +1,35 @@
+{
+  "name": "optly-edge-agent-cloudflare",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.cloudflare.json",
+    "build:deploy": "tsc -p tsconfig.cloudflare.deploy.json --skipLibCheck",
+    "deploy": "npm run build && wrangler deploy",
+    "deploy:test": "npm run build:deploy && wrangler deploy --env test",
+    "dev": "npm run build && wrangler dev --local",
+    "format": "prettier --loglevel warn --write \"{src,src-v2}/**/*.{jsx,js,ts}\"",
+    "test": "vitest",
+    "test:integration": "ts-node src-v2/tests/run-integration-tests.ts"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.1.0",
+    "@cloudflare/workers-types": "^4.20250404.0",
+    "@types/node": "^20.12.11",
+    "@types/node-fetch": "^2.6.2",
+    "miniflare": "^3.20250408.0",
+    "prettier": "^3.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0",
+    "wrangler": "^3.81.0"
+  },
+  "dependencies": {
+    "@optimizely/optimizely-sdk": "^5.3.4",
+    "node-fetch": "^2.6.7"
+  },
+  "packageManager": "yarn@4.5.1"
+}

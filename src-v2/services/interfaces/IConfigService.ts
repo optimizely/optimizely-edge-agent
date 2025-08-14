@@ -1,4 +1,4 @@
-import * as optimizely from '@optimizely/optimizely-sdk';
+import * as optimizely from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 
 /**
  * Represents the Optimizely configuration/datafile.

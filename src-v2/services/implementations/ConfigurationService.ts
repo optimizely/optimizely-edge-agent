@@ -407,13 +407,39 @@ export class ConfigurationService implements IConfigurationService {
 			}
 		}
 		
-		// Flag Key
+		// Flag Key (singular)
 		const flagKeyHeader = this.getHeader(request, 'x-optimizely-flag-key', requestId);
 		if (flagKeyHeader) {
 			values.flagKey = String(flagKeyHeader).trim();
 			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FLAG KEY FOUND - Setting to: ${values.flagKey}`);
 			if (setSource) {
 				this.setMetadataSourceField('flagKey', 'header');
+			}
+		}
+		
+		// Flag Keys (plural) - support for multiple flag keys
+		const flagKeysHeader = this.getHeader(request, 'x-optimizely-flag-keys', requestId);
+		if (flagKeysHeader) {
+			try {
+				// Try to parse as JSON array first
+				const parsed = JSON.parse(flagKeysHeader);
+				if (Array.isArray(parsed)) {
+					values.flagKeys = parsed.map(k => String(k).trim());
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FLAG KEYS (plural) FOUND - Setting to: ${JSON.stringify(values.flagKeys)}`);
+					if (setSource) {
+						this.setMetadataSourceField('flagKeys', 'header');
+					}
+				}
+			} catch (e) {
+				// If not JSON, try comma-separated values
+				const keys = String(flagKeysHeader).split(',').map(k => k.trim()).filter(k => k);
+				if (keys.length > 0) {
+					values.flagKeys = keys;
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FLAG KEYS (plural) FOUND - Setting to: ${JSON.stringify(values.flagKeys)}`);
+					if (setSource) {
+						this.setMetadataSourceField('flagKeys', 'header');
+					}
+				}
 			}
 		}
 		
@@ -464,6 +490,21 @@ export class ConfigurationService implements IConfigurationService {
 			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse forced decisions header: ${e}`);
 		}
 		
+		// Event Tags
+		try {
+			const eventTagsHeader = this.getHeader(request, 'x-optimizely-event-tags', requestId);
+			if (eventTagsHeader) {
+				const parsedEventTags = JSON.parse(eventTagsHeader);
+				if (typeof parsedEventTags === 'object' && parsedEventTags !== null) {
+					values.eventTags = parsedEventTags;
+					this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] EVENT TAGS FOUND - Parsed and set`);
+					if (setSource) this.setMetadataSourceField('eventTags', 'header');
+				}
+			}
+		} catch (e) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse event tags header: ${e}`);
+		}
+		
 		// === Boolean Parameters ===
 		// Feature Experimentation (FEX)
 		const fexHeader = this.getHeader(request, 'x-optimizely-enable-fex', requestId);
@@ -481,9 +522,29 @@ export class ConfigurationService implements IConfigurationService {
 			if (setSource) this.setMetadataSourceField('overrideCache', 'header');
 		}
 		
-		// Response Metadata - already handled above with standard header x-optimizely-enable-response-metadata
+		// Visitor ID Override
+		const overrideVisitorIdHeader = this.getHeader(request, 'x-optimizely-override-visitor-id', requestId);
+		if (overrideVisitorIdHeader !== null) {
+			values.overrideVisitorId = parseHeaderBool(overrideVisitorIdHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] OVERRIDE VISITOR ID FOUND - Setting to: ${values.overrideVisitorId}`);
+			if (setSource) this.setMetadataSourceField('overrideVisitorId', 'header');
+		}
 		
-		// Debug Headers - already handled above with standard header x-optimizely-enable-debug-headers
+		// Response Metadata
+		const enableResponseMetadataHeader = this.getHeader(request, 'x-optimizely-response-metadata', requestId);
+		if (enableResponseMetadataHeader !== null) {
+			values.enableResponseMetadata = parseHeaderBool(enableResponseMetadataHeader) ?? true;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ENABLE RESPONSE METADATA FOUND - Setting to: ${values.enableResponseMetadata}`);
+			if (setSource) this.setMetadataSourceField('enableResponseMetadata', 'header');
+		}
+		
+		// Debug Headers
+		const enableDebugHeadersHeader = this.getHeader(request, 'x-optimizely-debug-headers', requestId);
+		if (enableDebugHeadersHeader !== null) {
+			values.enableDebugHeaders = parseHeaderBool(enableDebugHeadersHeader) ?? false;
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] ENABLE DEBUG HEADERS FOUND - Setting to: ${values.enableDebugHeaders}`);
+			if (setSource) this.setMetadataSourceField('enableDebugHeaders', 'header');
+		}
 		
 		// Trimmed Decisions
 		const trimmedDecisionsHeader = this.getHeader(request, 'x-optimizely-trimmed-decisions', requestId);
@@ -563,14 +624,18 @@ export class ConfigurationService implements IConfigurationService {
 		}
 		
 		// Storage settings
-		const flagsFromKVHeader = this.getHeader(request, 'x-optimizely-flags-from-kv', requestId);
+		// Enable Flags from KV - support both old and new header names
+		const flagsFromKVHeader = this.getHeader(request, 'x-optimizely-flags-from-kv', requestId) || 
+		                         this.getHeader(request, 'x-optimizely-flags-kv', requestId);
 		if (flagsFromKVHeader !== null) {
 			values.enableFlagsFromKV = parseHeaderBool(flagsFromKVHeader) ?? this.settings.flagsFromKV;
 			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FLAGS FROM KV FOUND - Setting to: ${values.enableFlagsFromKV}`);
 			if (setSource) this.setMetadataSourceField('enableFlagsFromKV', 'header');
 		}
 		
-		const datafileFromKVHeader = this.getHeader(request, 'x-optimizely-datafile-from-kv', requestId);
+		// Enable Datafile from KV - support both old and new header names
+		const datafileFromKVHeader = this.getHeader(request, 'x-optimizely-datafile-from-kv', requestId) || 
+		                             this.getHeader(request, 'x-optimizely-datafile-kv', requestId);
 		if (datafileFromKVHeader !== null) {
 			values.datafileFromKV = parseHeaderBool(datafileFromKVHeader) ?? this.settings.datafileFromKV;
 			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] DATAFILE FROM KV FOUND - Setting to: ${values.datafileFromKV}`);
@@ -666,11 +731,29 @@ export class ConfigurationService implements IConfigurationService {
 			if (setSource) this.setMetadataSourceField('eventKey', 'query');
 		}
 		
-		// Flag Key
+		// Flag Key (singular)
 		const flagKeyParam = getParamCaseInsensitive('flag_key');
 		if (flagKeyParam) {
 			values.flagKey = flagKeyParam.trim();
 			if (setSource) this.setMetadataSourceField('flagKey', 'query');
+		}
+		
+		// Flag Keys (plural) - support for multiple flag keys via 'keys' parameter
+		// Check for 'keys' parameter which can have multiple values
+		const keysArray: string[] = [];
+		// Try different variations of the parameter name
+		const keyVariations = ['keys', 'flagKeys', 'flag_keys'];
+		for (const variation of keyVariations) {
+			searchParams.forEach((value, key) => {
+				if (key.toLowerCase() === variation.toLowerCase()) {
+					keysArray.push(value.trim());
+				}
+			});
+		}
+		if (keysArray.length > 0) {
+			values.flagKeys = keysArray;
+			if (setSource) this.setMetadataSourceField('flagKeys', 'query');
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] FLAG KEYS (plural) FOUND - Setting to: ${JSON.stringify(values.flagKeys)}`);
 		}
 		
 		// Server Mode
@@ -716,6 +799,20 @@ export class ConfigurationService implements IConfigurationService {
 			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse forced decisions from query params: ${e}`);
 		}
 		
+		// Event Tags
+		try {
+			const eventTagsParam = getParamCaseInsensitive('event_tags');
+			if (eventTagsParam) {
+				const parsedEventTags = JSON.parse(eventTagsParam);
+				if (typeof parsedEventTags === 'object' && parsedEventTags !== null) {
+					values.eventTags = parsedEventTags;
+					if (setSource) this.setMetadataSourceField('eventTags', 'query');
+				}
+			}
+		} catch (e) {
+			this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Failed to parse event tags from query params: ${e}`);
+		}
+		
 		// === Boolean parameters ===
 		const setQueryBoolParam = (paramName: keyof OptimizelyConfigOptions, queryName: string) => {
 			const queryValue = getParamCaseInsensitive(queryName);
@@ -731,6 +828,7 @@ export class ConfigurationService implements IConfigurationService {
 		// Boolean parameters
 		setQueryBoolParam('enableFex', 'enable_fex');
 		setQueryBoolParam('overrideCache', 'override_cache');
+		setQueryBoolParam('overrideVisitorId', 'override_visitor_id');
 		setQueryBoolParam('enableResponseMetadata', 'enable_response_metadata');
 		setQueryBoolParam('enableDebugHeaders', 'enable_debug_headers');
 		setQueryBoolParam('trimmedDecisions', 'trimmed_decisions');
@@ -825,11 +923,18 @@ export class ConfigurationService implements IConfigurationService {
 				if (setSource) this.setMetadataSourceField('eventKey', 'body');
 			}
 			
-			// Flag Key
+			// Flag Key (singular)
 			const flagKeyValue = getBodyPropCaseInsensitive('flag_key');
 			if (flagKeyValue !== undefined && typeof flagKeyValue === 'string') {
 				values.flagKey = flagKeyValue.trim();
 				if (setSource) this.setMetadataSourceField('flagKey', 'body');
+			}
+			
+			// Flag Keys (plural)
+			const flagKeysValue = getBodyPropCaseInsensitive('flag_keys') || getBodyPropCaseInsensitive('flagKeys') || getBodyPropCaseInsensitive('keys');
+			if (flagKeysValue !== undefined && Array.isArray(flagKeysValue)) {
+				values.flagKeys = flagKeysValue.map(k => String(k).trim());
+				if (setSource) this.setMetadataSourceField('flagKeys', 'body');
 			}
 			
 			// Server Mode
@@ -859,6 +964,13 @@ export class ConfigurationService implements IConfigurationService {
 			if (forcedDecisionsValue !== undefined && typeof forcedDecisionsValue === 'object' && forcedDecisionsValue !== null) {
 				values.forcedDecisions = forcedDecisionsValue;
 				if (setSource) this.setMetadataSourceField('forcedDecisions', 'body');
+			}
+			
+			// Event Tags
+			const eventTagsValue = getBodyPropCaseInsensitive('event_tags');
+			if (eventTagsValue !== undefined && typeof eventTagsValue === 'object' && eventTagsValue !== null) {
+				values.eventTags = eventTagsValue;
+				if (setSource) this.setMetadataSourceField('eventTags', 'body');
 			}
 			
 			// === Boolean Parameters ===
@@ -893,6 +1005,7 @@ export class ConfigurationService implements IConfigurationService {
 			processBodyBoolParam('enableFex', 'enable_fex');
 			
 			processBodyBoolParam('overrideCache', 'override_cache');
+			processBodyBoolParam('overrideVisitorId', 'override_visitor_id');
 			processBodyBoolParam('enableResponseMetadata', 'enable_response_metadata');
 			
 			processBodyBoolParam('enableDebugHeaders', 'enable_debug_headers');
@@ -1587,7 +1700,19 @@ export class ConfigurationService implements IConfigurationService {
 			this.config.visitorId = '';
 		}
 		if (!this.config.sdkKey) {
-			this.config.sdkKey = '';
+			// Get default SDK key from environment if available
+			try {
+				const envAdapter = this.datafileService.getEnvironmentAdapter();
+				const defaultSdkKey = envAdapter.getVariable('DEFAULT_SDK_KEY');
+				this.config.sdkKey = defaultSdkKey || '';
+				if (defaultSdkKey) {
+					this.setMetadataSourceField('sdkKey', 'default');
+					this.logger.debug(`${this.logPrefix} Applied default SDK key from environment`);
+				}
+			} catch (error) {
+				this.logger.warn(`${this.logPrefix} Could not access environment for default SDK key: ${error}`);
+				this.config.sdkKey = '';
+			}
 		}
 		if (!this.config.flagKey) {
 			this.config.flagKey = '';
@@ -1842,8 +1967,16 @@ export class ConfigurationService implements IConfigurationService {
 	 * @returns The edge agent version string or null.
 	 */
 	getEdgeAgentVersion(): string | null {
-		// This will be implemented in future PRs
-		return null;
+		if (!this.cachedVersion) {
+			try {
+				const envAdapter = this.datafileService.getEnvironmentAdapter();
+				this.cachedVersion = envAdapter.getVariable('EDGE_AGENT_VERSION') || 'unknown';
+			} catch (error) {
+				this.logger.error("Error getting edge agent version:", error);
+				this.cachedVersion = 'unknown';
+			}
+		}
+		return this.cachedVersion;
 	}
 
 	/**
@@ -1948,7 +2081,15 @@ export class ConfigurationService implements IConfigurationService {
 	 * Returns the current environment string (e.g., 'production', 'staging').
 	 */
 	getEnvironment(): string | null {
-		// This will be implemented in future PRs
+		if (!this.cachedEnvironment) {
+			try {
+				const envAdapter = this.datafileService.getEnvironmentAdapter();
+				this.cachedEnvironment = envAdapter.getVariable('ENVIRONMENT') || 'unknown';
+			} catch (error) {
+				this.logger.error("Error getting environment:", error);
+				this.cachedEnvironment = 'unknown';
+			}
+		}
 		return this.cachedEnvironment;
 	}
 
@@ -1956,7 +2097,15 @@ export class ConfigurationService implements IConfigurationService {
 	 * Returns the current CDN provider string (e.g., 'cloudflare', 'fastly').
 	 */
 	getCdnProvider(): string | null {
-		// This will be implemented in future PRs
+		if (!this.cachedCdnProvider) {
+			try {
+				const envAdapter = this.datafileService.getEnvironmentAdapter();
+				this.cachedCdnProvider = envAdapter.getVariable('CDN_PROVIDER') || 'unknown';
+			} catch (error) {
+				this.logger.error("Error getting CDN provider:", error);
+				this.cachedCdnProvider = 'unknown';
+			}
+		}
 		return this.cachedCdnProvider;
 	}
 

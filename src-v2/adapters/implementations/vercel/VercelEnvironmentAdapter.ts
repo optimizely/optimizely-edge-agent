@@ -48,6 +48,7 @@ export class VercelEnvironmentAdapter implements IEnvironmentAdapter {
    */
   getVariable(key: string): string | undefined {
     const value = this.env[key];
+    console.log(`[VercelEnvironmentAdapter] Getting variable ${key}:`, value ? `${String(value).substring(0, 4)}...` : 'NOT FOUND');
     return typeof value === 'string' ? value : undefined;
   }
 

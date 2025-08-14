@@ -138,154 +138,230 @@ export class VercelRequestAdapter implements IRequestAdapter {
 
 ### VercelStorageAdapter
 
+The Vercel storage adapter provides intelligent storage management with automatic KV detection and graceful fallback to memory storage for development.
+
 ```typescript
 // From: /src-v2/adapters/implementations/vercel/VercelStorageAdapter.ts
-import { get, set, del } from '@vercel/edge-config';
-import { kv } from '@vercel/kv';
-
 export class VercelStorageAdapter implements IStorageAdapter {
-  private useKV: boolean;
-  
-  constructor(
-    private logger: ILoggerAdapter,
-    options?: { preferKV?: boolean }
-  ) {
-    // Use KV if available, otherwise fall back to Edge Config
-    this.useKV = options?.preferKV && !!kv;
+  private kv: any;
+  private memoryStore: Map<string, { value: string; expiry?: number }>;
+
+  constructor(kvClient: any) {
+    this.kv = kvClient;
+    this.memoryStore = new Map();
   }
-  
-  async get(key: string): Promise<string | null> {
+
+  // Storage method that works with both KV and memory
+  async get(key: string, type: 'text' | 'json' | 'arrayBuffer' = 'text'): Promise<any> {
     try {
-      if (this.useKV) {
-        // Use Vercel KV (Redis-compatible)
-        const value = await kv.get<string>(key);
-        this.logger.debug(`KV ${value ? 'hit' : 'miss'} for key: ${key}`);
-        return value;
+      let result: any;
+      
+      if (this.kv === null) {
+        // Use memory store for development
+        const stored = this.memoryStore.get(key);
+        if (!stored) return null;
+        
+        // Check expiry
+        if (stored.expiry && Date.now() > stored.expiry) {
+          this.memoryStore.delete(key);
+          return null;
+        }
+        
+        result = stored.value;
       } else {
-        // Use Edge Config
-        const value = await get<string>(key);
-        this.logger.debug(`Edge Config ${value ? 'hit' : 'miss'} for key: ${key}`);
-        return value || null;
+        // Use real Vercel KV
+        result = await this.kv.get(key);
       }
+      
+      return this.parseResult(result, type);
     } catch (error) {
-      this.logger.error(`Storage get error for key: ${key}`, error as Error);
+      console.error(`Error fetching key ${key}:`, error);
       return null;
     }
   }
-  
-  async getWithMetadata<T = any>(key: string): Promise<{ value: string | null; metadata: T | null }> {
+
+  async put(key: string, value: any, options: StorageOptions = {}): Promise<void> {
     try {
-      if (this.useKV) {
-        // KV doesn't have native metadata support
-        const [value, metadata] = await Promise.all([
-          kv.get<string>(key),
-          kv.get<T>(`${key}:metadata`)
-        ]);
+      const stringValue = typeof value === 'string' ? value : JSON.stringify(value);
+
+      if (this.kv === null) {
+        // Use memory store for development
+        const expiry = options.expirationTtl 
+          ? Date.now() + (options.expirationTtl * 1000)
+          : undefined;
         
-        return { value, metadata };
+        this.memoryStore.set(key, { value: stringValue, expiry });
       } else {
-        // Edge Config - simulate metadata with nested object
-        const data = await get<{ value: string; metadata: T }>(key);
-        if (!data) return { value: null, metadata: null };
-        
-        return {
-          value: data.value,
-          metadata: data.metadata
-        };
-      }
-    } catch (error) {
-      this.logger.error(`Storage getWithMetadata error for key: ${key}`, error as Error);
-      return { value: null, metadata: null };
-    }
-  }
-  
-  async put(key: string, value: string, options?: StorageOptions): Promise<void> {
-    try {
-      if (this.useKV) {
-        // Vercel KV with TTL support
+        // Use real Vercel KV
         const kvOptions: any = {};
-        if (options?.expirationTtl) {
-          kvOptions.ex = options.expirationTtl;
+        if (options.expirationTtl) {
+          kvOptions.ex = options.expirationTtl; // Redis EX option for TTL
         }
         
-        await kv.set(key, value, kvOptions);
-        
-        // Store metadata separately
-        if (options?.metadata) {
-          await kv.set(`${key}:metadata`, options.metadata);
-        }
-      } else {
-        // Edge Config is read-only at runtime
-        // This would typically be updated via API
-        this.logger.warn(`Edge Config is read-only. Cannot put key: ${key}`);
-        
-        // For development, might use in-memory fallback
-        if (process.env.NODE_ENV === 'development') {
-          this.devCache.set(key, { value, options });
-        }
+        await this.kv.set(key, stringValue, kvOptions);
       }
-      
-      this.logger.debug(`Storage put successful for key: ${key}`);
     } catch (error) {
-      this.logger.error(`Storage put error for key: ${key}`, error as Error);
+      console.error(`Error storing key ${key}:`, error);
       throw error;
     }
   }
-  
+
   async delete(key: string): Promise<void> {
     try {
-      if (this.useKV) {
-        await kv.del(key);
-        await kv.del(`${key}:metadata`); // Also delete metadata
+      if (this.kv === null) {
+        this.memoryStore.delete(key);
       } else {
-        this.logger.warn(`Edge Config is read-only. Cannot delete key: ${key}`);
+        await this.kv.del(key);
       }
-      
-      this.logger.debug(`Storage delete successful for key: ${key}`);
     } catch (error) {
-      this.logger.error(`Storage delete error for key: ${key}`, error as Error);
+      console.error(`Error deleting key ${key}:`, error);
       throw error;
     }
   }
-  
-  async list(options?: ListOptions): Promise<ListResult> {
+
+  async exists(key: string): Promise<boolean> {
     try {
-      if (this.useKV) {
-        // KV supports pattern matching
-        const pattern = options?.prefix ? `${options.prefix}*` : '*';
-        const keys = await kv.keys(pattern);
+      if (this.kv === null) {
+        const stored = this.memoryStore.get(key);
+        if (!stored) return false;
         
-        // Apply limit
-        const limitedKeys = options?.limit 
-          ? keys.slice(0, options.limit)
-          : keys;
-        
-        return {
-          keys: limitedKeys.map(name => ({ name })),
-          complete: limitedKeys.length === keys.length
-        };
+        // Check if expired
+        if (stored.expiry && Date.now() > stored.expiry) {
+          this.memoryStore.delete(key);
+          return false;
+        }
+        return true;
       } else {
-        // Edge Config - get all and filter
-        const all = await get<Record<string, any>>();
-        if (!all) return { keys: [], complete: true };
-        
-        const keys = Object.keys(all)
-          .filter(key => !options?.prefix || key.startsWith(options.prefix))
-          .slice(0, options?.limit || 1000)
-          .map(name => ({ name }));
-        
-        return { keys, complete: true };
+        const result = await this.kv.exists(key);
+        return result === 1;
       }
     } catch (error) {
-      this.logger.error('Storage list error', error as Error);
-      throw error;
+      console.error(`Error checking existence of key ${key}:`, error);
+      return false;
     }
   }
+
+  private parseResult(result: any, type: 'text' | 'json' | 'arrayBuffer'): any {
+    if (result === null) return null;
+
+    switch (type) {
+      case 'text':
+        return result;
+      case 'json':
+        try {
+          return JSON.parse(result);
+        } catch (e) {
+          console.error('Error parsing JSON:', e);
+          return null;
+        }
+      case 'arrayBuffer':
+        return Buffer.from(result);
+      default:
+        return result;
+    }
+  }
+}
+
+// Factory function for creating storage adapter with automatic KV detection
+export function createVercelKVAdapter(): VercelStorageAdapter {
+  try {
+    // Check for KV environment variables
+    const kvUrl = process.env.KV_URL || process.env.KV_REST_API_URL;
+    const kvToken = process.env.KV_REST_API_TOKEN;
+    
+    if (kvUrl && kvToken) {
+      try {
+        // Import and use real Vercel KV
+        const { kv } = require('@vercel/kv');
+        console.log('[VercelKV] Using real Vercel KV storage');
+        return new VercelStorageAdapter(kv);
+      } catch (importError) {
+        console.warn('[VercelKV] @vercel/kv package not available, falling back to memory');
+      }
+    } else {
+      console.log('[VercelKV] No KV credentials found, using memory storage');
+    }
+  } catch (error) {
+    console.warn('[VercelKV] Error setting up KV, falling back to memory:', error);
+  }
   
-  // Development cache
-  private devCache = new Map<string, any>();
+  // Fallback to memory storage
+  return new VercelStorageAdapter(null);
 }
 ```
+
+### KV Environment Detection
+
+The adapter factory automatically detects Vercel KV availability:
+
+```typescript
+// From: /src-v2/adapters/factories/VercelAdapterFactory.ts
+export class VercelAdapterFactory {
+  createStorageAdapter(bindingName: string): IStorageAdapter {
+    try {
+      const envAdapter = this.getEnvironmentAdapter();
+      const kvUrl = envAdapter.getVariable('KV_URL') || envAdapter.getVariable('KV_REST_API_URL');
+      const kvToken = envAdapter.getVariable('KV_REST_API_TOKEN');
+      
+      if (kvUrl && kvToken) {
+        try {
+          const { kv } = require('@vercel/kv');
+          this.getLoggerAdapter().info('Using real Vercel KV storage');
+          return new VercelStorageAdapter(kv);
+        } catch (importError) {
+          this.getLoggerAdapter().warn('KV credentials found but @vercel/kv package not available');
+          return new VercelStorageAdapter(null);
+        }
+      }
+      
+      this.getLoggerAdapter().info('No KV credentials found, using memory storage');
+      return new VercelStorageAdapter(null);
+    } catch (error) {
+      this.getLoggerAdapter().error('Error creating storage adapter', error as Error);
+      return new VercelStorageAdapter(null);
+    }
+  }
+}
+```
+
+### Set-Cookie Header Handling
+
+The Vercel composition layer properly handles multiple Set-Cookie headers that would otherwise cause Edge Runtime errors:
+
+```typescript
+// From: /src-v2/composition/vercelComposition.ts
+export async function handleVercelEdgeRequest(request: Request, env: VercelEnv, ctx: VercelExecutionContext): Promise<Response> {
+  try {
+    // ... request handling ...
+    
+    // Handle headers properly, especially Set-Cookie which may contain newlines
+    const responseHeaders = new Headers();
+    
+    for (const [name, value] of Object.entries(result.headers)) {
+      if (name.toLowerCase() === 'set-cookie' && value.includes('\n')) {
+        // Split Set-Cookie header by newlines and append each cookie separately
+        const cookieValues = value.split('\n');
+        for (const cookieValue of cookieValues) {
+          if (cookieValue.trim()) {
+            responseHeaders.append('Set-Cookie', cookieValue.trim());
+          }
+        }
+      } else {
+        responseHeaders.set(name, value);
+      }
+    }
+    
+    return new Response(result.body, {
+      status: result.status,
+      headers: responseHeaders
+    });
+  } catch (error) {
+    // Error handling...
+  }
+}
+```
+
+This fix ensures that multiple cookies (visitor ID and decisions) are properly formatted for Vercel Edge Runtime.
 
 ### VercelEnvironmentAdapter
 
@@ -546,12 +622,7 @@ class VercelAnalyticsAdapter {
     }
   },
   "env": {
-    "OPTIMIZELY_SDK_KEY": "@optimizely-sdk-key",
-    "EDGE_CONFIG": "@edge-config-default",
-    "KV_URL": "@kv-url",
-    "KV_REST_API_URL": "@kv-rest-api-url",
-    "KV_REST_API_TOKEN": "@kv-rest-api-token",
-    "KV_REST_API_READ_ONLY_TOKEN": "@kv-rest-api-read-only-token"
+    "OPTIMIZELY_SDK_KEY": "@optimizely-sdk-key"
   },
   "rewrites": [
     {
@@ -572,6 +643,39 @@ class VercelAnalyticsAdapter {
   ]
 }
 ```
+
+```json
+// package.vercel.json - Vercel-specific dependencies
+{
+  "name": "optly-edge-agent-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "build:vercel": "tsc -p tsconfig.vercel.json",
+    "deploy": "vercel deploy",
+    "deploy:production": "vercel deploy --prod"
+  },
+  "dependencies": {
+    "@optimizely/optimizely-sdk": "^5.3.4",
+    "@vercel/kv": "^3.0.0",
+    "@vercel/edge-config": "^1.4.0",
+    "@types/uuid": "^10.0.0",
+    "uuid": "^11.1.0",
+    "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.11",
+    "@types/node-fetch": "^2.6.2",
+    "@vercel/node": "^3.0.7",
+    "typescript": "^5.4.5"
+  }
+}
+```
+
+**Note**: KV environment variables (`KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`) are automatically managed by Vercel when you create a KV database and don't need to be manually configured in `vercel.json`.
 
 ### Edge Function Setup
 
@@ -614,15 +718,31 @@ export default async function handler(request: Request) {
 ```bash
 # .env.local (development)
 OPTIMIZELY_SDK_KEY=dev_sdk_key
-EDGE_CONFIG=https://edge-config.vercel.com/your-config-id
 LOG_LEVEL=debug
+
+# For real KV in development (optional)
+KV_URL=redis://localhost:6379  # Or actual Vercel KV URL
+KV_REST_API_URL=https://kv-url.redis.vercel-storage.com
+KV_REST_API_TOKEN=your-kv-token
 
 # .env.production (production)
 # Set via Vercel Dashboard or CLI
 vercel env add OPTIMIZELY_SDK_KEY production
-vercel env add EDGE_CONFIG production
-vercel env add KV_URL production
+vercel env add KV_URL production                    # Automatically set when KV created
+vercel env add KV_REST_API_URL production          # Automatically set when KV created  
+vercel env add KV_REST_API_TOKEN production        # Automatically set when KV created
 ```
+
+#### KV Environment Variables
+
+| Variable | Purpose | Auto-Generated | Required |
+|----------|---------|----------------|----------|
+| `KV_URL` | Redis connection string | ✅ Yes | For real KV |
+| `KV_REST_API_URL` | REST API endpoint | ✅ Yes | For real KV |
+| `KV_REST_API_TOKEN` | Auth token | ✅ Yes | For real KV |
+| `KV_REST_API_READ_ONLY_TOKEN` | Read-only token | ✅ Yes | Optional |
+
+**Note**: When you create a Vercel KV database, these environment variables are automatically generated and linked to your project.
 
 ## Performance Optimization
 
@@ -1011,11 +1131,305 @@ function getRegionalSettings(request: Request): RegionalSettings {
    }
    ```
 
+## Testing and QA Features
+
+### Forced Decisions
+
+The Vercel adapter fully supports forced decisions for testing and QA scenarios. This allows you to override normal feature flag bucketing to test specific variations.
+
+#### Using Forced Decisions with Vercel Edge Functions
+
+```typescript
+// Example: Vercel Edge Function with forced decisions
+export default async function handler(request: Request) {
+  const url = new URL(request.url);
+  
+  // Example 1: Force variation via headers (highest precedence)
+  const headers = new Headers();
+  headers.set('X-Optimizely-Force-Variation', 'treatment');
+  headers.set('X-Optimizely-SDK-Key', process.env.OPTIMIZELY_SDK_KEY!);
+  headers.set('X-Optimizely-Enable-FEX', 'true');
+  
+  // Example 2: Force variation via query parameters
+  const forceVariation = url.searchParams.get('forceVariation');
+  if (forceVariation) {
+    // Query param will be used if no header is set
+  }
+  
+  // Example 3: Force variation in request body
+  const body = {
+    flagKey: 'checkout_flow',
+    userId: 'test_user',
+    forcedVariationKey: 'express_checkout',
+    forcedRuleKey: 'experiment_123'
+  };
+  
+  // Make decision request
+  const response = await fetch(new URL('/api/decide', url.origin), {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
+  });
+  
+  return response;
+}
+```
+
+#### Testing Script for Vercel
+
+```bash
+#!/bin/bash
+# Test forced decisions on Vercel deployment
+
+VERCEL_URL="https://your-app.vercel.app"
+SDK_KEY="your-sdk-key"
+
+# Test 1: Force variation via header
+echo "Testing forced variation via header..."
+curl -X POST "$VERCEL_URL/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -H "X-Optimizely-Force-Variation: treatment" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001"
+  }'
+
+# Test 2: Force variation via query parameter
+echo -e "\n\nTesting forced variation via query parameter..."
+curl -X GET "$VERCEL_URL/api/decide?\
+flagKey=checkout_flow&\
+userId=qa_tester_001&\
+forceVariation=control&\
+sdkKey=$SDK_KEY" \
+  -H "X-Optimizely-Enable-FEX: true"
+
+# Test 3: Force variation via request body
+echo -e "\n\nTesting forced variation via request body..."
+curl -X POST "$VERCEL_URL/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedVariationKey": "express_checkout"
+  }'
+
+# Test 4: Test precedence (header should win)
+echo -e "\n\nTesting precedence (header > query > body)..."
+curl -X POST "$VERCEL_URL/api/decide?forceVariation=query_variation" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -H "X-Optimizely-Force-Variation: header_variation" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedVariationKey": "body_variation"
+  }'
+```
+
+#### Next.js Middleware with Forced Decisions
+
+```typescript
+// middleware.ts - Testing variations in Next.js
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function middleware(request: NextRequest) {
+  const url = request.nextUrl.clone();
+  
+  // Check for QA testing parameters
+  const forceVariation = url.searchParams.get('_optimizely_force');
+  const qaUserId = url.searchParams.get('_qa_user');
+  
+  if (forceVariation && qaUserId) {
+    // Create decision request with forced variation
+    const decisionUrl = new URL('/api/decide', request.url);
+    const response = await fetch(decisionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Optimizely-Enable-FEX': 'true',
+        'X-Optimizely-SDK-Key': process.env.OPTIMIZELY_SDK_KEY!,
+        'X-Optimizely-Force-Variation': forceVariation
+      },
+      body: JSON.stringify({
+        flagKey: 'homepage_redesign',
+        userId: qaUserId
+      })
+    });
+    
+    const decision = await response.json();
+    
+    // Route to test variation
+    if (decision.variationKey) {
+      url.pathname = `/test/${decision.variationKey}${url.pathname}`;
+      return NextResponse.rewrite(url);
+    }
+  }
+  
+  return NextResponse.next();
+}
+```
+
+#### QA Dashboard Component
+
+```typescript
+// app/qa-dashboard/page.tsx
+'use client';
+
+import { useState } from 'react';
+
+export default function QADashboard() {
+  const [userId, setUserId] = useState('qa_tester_001');
+  const [flagKey, setFlagKey] = useState('checkout_flow');
+  const [variation, setVariation] = useState('treatment');
+  const [result, setResult] = useState<any>(null);
+  
+  const testForcedDecision = async () => {
+    const response = await fetch('/api/decide', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Optimizely-Enable-FEX': 'true',
+        'X-Optimizely-Force-Variation': variation
+      },
+      body: JSON.stringify({ flagKey, userId })
+    });
+    
+    const decision = await response.json();
+    setResult(decision);
+  };
+  
+  return (
+    <div className="p-8">
+      <h1 className="text-2xl font-bold mb-4">QA Testing Dashboard</h1>
+      
+      <div className="space-y-4">
+        <input
+          type="text"
+          placeholder="User ID"
+          value={userId}
+          onChange={(e) => setUserId(e.target.value)}
+          className="border p-2"
+        />
+        
+        <input
+          type="text"
+          placeholder="Flag Key"
+          value={flagKey}
+          onChange={(e) => setFlagKey(e.target.value)}
+          className="border p-2"
+        />
+        
+        <select
+          value={variation}
+          onChange={(e) => setVariation(e.target.value)}
+          className="border p-2"
+        >
+          <option value="control">Control</option>
+          <option value="treatment">Treatment</option>
+          <option value="variant_a">Variant A</option>
+          <option value="variant_b">Variant B</option>
+        </select>
+        
+        <button
+          onClick={testForcedDecision}
+          className="bg-blue-500 text-white px-4 py-2 rounded"
+        >
+          Test Forced Decision
+        </button>
+        
+        {result && (
+          <pre className="bg-gray-100 p-4 rounded">
+            {JSON.stringify(result, null, 2)}
+          </pre>
+        )}
+      </div>
+    </div>
+  );
+}
+```
+
+#### Environment-Based Force Decisions
+
+```typescript
+// Use Edge Config for QA overrides
+import { get } from '@vercel/edge-config';
+
+async function getQAOverrides(userId: string): Promise<Record<string, string>> {
+  // Check Edge Config for QA overrides
+  const overrides = await get<Record<string, any>>(`qa_overrides_${userId}`);
+  return overrides || {};
+}
+
+export async function applyQAOverrides(
+  request: Request,
+  userId: string
+): Promise<Request> {
+  const overrides = await getQAOverrides(userId);
+  
+  if (Object.keys(overrides).length > 0) {
+    const headers = new Headers(request.headers);
+    
+    // Apply first override as forced variation
+    const [flagKey, variation] = Object.entries(overrides)[0];
+    headers.set('X-Optimizely-Force-Variation', variation);
+    
+    return new Request(request, { headers });
+  }
+  
+  return request;
+}
+```
+
+#### Automated Testing
+
+```typescript
+// __tests__/forced-decisions.test.ts
+import { describe, test, expect } from 'vitest';
+
+describe('Vercel Forced Decisions', () => {
+  const baseUrl = process.env.VERCEL_URL || 'http://localhost:3000';
+  
+  test('should respect forced variation from header', async () => {
+    const response = await fetch(`${baseUrl}/api/decide`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Optimizely-Enable-FEX': 'true',
+        'X-Optimizely-SDK-Key': 'test-key',
+        'X-Optimizely-Force-Variation': 'variant_b'
+      },
+      body: JSON.stringify({
+        flagKey: 'test_feature',
+        userId: 'test_user'
+      })
+    });
+    
+    const decision = await response.json();
+    expect(decision.variationKey).toBe('variant_b');
+  });
+  
+  test('should apply forced decisions in middleware', async () => {
+    const response = await fetch(
+      `${baseUrl}/test-page?_optimizely_force=treatment&_qa_user=test123`
+    );
+    
+    // Check that we were routed to treatment variation
+    expect(response.headers.get('x-middleware-rewrite')).toContain('/test/treatment');
+  });
+});
+```
+
 ## See Also
 
 - [Vercel Edge Functions Documentation](https://vercel.com/docs/functions/edge-functions)
 - [Edge Config Documentation](https://vercel.com/docs/storage/edge-config)
 - [Vercel KV Documentation](https://vercel.com/docs/storage/vercel-kv)
 - [Next.js Middleware](https://nextjs.org/docs/app/building-your-application/routing/middleware)
+- [API Decision Endpoints](../api/decisions/decide.md)
 - [Adapter Development Guide](./adapter-development.md)
 - Implementation: `/src-v2/adapters/implementations/vercel/`

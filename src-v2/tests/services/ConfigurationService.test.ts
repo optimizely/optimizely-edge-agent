@@ -87,10 +87,16 @@ describe('ConfigurationService', () => {
   let configService: ConfigurationService;
   let logger: MockLoggerAdapter;
   let requestAdapter: MockRequestAdapter;
+  let mockDatafileService: any;
   
   beforeEach(() => {
     logger = new MockLoggerAdapter();
-    configService = new ConfigurationService(logger);
+    mockDatafileService = {
+      async getDatafile() { return {}; },
+      async clearDatafileCache() {},
+      async updateDatafile() {}
+    };
+    configService = new ConfigurationService(mockDatafileService, logger);
     requestAdapter = new MockRequestAdapter();
   });
   

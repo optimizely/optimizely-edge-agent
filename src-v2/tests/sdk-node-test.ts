@@ -6,7 +6,7 @@
  * for browser compatibility issues.
  */
 
-import * as optimizely from '@optimizely/optimizely-sdk';
+import * as optimizely from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 
 // Define a minimal datafile for testing
 const minimalDatafile = {

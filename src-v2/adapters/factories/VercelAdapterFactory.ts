@@ -68,13 +68,15 @@ export class VercelAdapterFactory {
   }
 
   createStorageAdapter(bindingName: string): IStorageAdapter {
-    // StorageAdapter needs the specific KV binding name
-    const kvBinding = this.getEnvironmentAdapter().getBinding<VercelKVNamespace>(bindingName);
-    if (!kvBinding) {
-      throw new Error(`KV Namespace binding '${bindingName}' not found in environment.`);
+    // Check if running on Edge runtime
+    if (typeof (globalThis as any).EdgeRuntime === 'string') {
+      this.getLoggerAdapter().info('Edge runtime detected, using memory storage');
+      return new VercelStorageAdapter(null);
     }
-    // Consider caching based on bindingName if appropriate
-    return new VercelStorageAdapter(kvBinding);
+    
+    // For all runtimes, force memory storage (KV can be added later)
+    this.getLoggerAdapter().info('Using memory storage for all runtimes');
+    return new VercelStorageAdapter(null);
   }
 
   createEnvironmentAdapter(): IEnvironmentAdapter {

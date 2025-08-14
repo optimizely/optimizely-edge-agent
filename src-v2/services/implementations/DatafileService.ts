@@ -1068,7 +1068,7 @@ export class DatafileService implements IDatafileService {
    * @private
    */
   private async fetchDatafile(url: string, accessToken?: string): Promise<Response> {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Accept': 'application/json',
       'User-Agent': 'optimizely-edge-agent'
     };

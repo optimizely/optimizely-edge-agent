@@ -23,6 +23,44 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
   private globalDimensions: MetricTags = {};
   private configuration: MetricsConfiguration;
   private readonly environmentAdapter?: IEnvironmentAdapter;
+  
+  // Track data points to prevent exceeding Cloudflare's limit
+  private dataPointsWritten: number = 0;
+  private readonly MAX_DATA_POINTS_PER_REQUEST = 25;
+  
+  /**
+   * Metric priority levels for intelligent sampling
+   */
+  private static readonly METRIC_PRIORITIES = {
+    // Critical business metrics - always track (100% sampling)
+    CRITICAL: [
+      'decision_duration', 'decision_time', 'variations_evaluated_before_match',
+      'flagActivations', 'variationActivations', 'batch_decision_duration',
+      'edge_mode_pipeline_duration', 'url_matching_duration', 'content_fetch_duration',
+      'feature_flag_count', 'experiment_count'
+    ],
+    // Moderate importance - 50% sampling
+    MODERATE: [
+      'api_request_duration_seconds', 'datafile_fetch_duration', 'flagkeys_fetch_duration',
+      'user_context_cache_misses', 'cache_clear_duration', 'request_duration',
+      'should_handle_duration', 'content_preparation_duration', 'transform_duration'
+    ],
+    // Low priority - 10% sampling in production
+    LOW: [
+      'service_available', 'cache_size_limit', 'cache_ttl_ms', 'caching_enabled',
+      'response_size_bytes', 'datafile_size_bytes', 'cleanup_trigger_interval_ms',
+      'client_initialization_duration', 'cache_cleanup_duration', 'cache_size',
+      'client_creation_duration', 'user_context_creation_duration', 'process_attributes_duration',
+      'get_user_context_duration', 'sdk_decide_duration', 'fallback_decision_creation_duration',
+      'client_creation_time', 'client_total_initialization_time', 'user_context_creation_time',
+      'user_context_total_time', 'batch_decision_time', 'datafile_storage_duration_ms',
+      'cdn_fetch_duration_ms', 'datafile_refresh_duration_ms', 'flagkeys_fetch_duration_ms',
+      'flagkeys_storage_duration_ms', 'flagkeys_count', 'flagkeys_save_duration',
+      'cache_cleanup_duration', 'cleanup_trigger_probability', 'event_tracking_duration',
+      'edge_mode_duration', 'origin_fetch_duration', 'forced_variation_duration',
+      'optimizely_config_fetch_duration', 'datafile_update_interval_ms'
+    ]
+  };
 
   /**
    * Creates an instance of CloudflareMetricsAdapter.
@@ -198,28 +236,74 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
   }
 
   /**
+   * Get metric priority level
+   */
+  private getMetricPriority(metricName: string): 'CRITICAL' | 'MODERATE' | 'LOW' | 'UNKNOWN' {
+    if (CloudflareMetricsAdapter.METRIC_PRIORITIES.CRITICAL.includes(metricName)) {
+      return 'CRITICAL';
+    }
+    if (CloudflareMetricsAdapter.METRIC_PRIORITIES.MODERATE.includes(metricName)) {
+      return 'MODERATE';
+    }
+    if (CloudflareMetricsAdapter.METRIC_PRIORITIES.LOW.includes(metricName)) {
+      return 'LOW';
+    }
+    return 'UNKNOWN';
+  }
+
+  /**
+   * Get sampling rate based on metric priority
+   */
+  private getSamplingRateForMetric(metricName: string): number {
+    const baseSamplingRate = this.configuration.defaultSamplingRate ?? 1.0;
+    const priority = this.getMetricPriority(metricName);
+    
+    switch (priority) {
+      case 'CRITICAL':
+        return baseSamplingRate; // 100% of base rate
+      case 'MODERATE':
+        return baseSamplingRate * 0.5; // 50% of base rate
+      case 'LOW':
+        return baseSamplingRate * 0.1; // 10% of base rate
+      case 'UNKNOWN':
+        return baseSamplingRate * 0.25; // 25% of base rate for unknown metrics
+    }
+  }
+
+  /**
    * Determines if a metric should be sampled based on its options and configuration.
+   * @param name - The metric name.
    * @param options - The metric options.
    * @returns True if the metric should be recorded, false if it should be sampled out.
    */
-  private shouldSampleMetric(options?: MetricOptions): boolean {
+  private shouldSampleMetric(name: string, options?: MetricOptions): boolean {
     if (!this.enabled) return false;
     
-    // Default to configuration's sampling rate
-    const defaultRate = this.configuration.defaultSamplingRate ?? 1.0;
+    const priority = this.getMetricPriority(name);
     
-    // If no sampling is specified, use the default
-    if (!options || options.sample === undefined) {
-      return Math.random() < defaultRate;
+    // Check if we're approaching the data point limit
+    if (this.dataPointsWritten >= this.MAX_DATA_POINTS_PER_REQUEST - 5) {
+      // Near limit - only allow critical metrics
+      if (priority !== 'CRITICAL') {
+        this.logger.debug(`[CloudflareMetricsAdapter] Skipping ${name} (${priority}) - approaching data point limit`);
+        return false;
+      }
     }
     
-    // If sampling is a boolean, respect it directly
-    if (typeof options.sample === 'boolean') {
-      return options.sample;
+    // Get priority-based sampling rate
+    const prioritySamplingRate = this.getSamplingRateForMetric(name);
+    
+    // If options specify custom sampling, combine with priority sampling
+    if (options?.sample !== undefined) {
+      if (typeof options.sample === 'boolean') {
+        return options.sample && (Math.random() < prioritySamplingRate);
+      }
+      // If it's a number, multiply with priority rate
+      return Math.random() < (options.sample * prioritySamplingRate);
     }
     
-    // If sampling is a number, use it as a probability
-    return Math.random() < options.sample;
+    // Use priority-based sampling rate
+    return Math.random() < prioritySamplingRate;
   }
 
   /**
@@ -238,7 +322,7 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
     options?: MetricOptions
   ): void {
     // Skip if disabled or sampled out
-    if (!this.shouldSampleMetric(options)) {
+    if (!this.shouldSampleMetric(name, options)) {
       return;
     }
     
@@ -261,6 +345,12 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
           throw new Error('Analytics Engine missing writeDataPoint method');
         }
         
+        // Check data point limit before writing
+        if (this.dataPointsWritten >= this.MAX_DATA_POINTS_PER_REQUEST) {
+          this.logger.warn(`[CloudflareMetricsAdapter] Data point limit reached (${this.MAX_DATA_POINTS_PER_REQUEST}), skipping metric: ${formattedName}`);
+          return;
+        }
+        
         switch (type) {
           case MetricType.COUNTER:
             this.analyticsEngine.writeDataPoint({
@@ -268,7 +358,8 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'counter']
             });
-            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote counter metric: ${formattedName}`);
+            this.dataPointsWritten++;
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote counter metric: ${formattedName} (${this.dataPointsWritten}/${this.MAX_DATA_POINTS_PER_REQUEST})`);
             break;
           case MetricType.GAUGE:
             this.analyticsEngine.writeDataPoint({
@@ -276,7 +367,8 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'gauge']
             });
-            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote gauge metric: ${formattedName}`);
+            this.dataPointsWritten++;
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote gauge metric: ${formattedName} (${this.dataPointsWritten}/${this.MAX_DATA_POINTS_PER_REQUEST})`);
             break;
           case MetricType.HISTOGRAM:
           case MetricType.TIMER:
@@ -285,7 +377,8 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, type === MetricType.HISTOGRAM ? 'histogram' : 'timer']
             });
-            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote ${type} metric: ${formattedName}`);
+            this.dataPointsWritten++;
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote ${type} metric: ${formattedName} (${this.dataPointsWritten}/${this.MAX_DATA_POINTS_PER_REQUEST})`);
             break;
           case MetricType.SUMMARY:
             this.analyticsEngine.writeDataPoint({
@@ -293,7 +386,8 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'summary']
             });
-            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote summary metric: ${formattedName}`);
+            this.dataPointsWritten++;
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote summary metric: ${formattedName} (${this.dataPointsWritten}/${this.MAX_DATA_POINTS_PER_REQUEST})`);
             break;
           case MetricType.SET:
             // For SET type, we record the cardinality of the set
@@ -302,7 +396,8 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
               doubles: [value],
               indexes: [formattedName, 'set']
             });
-            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote set metric: ${formattedName}`);
+            this.dataPointsWritten++;
+            this.logger.debug(`[CloudflareMetricsAdapter] Successfully wrote set metric: ${formattedName} (${this.dataPointsWritten}/${this.MAX_DATA_POINTS_PER_REQUEST})`);
             break;
         }
       } catch (error: unknown) {
@@ -458,40 +553,21 @@ export class CloudflareMetricsAdapter implements IMetricsAdapter {
     // Log the summary
     this.logger.debug(`[CloudflareMetricsAdapter] SUMMARY: ${name}`, { summary, tags });
     
-    // Record individual metrics for each part of the summary
-    const mergedTags = this.formatTags(tags);
+    // For summaries, only record essential metrics to avoid data point explosion
+    const priority = this.getMetricPriority(name);
     
-    // Record count
+    // Always record count and sum (2 data points)
     this.recordMetric(MetricType.GAUGE, `${name}.count`, summary.count, tags, options);
-    
-    // Record sum
     this.recordMetric(MetricType.GAUGE, `${name}.sum`, summary.sum, tags, options);
     
-    // Record min/max if provided
-    if (summary.min !== undefined) {
-      this.recordMetric(MetricType.GAUGE, `${name}.min`, summary.min, tags, options);
+    // Only record percentiles for critical metrics
+    if (priority === 'CRITICAL') {
+      // Record p95 for critical metrics (1 additional data point)
+      if (summary.p95 !== undefined) {
+        this.recordMetric(MetricType.GAUGE, `${name}.p95`, summary.p95, tags, options);
+      }
     }
-    
-    if (summary.max !== undefined) {
-      this.recordMetric(MetricType.GAUGE, `${name}.max`, summary.max, tags, options);
-    }
-    
-    // Record percentiles if provided
-    if (summary.p50 !== undefined) {
-      this.recordMetric(MetricType.GAUGE, `${name}.p50`, summary.p50, tags, options);
-    }
-    
-    if (summary.p90 !== undefined) {
-      this.recordMetric(MetricType.GAUGE, `${name}.p90`, summary.p90, tags, options);
-    }
-    
-    if (summary.p95 !== undefined) {
-      this.recordMetric(MetricType.GAUGE, `${name}.p95`, summary.p95, tags, options);
-    }
-    
-    if (summary.p99 !== undefined) {
-      this.recordMetric(MetricType.GAUGE, `${name}.p99`, summary.p99, tags, options);
-    }
+    // Skip all other percentiles and min/max to conserve data points
   }
 
   addGlobalDimensions(dimensions: MetricTags, overwrite: boolean = true): void {

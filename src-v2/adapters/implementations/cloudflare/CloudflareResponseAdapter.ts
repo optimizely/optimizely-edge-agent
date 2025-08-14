@@ -1,4 +1,5 @@
 import { IResponseAdapter } from "../../interfaces/IResponseAdapter";
+import { createFormattedResponse, isHtmlContent, fixContentTypeForHtml } from "../../../utils/responseUtils";
 
 /**
  * Cloudflare-specific implementation of IResponseAdapter.
@@ -49,14 +50,17 @@ export class CloudflareResponseAdapter implements IResponseAdapter {
   }
 
   /**
-   * Sends a response body as text/plain.
+   * Sends a response body with proper content type detection.
    * @param content - The content to send.
    */
   send(content: string): void {
     this.responseBody = content;
-    // Set default Content-Type if not already set
-    if (!this.headers.has("Content-Type")) {
-      this.headers.set("Content-Type", "text/plain");
+    
+    // Apply HTML content detection and fix Content-Type if needed
+    if (isHtmlContent(content) && !this.headers.has("Content-Type")) {
+      this.headers.set("Content-Type", "text/html; charset=utf-8");
+    } else if (!this.headers.has("Content-Type")) {
+      this.headers.set("Content-Type", "text/plain; charset=utf-8");
     }
   }
 
@@ -78,13 +82,23 @@ export class CloudflareResponseAdapter implements IResponseAdapter {
   }
 
   /**
-   * Creates and returns a Cloudflare Worker Response object.
+   * Creates and returns a Cloudflare Worker Response object using the original
+   * AbstractResponse.js formatting pattern for proper content type handling.
    * @returns A Cloudflare Response.
    */
   toResponse(): Response {
-    return new Response(this.responseBody, {
-      status: this.statusCode,
-      headers: this.headers
+    // Convert Headers to Record for the utility function
+    const headersRecord: Record<string, string> = {};
+    this.headers.forEach((value, key) => {
+      headersRecord[key] = value;
     });
+    
+    // Use the utility that follows the original AbstractResponse.js pattern
+    return createFormattedResponse(
+      this.responseBody,
+      this.statusCode,
+      headersRecord,
+      'application/json' // Default content type
+    );
   }
 } 

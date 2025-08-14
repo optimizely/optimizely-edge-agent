@@ -1,4 +1,4 @@
-import * as optimizely from '@optimizely/optimizely-sdk';
+import * as optimizely from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 
 // Our internal user context matches our domain model
 export type OptimizelyUserContext = {
@@ -123,12 +123,14 @@ export interface IDecisionService {
    * @param userContext - The user context object.
    * @param context - The decision context containing flagKey and optional ruleKey.
    * @param decision - The decision to force, containing the variationKey.
+   * @param options - Optional: { sdkKey?: string }.
    * @returns A promise resolving to a boolean indicating success or failure.
    */
   setForcedDecision?(
     userContext: OptimizelyUserContext,
     context: { flagKey: string; ruleKey?: string },
-    decision: { variationKey: string }
+    decision: { variationKey: string },
+    options?: { sdkKey?: string }
   ): Promise<boolean>;
 
   /**

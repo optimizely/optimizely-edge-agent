@@ -1,4 +1,4 @@
-import { handleVercelEdgeRequest } from "./composition/vercelComposition";
+import { handleVercelEdgeRequest as handleRequest } from "./composition/vercelComposition";
 import { VercelEnv, VercelExecutionContext } from "./adapters/implementations/vercel/VercelEnvironmentAdapter";
 
 /**
@@ -10,11 +10,14 @@ export const config = {
   runtime: 'edge',
 };
 
+// Re-export handleVercelEdgeRequest for use in api/index.ts
+export const handleVercelEdgeRequest = handleRequest;
+
 export default async function handler(
   request: Request,
   env: VercelEnv, // This would be replaced with Vercel's environment context
   ctx: VercelExecutionContext // This would be replaced with Vercel's execution context
 ): Promise<Response> {
   // Delegate the entire request handling to the Vercel-specific composition's entry point
-  return handleVercelEdgeRequest(request, env, ctx);
+  return handleRequest(request, env, ctx);
 } 

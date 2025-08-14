@@ -4,6 +4,78 @@
 
 The Cloudflare Workers adapter enables the Optimizely Edge Agent to run on Cloudflare's global edge network. This adapter leverages Cloudflare's V8 isolates for near-zero cold starts, Workers KV for distributed storage, and advanced features like Durable Objects and Analytics Engine.
 
+## ⚠️ Important Limitations
+
+### Same-Zone Fetch Restriction
+
+Cloudflare Workers have a critical limitation when fetching resources within the same zone:
+
+**❌ What doesn't work:**
+- Worker → Another Worker (same zone, using Routes)
+- Worker → Cloudflare Pages (same zone, using Routes)
+- Worker → Any workers.dev subdomain (same zone)
+
+**✅ What works:**
+- Worker → External origins (AWS, GCP, Kubernetes, any non-Cloudflare hosting)
+- Worker → Worker with Custom Domains (same zone)
+- Worker → Worker via Service Bindings
+- Worker → Any non-Cloudflare hosted content
+
+### Why This Matters for Edge Mode
+
+Edge Mode relies on fetching content from origin servers. This limitation affects:
+
+1. **Development/Testing**: When both Edge Agent and content are on Cloudflare
+2. **Cloudflare-only deployments**: When customers use Cloudflare for everything
+
+**Most production deployments fetch from external origins and are NOT affected.**
+
+### Solutions and Workarounds
+
+#### 1. Use Custom Domains (Recommended)
+
+```toml
+# wrangler.toml
+[[routes]]
+pattern = "api.example.com/*"
+custom_domain = true  # This allows same-zone fetching!
+```
+
+Custom Domains can fetch from other Custom Domains in the same zone without restrictions.
+
+#### 2. Use Service Bindings
+
+```toml
+[[services]]
+binding = "CONTENT_SERVICE"
+service = "pages-content-worker"
+```
+
+Service bindings provide direct Worker-to-Worker communication without network requests.
+
+#### 3. External Origin (Most Common)
+
+```javascript
+// This always works - no restrictions!
+const response = await fetch('https://origin.aws.example.com/content');
+```
+
+### Testing Configuration
+
+For local development and testing with Cloudflare Pages:
+
+```toml
+# Development setup
+[env.development]
+vars = {
+  # Use Custom Domain for Pages content
+  DEV_CONTENT_BASE_URL = "https://content.example.com"
+}
+
+# Test with debug flag to bypass URL matching
+# https://api.example.com/?force-edge-mode=true
+```
+
 ## Platform Architecture
 
 ```
@@ -896,10 +968,203 @@ const rateLimiter = {
    }
    ```
 
+## Testing and QA Features
+
+### Forced Decisions
+
+The Cloudflare adapter fully supports forced decisions for testing and QA scenarios. This allows you to override normal feature flag bucketing to test specific variations.
+
+#### Using Forced Decisions with Cloudflare Workers
+
+```typescript
+// Example: Cloudflare Worker with forced decisions
+export default {
+  async fetch(request: Request, env: CloudflareEnvironment, ctx: ExecutionContext) {
+    const url = new URL(request.url);
+    
+    // Example 1: Force variation via headers (highest precedence)
+    const headers = new Headers(request.headers);
+    headers.set('X-Optimizely-Force-Variation', 'treatment');
+    
+    // Example 2: Force variation via query parameters
+    url.searchParams.set('forceVariation', 'treatment');
+    
+    // Example 3: Force variation in request body
+    const body = {
+      flagKey: 'checkout_flow',
+      userId: 'test_user',
+      forcedVariationKey: 'express_checkout'
+    };
+    
+    // Make decision with forced variation
+    const response = await fetch(new Request(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    }));
+    
+    return response;
+  }
+};
+```
+
+#### Testing Script for Cloudflare
+
+```bash
+#!/bin/bash
+# Test forced decisions on Cloudflare Workers deployment
+
+WORKER_URL="https://optimizely-edge-agent.your-subdomain.workers.dev"
+SDK_KEY="your-sdk-key"
+
+# Test 1: Force variation via header
+echo "Testing forced variation via header..."
+curl -X POST "$WORKER_URL/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -H "X-Optimizely-Force-Variation: treatment" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001"
+  }'
+
+# Test 2: Force variation via query parameter
+echo -e "\n\nTesting forced variation via query parameter..."
+curl -X GET "$WORKER_URL/api/decide?\
+flagKey=checkout_flow&\
+userId=qa_tester_001&\
+forceVariation=control&\
+sdkKey=$SDK_KEY" \
+  -H "X-Optimizely-Enable-FEX: true"
+
+# Test 3: Force variation via request body
+echo -e "\n\nTesting forced variation via request body..."
+curl -X POST "$WORKER_URL/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedVariationKey": "express_checkout",
+    "forcedRuleKey": "experiment_123"
+  }'
+
+# Test 4: Test precedence (header should win)
+echo -e "\n\nTesting precedence (header > query > body)..."
+curl -X POST "$WORKER_URL/api/decide?forceVariation=query_variation" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: $SDK_KEY" \
+  -H "X-Optimizely-Force-Variation: header_variation" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedVariationKey": "body_variation"
+  }'
+```
+
+#### QA Dashboard Integration
+
+```typescript
+// QA dashboard that uses forced decisions
+class QADashboard {
+  private kvStore: KVNamespace;
+  
+  async setQAOverride(
+    userId: string, 
+    flagKey: string, 
+    variation: string
+  ): Promise<void> {
+    const key = `qa_override:${userId}:${flagKey}`;
+    await this.kvStore.put(key, variation, {
+      expirationTtl: 3600 // 1 hour TTL for QA overrides
+    });
+  }
+  
+  async getQAOverrides(userId: string): Promise<Record<string, string>> {
+    const prefix = `qa_override:${userId}:`;
+    const list = await this.kvStore.list({ prefix });
+    
+    const overrides: Record<string, string> = {};
+    for (const key of list.keys) {
+      const flagKey = key.name.replace(prefix, '');
+      const variation = await this.kvStore.get(key.name);
+      if (variation) {
+        overrides[flagKey] = variation;
+      }
+    }
+    
+    return overrides;
+  }
+  
+  // Apply QA overrides to requests
+  async applyQAOverrides(request: Request): Promise<Request> {
+    const url = new URL(request.url);
+    const userId = url.searchParams.get('userId');
+    
+    if (!userId) return request;
+    
+    const overrides = await this.getQAOverrides(userId);
+    const headers = new Headers(request.headers);
+    
+    // Apply the first override found (simplified example)
+    const [flagKey, variation] = Object.entries(overrides)[0] || [];
+    if (flagKey && variation) {
+      headers.set('X-Optimizely-Force-Variation', variation);
+    }
+    
+    return new Request(request, { headers });
+  }
+}
+```
+
+#### Automated Testing with Forced Decisions
+
+```typescript
+// Automated test suite using forced decisions
+describe('Cloudflare Edge Agent Tests', () => {
+  const baseUrl = 'https://optimizely-edge-agent.workers.dev';
+  
+  test('should respect forced variation from header', async () => {
+    const response = await fetch(`${baseUrl}/api/decide`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Optimizely-Enable-FEX': 'true',
+        'X-Optimizely-SDK-Key': 'test-key',
+        'X-Optimizely-Force-Variation': 'variant_b'
+      },
+      body: JSON.stringify({
+        flagKey: 'test_feature',
+        userId: 'test_user'
+      })
+    });
+    
+    const decision = await response.json();
+    expect(decision.variationKey).toBe('variant_b');
+  });
+  
+  test('should handle forced decisions in edge mode', async () => {
+    // Test edge mode with forced variation
+    const response = await fetch(`${baseUrl}/test-page?forceVariation=edge_variant`, {
+      headers: {
+        'X-Optimizely-SDK-Key': 'test-key'
+      }
+    });
+    
+    // Should serve content for forced variation
+    expect(response.headers.get('X-Optimizely-Variation-Key')).toBe('edge_variant');
+  });
+});
+```
+
 ## See Also
 
 - [Cloudflare Workers Documentation](https://developers.cloudflare.com/workers/)
 - [Workers KV Documentation](https://developers.cloudflare.com/workers/runtime-apis/kv/)
 - [Analytics Engine Documentation](https://developers.cloudflare.com/analytics/analytics-engine/)
 - [Adapter Development Guide](./adapter-development.md)
+- [API Decision Endpoints](../api/decisions/decide.md)
 - Implementation: `/src-v2/adapters/implementations/cloudflare/`

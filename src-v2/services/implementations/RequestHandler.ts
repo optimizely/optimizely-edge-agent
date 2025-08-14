@@ -16,7 +16,7 @@ import { ICookieService } from '../interfaces/ICookieService';
 import { IFlagStorageService } from '../interfaces/IFlagStorageService';
 import { IConfigurationService } from '../interfaces/IConfigurationService';
 import { ApiRouter } from './ApiRouter'; // Add import for ApiRouter
-import type { UserAttributes } from '@optimizely/optimizely-sdk';
+import type { UserAttributes } from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 import { extractAttributes, ExtractAttributesResult } from '../utils/extractAttributes'; // Import the utility and type
 
 
@@ -146,16 +146,27 @@ export class RequestHandler implements IRequestHandler {
 			this.requestTriggeringEnabled = cleanupConfig.requestTriggeringEnabled !== false;
 		}
 
-		// Create service availability metrics
+		// Create service availability metrics - consolidated into a single metric
 		if (this.metrics) {
-			this.metrics.setGauge('service_available', 1, { service: 'decision_service' });
-			this.metrics.setGauge('service_available', 1, { service: 'event_service' });
-			this.metrics.setGauge('service_available', 1, { service: 'cache_service' });
-			this.metrics.setGauge('service_available', edgeModeIntegration ? 1 : 0, { service: 'edge_mode_integration' });
-			this.metrics.setGauge('service_available', cookieService ? 1 : 0, { service: 'cookie_service' });
-			this.metrics.setGauge('service_available', flagStorage ? 1 : 0, { service: 'flag_storage' });
-			this.metrics.setGauge('service_available', configurationService ? 1 : 0, { service: 'configuration_service' });
-			this.metrics.setGauge('service_available', apiRouter ? 1 : 0, { service: 'api_router' }); // Add API Router metric
+			const services = {
+				decision_service: 1,
+				event_service: 1,
+				cache_service: 1,
+				edge_mode_integration: edgeModeIntegration ? 1 : 0,
+				cookie_service: cookieService ? 1 : 0,
+				flag_storage: flagStorage ? 1 : 0,
+				configuration_service: configurationService ? 1 : 0,
+				api_router: apiRouter ? 1 : 0
+			};
+			
+			// Count total available services (single metric instead of 8)
+			const availableCount = Object.values(services).filter(v => v === 1).length;
+			this.metrics.setGauge('services_available_count', availableCount, { 
+				total: Object.keys(services).length 
+			});
+			
+			// Log detailed status for debugging without creating metrics
+			this.logger.debug('Service availability status:', services);
 
 			// Add cleanup configuration metrics
 			if (this.flagStorage && this.requestTriggeringEnabled) {
@@ -297,7 +308,7 @@ export class RequestHandler implements IRequestHandler {
 					} else {
 						// API router not available
 						this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: API router not available for ${method} request to ${path}`);
-						result = this.createErrorResponse(requestId, 501, 'API router not available');
+						result = await this.createErrorResponse(requestId, 501, 'API router not available');
 					}
 				}
 				
@@ -312,7 +323,7 @@ export class RequestHandler implements IRequestHandler {
 						reason: 'unsupported_route'
 					});
 					
-					result = this.createErrorResponse(requestId, 404, 'Unsupported route. POST requests must use an API endpoint.');
+					result = await this.createErrorResponse(requestId, 404, 'Unsupported route. POST requests must use an API endpoint.');
 				}
 				
 				// Case 3: Non-API path + GET method = Use Edge Mode
@@ -321,12 +332,17 @@ export class RequestHandler implements IRequestHandler {
 					const userId = await this.getVisitorId(requestAdapter);
 					const extractResult = await extractAttributes(requestAdapter, this.logger);
 					if (extractResult.errorCount > 0) this.logger.warn(`extractAttributes encountered ${extractResult.errorCount} errors`, extractResult.errors);
-					const userContext: OptimizelyUserContext = {
+					
+					// Get config to extract forcedDecisions
+					const config = await this.getRequestConfig(requestAdapter);
+					
+					const userContext: any = {
 						userId,
 						attributes: extractResult.attributes,
+						forcedDecisions: config.forcedDecisions || {}
 					};
 
-					this.logger.debug(`${this.logPrefix} RequestHandler [${requestId}]: User context created`, userContext);
+					this.logger.debug(`${this.logPrefix} RequestHandler [${requestId}]: User context created with forcedDecisions`, userContext);
 
 					// Process through Edge Mode
 					this.logger.debug(`${this.logPrefix} [${requestId}]: Processing GET request through Edge Mode: ${path}`);
@@ -399,7 +415,7 @@ export class RequestHandler implements IRequestHandler {
 				// Ignore cleanup errors on the error path
 			}
 
-			const errorResponse = this.createErrorResponse(requestId, 500, 'Internal Server Error');
+			const errorResponse = await this.createErrorResponse(requestId, 500, 'Internal Server Error');
 
 			// Add implementation version header
 			if (!errorResponse.headers) {
@@ -437,12 +453,12 @@ export class RequestHandler implements IRequestHandler {
 			// Validate required parameters
 			if (!sdkKey) {
 				this.metrics?.incrementCounter('agent_mode_errors', 1, { error_type: 'missing_sdk_key' });
-			return this.createErrorResponse(requestId, 400, 'SDK key is required');
+			return await this.createErrorResponse(requestId, 400, 'SDK key is required');
 			}
 
 			if (!eventKey) {
 				this.metrics?.incrementCounter('agent_mode_errors', 1, { error_type: 'missing_event_key' });
-				return this.createErrorResponse(requestId, 400, 'Event key is required');
+				return await this.createErrorResponse(requestId, 400, 'Event key is required');
 			}
 
 			const eventTimer = this.metrics?.startTimer('event_tracking_duration');
@@ -552,7 +568,7 @@ export class RequestHandler implements IRequestHandler {
 				const flagKey = config.flagKey;
 
 				if (!flagKey) {
-					return this.createErrorResponse(requestId, 400, 'Missing flagKey parameter');
+					return await this.createErrorResponse(requestId, 400, 'Missing flagKey parameter');
 				}
 
 				// Use decideForFlag which handles sticky bucketing
@@ -563,32 +579,32 @@ export class RequestHandler implements IRequestHandler {
 				);
 
 				if (!decision) {
-					return this.createErrorResponse(requestId, 500, `Error getting decision for flag ${flagKey}`);
+					return await this.createErrorResponse(requestId, 500, `Error getting decision for flag ${flagKey}`);
 				}
 
 				// Create a decisions object with this single decision
 				const decisions = { [flagKey]: decision };
 
-				// Apply trimming to decision if configured
+				// Apply trimming to decision if configured (not for cookies, for response body)
 				const responseBody = config.trimmedDecisions 
-					? this.createTrimmedDecisions(decisions, config)[flagKey] 
+					? this.createTrimmedDecisions(decisions, config, false)[flagKey] 
 					: decision;
 
 				// Return the decision with proper headers and cookies
-				return this.createJsonResponse(requestId, 200, responseBody, userContext, decisions, config);
+				return await this.createJsonResponse(requestId, 200, responseBody, userContext, decisions, config);
 			}
 
 			case '/decide-all': {
 				const sdkKey = config.sdkKey;
 
 				if (!sdkKey) {
-					return this.createErrorResponse(requestId, 400, 'Missing sdkKey parameter');
+					return await this.createErrorResponse(requestId, 400, 'Missing sdkKey parameter');
 				}
 
 				const flagKeys = config.flagKeys;
 
 				if (!flagKeys || !Array.isArray(flagKeys) || flagKeys.length === 0) {
-					return this.createErrorResponse(requestId, 400, 'Missing or invalid flagKeys parameter');
+					return await this.createErrorResponse(requestId, 400, 'Missing or invalid flagKeys parameter');
 				}
 
 				// Use decideAll with proper null check
@@ -599,9 +615,9 @@ export class RequestHandler implements IRequestHandler {
 					  })
 					: {};
 
-				// Use trimmed decisions for the response body if configured
+				// Use trimmed decisions for the response body if configured (not for cookies)
 				const responseBody = config.trimmedDecisions 
-					? this.createTrimmedDecisions(decisions, config) 
+					? this.createTrimmedDecisions(decisions, config, false) 
 					: decisions;
 
 				// Return the decisions with proper headers and cookies
@@ -610,20 +626,20 @@ export class RequestHandler implements IRequestHandler {
 					JSON.stringify(decisions)
 				);
 				
-				return this.createJsonResponse(requestId, 200, responseBody, userContext, decisions, config);
+				return await this.createJsonResponse(requestId, 200, responseBody, userContext, decisions, config);
 			}
 
 			case '/decide-for-keys': {
 				const sdkKey = config.sdkKey;
 
 				if (!sdkKey) {
-					return this.createErrorResponse(requestId, 400, 'Missing sdkKey parameter');
+					return await this.createErrorResponse(requestId, 400, 'Missing sdkKey parameter');
 				}
 
 				const flagKeys = config.flagKeys;
 
 				if (!flagKeys || !Array.isArray(flagKeys) || flagKeys.length === 0) {
-					return this.createErrorResponse(requestId, 400, 'Missing or invalid flagKeys parameter');
+					return await this.createErrorResponse(requestId, 400, 'Missing or invalid flagKeys parameter');
 				}
 
 				this.logger.info(
@@ -638,9 +654,9 @@ export class RequestHandler implements IRequestHandler {
 					  })
 					: {};
 
-				// Use trimmed decisions for the response body if configured
+				// Use trimmed decisions for the response body if configured (not for cookies)
 				const responseBody = config.trimmedDecisions 
-					? this.createTrimmedDecisions(decisions, config) 
+					? this.createTrimmedDecisions(decisions, config, false) 
 					: decisions;
 
 				// Return the decisions with proper headers and cookies
@@ -649,7 +665,7 @@ export class RequestHandler implements IRequestHandler {
 					JSON.stringify(decisions)
 				);
 				
-				return this.createJsonResponse(requestId, 200, responseBody, userContext, decisions, config);
+				return await this.createJsonResponse(requestId, 200, responseBody, userContext, decisions, config);
 			}
 
 			case '/track': {
@@ -657,11 +673,11 @@ export class RequestHandler implements IRequestHandler {
 				const eventKey = config.eventKey;
 
 				if (!sdkKey) {
-					return this.createErrorResponse(requestId, 400, 'Missing sdkKey or eventKey parameter');
+					return await this.createErrorResponse(requestId, 400, 'Missing sdkKey or eventKey parameter');
 				}
 
 				if (!eventKey) {
-					return this.createErrorResponse(requestId, 400, 'Missing eventKey parameter');
+					return await this.createErrorResponse(requestId, 400, 'Missing eventKey parameter');
 				}
 
 				// Create the event for tracking
@@ -679,11 +695,11 @@ export class RequestHandler implements IRequestHandler {
 				await this.eventService.trackEvent(event);
 
 				// Return success response with appropriate headers
-				return this.createJsonResponse(requestId, 200, { success: true }, userContext, {}, config);
+				return await this.createJsonResponse(requestId, 200, { success: true }, userContext, {}, config);
 			}
 
 			default: {
-				return this.createErrorResponse(requestId, 404, `Unknown endpoint ${path}`);
+				return await this.createErrorResponse(requestId, 404, `Unknown endpoint ${path}`);
 			}
 		}
 	}
@@ -785,16 +801,17 @@ export class RequestHandler implements IRequestHandler {
 			// Check if Edge Mode Integration is available
 			if (!this.edgeModeIntegration) {
 				this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: Edge Mode Integration is not available`);
-				return this.createErrorResponse(requestId, 501, 'Edge Mode Integration is not available');
+				return await this.createErrorResponse(requestId, 501, 'Edge Mode Integration is not available');
 			}
 
 			this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Using Edge Mode Integration service`);
 
-			// Get decisions for header/cookie generation - needed regardless of Edge Mode integration result
-			const allDecisions = (await this.decisionService.decideAll?.(userContext)) || {};
-			this.logger.debug(`${this.logPrefix} RequestHandler [${requestId}]: Got ${Object.keys(allDecisions).length} decisions for headers/cookies`);
-			
+			// Get config first to access sdkKey
 			let config = await this.getRequestConfig(requestAdapter);
+			
+			// Get decisions for header/cookie generation - needed for sticky bucketing across pages
+			const allDecisions = (await this.decisionService.decideAll?.(userContext, undefined, { sdkKey: config.sdkKey })) || {};
+			this.logger.debug(`${this.logPrefix} RequestHandler [${requestId}]: Got ${Object.keys(allDecisions).length} decisions for headers/cookies`);
 			
 			// Enhance config for proper header/cookie generation
 			config = {
@@ -803,6 +820,8 @@ export class RequestHandler implements IRequestHandler {
 				returnDecisions: true,
 				responseHeadersAndCookies: true,
 				responseCookies: true,
+				setResponseCookies: true,
+				setResponseHeaders: true,
 				decisionsCookieName: config.decisionsCookieName || 'optly_edge_decisions',
 				visitorIdCookieName: config.visitorIdCookieName || 'optly_edge_visitor_id',
 				// Set header options explicitly to ensure decision headers are added
@@ -821,69 +840,87 @@ export class RequestHandler implements IRequestHandler {
 			const edgeModeResult = await this.edgeModeIntegration.processEdgeModeRequest(
 				requestAdapter,
 				userContext,
+				allDecisions,
 				requestId
 			);
 			if (edgeModeTimer) {
 				edgeModeTimer.stop();
 			}
 
-			// Extract finalBody and finalStatus based on the type of result
-			let finalBody: string;
-			let finalStatus: number;
-
+			// Handle Edge Mode results differently to preserve content types
 			switch (edgeModeResult.type) {
 				case 'PROXIED_FALLBACK':
-					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Edge Mode Integration returned proxied fallback. Generating standard response headers/cookies.`);
-					finalBody = edgeModeResult.body;
-					finalStatus = edgeModeResult.status;
-					break;
+					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Edge Mode Integration returned proxied fallback.`);
+					// For proxied fallback, return as-is with minimal headers
+					return {
+						status: edgeModeResult.status,
+						headers: {
+							'X-Request-ID': requestId,
+							[this.implementationVersionHeader]: 'v2',
+							'Content-Type': 'text/plain'
+						},
+						body: edgeModeResult.body
+					};
 
 				case 'STANDARD_RESPONSE':
-					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Edge Mode Integration returned standard response. Extracting body/status and generating headers/cookies.`);
-					// Extract body and status from the Response object
-					finalBody = await edgeModeResult.response.text();
-					finalStatus = edgeModeResult.response.status;
-					break;
+					this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Edge Mode Integration returned standard response. Preserving original headers and content.`);
+					// For standard response, preserve the Response object's headers including Content-Type
+					const responseHeaders: Record<string, string | string[]> = {
+						'X-Request-ID': requestId,
+						[this.implementationVersionHeader]: 'v2'
+					};
+					
+					// Clone the response before consuming the body to avoid stream exhaustion
+					// This is critical for Edge runtime where Response bodies can only be read once
+					const clonedResponse = edgeModeResult.response.clone();
+					
+					// Copy headers from the Response object to preserve Content-Type
+					edgeModeResult.response.headers.forEach((value, key) => {
+						responseHeaders[key] = value;
+					});
+					
+					// Add visitor ID header if we have it
+					if (userContext.userId) {
+						const visitorIdHeaderName = this.configurationService?.getVisitorIdHeaderName() || 'X-Optimizely-Edge-Visitor-Id';
+						responseHeaders[visitorIdHeaderName] = userContext.userId;
+					}
+					
+					// Add decision cookies if enabled
+					if (config.responseCookies === true || config.setResponseCookies === true) {
+						try {
+							await this.addCookiesToResponse(userContext, allDecisions, config, responseHeaders, requestAdapter);
+						} catch (error) {
+							this.logger.error(`${this.logPrefix} Error adding cookies to Edge Mode response:`, error);
+						}
+					}
+					
+					// Use the cloned response to get the text content
+					const responseBody = await clonedResponse.text();
+					
+					this.logger.debug(`${this.logPrefix} RequestHandler [${requestId}]: Response body length: ${responseBody.length}, first 100 chars: ${responseBody.substring(0, 100)}`);
+					
+					return {
+						status: edgeModeResult.response.status,
+						headers: responseHeaders,
+						body: responseBody
+					};
 
 				case 'ERROR':
 					this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: Edge Mode Integration returned error.`);
-					finalBody = edgeModeResult.body;
-					finalStatus = edgeModeResult.status;
-					break;
+					// For errors, use JSON response format
+					return await this.createJsonResponse(
+						requestId,
+						edgeModeResult.status,
+						edgeModeResult.body,
+						userContext,
+						allDecisions,
+						config
+					);
 
 				default:
 					this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: Unknown result type from Edge Mode Integration.`);
-					return this.createErrorResponse(requestId, 500, 'Unknown result type from Edge Mode Integration');
+					return await this.createErrorResponse(requestId, 500, 'Unknown result type from Edge Mode Integration');
 			}
-			
-			// Log headers debug
-			this.logger.debug(`${this.logPrefix} Creating response with decisions: ${Object.keys(allDecisions).length} decisions, important config values: userId=${config.userId}, returnDecisions=${config.returnDecisions}, responseCookies=${config.responseCookies}`);
-
-			// ALWAYS use createJsonResponse to generate the final response with proper headers/cookies
-			// regardless of the EdgeModeResult type
-			const response = this.createJsonResponse(
-				requestId,
-				finalStatus,
-				finalBody,
-				userContext,
-				allDecisions,
-				config
-			);
-			
-			// Log the generated response headers for debugging
-			this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Generated response headers: ${Object.keys(response.headers).join(', ')}`);
-			if (response.headers['Set-Cookie']) {
-				this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: Set-Cookie header is present`);
-			} else {
-				this.logger.warn(`${this.logPrefix} RequestHandler [${requestId}]: Set-Cookie header is missing`);
-			}
-			if (response.headers['X-Optimizely-Decision']) {
-				this.logger.info(`${this.logPrefix} RequestHandler [${requestId}]: X-Optimizely-Decision header is present`);
-			} else {
-				this.logger.warn(`${this.logPrefix} RequestHandler [${requestId}]: X-Optimizely-Decision header is missing`);
-			}
-			
-			return response;
 		} catch (error) {
 			this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: Error in Edge Mode request handling:`, error);
 			
@@ -893,7 +930,7 @@ export class RequestHandler implements IRequestHandler {
 			});
 			
 			// Return error response
-			return this.createErrorResponse(requestId, 500, 'Error in Edge Mode request handling');
+			return await this.createErrorResponse(requestId, 500, 'Error in Edge Mode request handling');
 		}
 	}
 
@@ -906,24 +943,33 @@ export class RequestHandler implements IRequestHandler {
 	private async getVisitorId(requestAdapter: IRequestAdapter): Promise<string> {
 		const config = await this.getRequestConfig(requestAdapter);
 
-		// Visitor ID precedence (matching original implementation):
-		// 1. Request-provided visitor ID (userId from query params, headers, etc.)
-		// 2. Override visitor ID from query param (if override enabled)
+		// Visitor ID precedence (matching v1 implementation):
+		// 1. If overrideVisitorId is true:
+		//    a. Check for visitor_id query parameter
+		//    b. If not found, generate a NEW visitor ID
+		// 2. Request-provided visitor ID (userId from query params, headers, etc.)
 		// 3. Cookie-based visitor ID
 		// 4. Generated UUID as fallback
 
-		// First check for userId in request (headers, query params, etc.)
+		// Check for override flag first
+		if (config.overrideVisitorId === true) {
+			// When override is enabled, first check for visitor_id query parameter
+			const overrideVisitorId = requestAdapter.getUrl().searchParams.get('visitor_id');
+			if (overrideVisitorId) {
+				this.logger.debug(`${this.logPrefix} Override visitor ID enabled - using visitor_id from query parameter: ${overrideVisitorId}`);
+				return overrideVisitorId;
+			}
+			// If no query parameter, generate a new ID
+			const newVisitorId = this.generateUUID();
+			this.logger.debug(`${this.logPrefix} Override visitor ID enabled - generated new visitor ID: ${newVisitorId}`);
+			return newVisitorId;
+		}
+
+		// Check for userId in request (headers, query params, etc.)
 		const userId = config.userId || '';
 		if (userId) {
 			this.logger.debug(`${this.logPrefix} Using visitor ID from request: ${userId}`);
 			return userId;
-		}
-
-		// Check for override parameter if enabled
-		if (config.overrideVisitorId && requestAdapter.getUrl().searchParams.get('visitor_id')) {
-			const visitorId = requestAdapter.getUrl().searchParams.get('visitor_id');
-			this.logger.debug(`${this.logPrefix} Using visitor ID from override parameter: ${visitorId}`);
-			return visitorId as string;
 		}
 
 		// Check cookie for visitor ID if cookie service is available and cookies are not disabled
@@ -1024,7 +1070,8 @@ export class RequestHandler implements IRequestHandler {
 
 		// Override with query parameters
 		const url = requestAdapter.getUrl();
-		for (const [key, value] of url.searchParams.entries()) {
+		// Use forEach instead of entries() for Web Worker compatibility
+		url.searchParams.forEach((value: string, key: string) => {
 			try {
 				// Try to parse as JSON if possible
 				config[key] = JSON.parse(value);
@@ -1032,7 +1079,7 @@ export class RequestHandler implements IRequestHandler {
 				// Otherwise use as string
 				config[key] = value;
 			}
-		}
+		});
 
 		// Override with headers (highest priority)
 		const headers = requestAdapter.getHeaders();
@@ -1069,6 +1116,12 @@ export class RequestHandler implements IRequestHandler {
 						case 'eventkey':
 							configKey = 'eventKey';
 							break;
+						case 'overridevisitorid':
+							// Handle override visitor ID header - parse as boolean
+							configKey = 'overrideVisitorId';
+							config[configKey] = value === 'true' || value === '1';
+							// Skip the regular processing below
+							return;
 						case 'attributes':
 							// For attributes, try to parse as JSON
 							try {
@@ -1454,14 +1507,14 @@ export class RequestHandler implements IRequestHandler {
 	 * @param config - Optional configuration options.
 	 * @returns The ResponseResult.
 	 */
-	private createJsonResponse(
+	private async createJsonResponse(
 		requestId: string,
 		status: number,
 		body: any,
 		userContext?: OptimizelyUserContext,
 		decisions?: Record<string, OptimizelyDecision>,
 		config?: Record<string, any>
-	): ResponseResult {
+	): Promise<ResponseResult> {
 		// Set default empty objects if not provided
 		const effectiveUserContext = userContext || { userId: '' };
 		const effectiveDecisions = decisions || {};
@@ -1482,7 +1535,7 @@ export class RequestHandler implements IRequestHandler {
 		// Merge with dynamically generated headers from our comprehensive header management
 		const responseHeaders = {
 			...baseHeaders,
-			...this.createResponseHeaders(effectiveUserContext, effectiveDecisions, effectiveConfig),
+			...(await this.createResponseHeaders(effectiveUserContext, effectiveDecisions, effectiveConfig)),
 		};
 
 		// Apply trimmedDecisions transformation to the body if:
@@ -1588,9 +1641,9 @@ export class RequestHandler implements IRequestHandler {
 			// Case 2: If the body contains multiple decisions (for /decide-all or /decide-for-keys)
 			else if (Object.keys(body).length > 0 && Object.values(body).some(val => 
 				typeof val === 'object' && val !== null && 'flagKey' in val && 'enabled' in val)) {
-				// This looks like a decisions object - create trimmed versions
+				// This looks like a decisions object - create trimmed versions (for response body, not cookies)
 				this.logger.debug(`${this.logPrefix} Trimmed multiple decisions for response body`);
-				return this.createTrimmedDecisions(body, config);
+				return this.createTrimmedDecisions(body, config, false);
 			}
 		} else if (enabledFlagsOnly) {
 			// Even if trimmedDecisions is not set, we still need to respect ENABLED_FLAGS_ONLY
@@ -1635,14 +1688,14 @@ export class RequestHandler implements IRequestHandler {
 	 * @param config - Optional configuration options.
 	 * @returns The ResponseResult.
 	 */
-	private createErrorResponse(
+	private async createErrorResponse(
 		requestId: string,
 		status: number,
 		message: string,
 		userContext?: OptimizelyUserContext,
 		config?: Record<string, any>
-	): ResponseResult {
-		return this.createJsonResponse(
+	): Promise<ResponseResult> {
+		return await this.createJsonResponse(
 			requestId,
 			status,
 			{
@@ -1787,7 +1840,7 @@ export class RequestHandler implements IRequestHandler {
 
 				// Extract content and headers from response
 				const content = await response.text();
-				const responseHeaders: Record<string, string> = {};
+				const responseHeaders: Record<string, string | string[]> = {};
 
 				// Copy headers from origin response
 				response.headers.forEach((value, key) => {
@@ -1911,7 +1964,7 @@ export class RequestHandler implements IRequestHandler {
 				const content = await response.text();
 
 				// Extract headers
-				const responseHeaders: Record<string, string> = {};
+				const responseHeaders: Record<string, string | string[]> = {};
 				response.headers.forEach((value, key) => {
 					responseHeaders[key] = value;
 				});
@@ -1959,7 +2012,7 @@ export class RequestHandler implements IRequestHandler {
 				}
 			}
 
-			return this.createErrorResponse(requestId, 500, errorMessage);
+			return await this.createErrorResponse(requestId, 500, errorMessage);
 		}
 	}
 
@@ -2015,7 +2068,7 @@ export class RequestHandler implements IRequestHandler {
 			// Validate URL before fetching
 			if (!cdnResponseURL) {
 				this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: No cdnResponseURL provided`);
-				return this.createErrorResponse(requestId, 500, 'Missing cdnResponseURL');
+				return await this.createErrorResponse(requestId, 500, 'Missing cdnResponseURL');
 			}
 
 			try {
@@ -2053,7 +2106,7 @@ export class RequestHandler implements IRequestHandler {
 					this.logger.error(
 						`${this.logPrefix} RequestHandler [${requestId}]: Failed to fetch content from ${cdnResponseURL}, status: ${response.status}`
 					);
-					return this.createErrorResponse(requestId, response.status, 'Failed to fetch content');
+					return await this.createErrorResponse(requestId, response.status, 'Failed to fetch content');
 				}
 
 				// Get response content
@@ -2108,7 +2161,7 @@ export class RequestHandler implements IRequestHandler {
 				}
 			} catch (error) {
 				this.logger.error(`${this.logPrefix} RequestHandler [${requestId}]: Error fetching content`, error);
-				return this.createErrorResponse(requestId, 500, 'Error fetching content');
+				return await this.createErrorResponse(requestId, 500, 'Error fetching content');
 			}
 		} else {
 			// We have cached data
@@ -2211,7 +2264,7 @@ export class RequestHandler implements IRequestHandler {
 		}
 
 		// Start with essential Optimizely headers
-		const responseHeaders: Record<string, string> = {
+		const responseHeaders: Record<string, string | string[]> = {
 			'X-Optimizely-Edge-Agent': 'v2',
 			'X-Optimizely-Variation': matchingConfig.variationKey || '',
 			'Content-Type': contentType || 'text/html',
@@ -2267,12 +2320,29 @@ export class RequestHandler implements IRequestHandler {
 
 		// Add decision headers based on configuration
 		if (config.returnDecisions !== false) {
-			// Don't use btoa() - just use the stringified JSON directly
-			responseHeaders['X-Optimizely-Decision'] = JSON.stringify(decision);
+			// CRITICAL: Check header size to prevent server crashes
+			const MAX_HEADER_SIZE = 8192; // 8KB limit for safety
+			const decisionStr = JSON.stringify(decision);
+			
+			if (decisionStr.length < MAX_HEADER_SIZE) {
+				responseHeaders['X-Optimizely-Decision'] = decisionStr;
+			} else {
+				// If decision is too large, add a truncated summary
+				const truncatedDecision = {
+					truncated: true,
+					originalSize: decisionStr.length,
+					flagKey: decision.flagKey,
+					variationKey: decision.variationKey,
+					enabled: decision.enabled,
+					message: "Decision too large for header. Use response body instead."
+				};
+				responseHeaders['X-Optimizely-Decision'] = JSON.stringify(truncatedDecision);
+				this.logger.warn(`${this.logPrefix} Decision header truncated due to size (${decisionStr.length} bytes > ${MAX_HEADER_SIZE} bytes)`);
+			}
 		}
 
 		// Add cookies using the new cookie service
-		this.addCookiesToResponse(userContext, { [matchingConfig.flagKey]: decision }, config, responseHeaders);
+		await this.addCookiesToResponse(userContext, { [matchingConfig.flagKey]: decision }, config, responseHeaders, requestAdapter);
 
 		return {
 			status,
@@ -2291,7 +2361,7 @@ export class RequestHandler implements IRequestHandler {
 	private addDecisionHeadersToResponse(
 		decisions: Record<string, OptimizelyDecision>,
 		config: Record<string, any>,
-		responseHeaders: Record<string, string>
+		responseHeaders: Record<string, string | string[]>
 	): void {
 		// DEBUG: Log all relevant config flags
 		this.logger.info(`${this.logPrefix} HEADER DEBUG - config flags: setResponseHeaders=${config.setResponseHeaders}, responseHeadersAndCookies=${config.responseHeadersAndCookies}`);
@@ -2339,21 +2409,42 @@ export class RequestHandler implements IRequestHandler {
 			const decisionsHeaderName = this.configurationService?.getDecisionsHeaderName() || 'X-Optimizely-Edge-Decisions';
 			const visitorIdHeaderName = this.configurationService?.getVisitorIdHeaderName() || 'X-Optimizely-Edge-Visitor-Id';
 			
-			// Create trimmed decisions for the header to reduce size
-			const trimmedDecisions = this.createTrimmedDecisions(decisions, config);
+			// Create trimmed decisions for the header to reduce size (true = compact for headers)
+			const trimmedDecisions = this.createTrimmedDecisions(decisions, config, true);
 			
-			// Set the decisions header with trimmed decisions (as JSON string)
-			responseHeaders[decisionsHeaderName] = JSON.stringify(trimmedDecisions);
+			// CRITICAL: Check header sizes to prevent server crashes
+			const MAX_HEADER_SIZE = 8192; // 8KB limit for safety
 			
-			// FORCE ADD additional headers for debugging
-			responseHeaders['X-Optimizely-Decision-Debug'] = JSON.stringify({
-				decisionsCount: Object.keys(decisions).length,
-				headerName: decisionsHeaderName,
-				config: {
-					setResponseHeaders: config.setResponseHeaders,
-					responseHeadersAndCookies: config.responseHeadersAndCookies
+			// Set the decisions header with trimmed decisions (with size check)
+			const trimmedDecisionsStr = JSON.stringify(trimmedDecisions);
+			if (trimmedDecisionsStr.length < MAX_HEADER_SIZE) {
+				responseHeaders[decisionsHeaderName] = trimmedDecisionsStr;
+			} else {
+				// Even trimmed decisions are too large - add minimal summary
+				const minimalSummary = {
+					truncated: true,
+					count: Object.keys(trimmedDecisions).length,
+					size: trimmedDecisionsStr.length
+				};
+				responseHeaders[decisionsHeaderName] = JSON.stringify(minimalSummary);
+				this.logger.warn(`${this.logPrefix} Trimmed decisions still too large (${trimmedDecisionsStr.length} bytes), using minimal summary`);
+			}
+			
+			// Only add debug header in development with size limit
+			if (this.configurationService?.getEnvironment() === 'development') {
+				const debugInfo = {
+					decisionsCount: Object.keys(decisions).length,
+					headerName: decisionsHeaderName,
+					config: {
+						setResponseHeaders: config.setResponseHeaders,
+						responseHeadersAndCookies: config.responseHeadersAndCookies
+					}
+				};
+				const debugStr = JSON.stringify(debugInfo);
+				if (debugStr.length < 1024) { // Small limit for debug headers
+					responseHeaders['X-Optimizely-Decision-Debug'] = debugStr;
 				}
-			});
+			}
 			
 			this.logger.info(`${this.logPrefix} Added ${decisionsHeaderName} header with ${Object.keys(trimmedDecisions).length} decisions`);
 			
@@ -2375,42 +2466,72 @@ export class RequestHandler implements IRequestHandler {
 	 */
 	private createTrimmedDecisions(
 		decisions: Record<string, OptimizelyDecision>,
-		config?: Record<string, any>
+		config?: Record<string, any>,
+		forCookies: boolean = true
 	): Record<string, any> {
 		const trimmed: Record<string, any> = {};
 		
-		// Check if ENABLED_FLAGS_ONLY is set in config
+		// Extract configuration options (matching v1 behavior)
 		const enabledFlagsOnly = config && (
 			config.enabledFlagsOnly === true || 
 			(config.decideOptions && 
 				Array.isArray(config.decideOptions) && 
 				config.decideOptions.includes('ENABLED_FLAGS_ONLY'))
 		);
+		
+		const excludeVariables = config && (
+			config.excludeVariables === true ||
+			(config.decideOptions &&
+				Array.isArray(config.decideOptions) &&
+				config.decideOptions.includes('EXCLUDE_VARIABLES'))
+		);
+		
+		// Determine if this is for Edge Mode - cookies should always be maximally compact
+		// For cookies, we always want the most compact format (matching v1 behavior for GET requests)
+		const isEdgeMode = forCookies || config?.serverMode === 'edge';
 
 		for (const [flagKey, decision] of Object.entries(decisions)) {
-			// Skip if we have no decision or if we're skipping disabled flags
-			if (!decision || (enabledFlagsOnly && decision.enabled === false)) {
-				this.logger.debug(`${this.logPrefix} Skipping ${flagKey} in trimmed decisions: ${!decision ? 'No decision found' : 'Disabled flag with ENABLED_FLAGS_ONLY'}`);
+			// Skip invalid decisions
+			if (!decision || typeof decision !== 'object') {
+				this.logger.debug(`${this.logPrefix} Skipping ${flagKey}: No valid decision found`);
 				continue;
 			}
 			
+			// For Edge Mode or when enabledFlagsOnly is set, skip disabled flags
+			if ((isEdgeMode || enabledFlagsOnly) && decision.enabled === false) {
+				this.logger.debug(`${this.logPrefix} Skipping ${flagKey}: Disabled flag (enabled=${decision.enabled})`);
+				continue;
+			}
+			
+			// For Edge Mode, skip rollout decisions (matching v1 behavior)
+			if (isEdgeMode && decision.ruleKey && decision.ruleKey.includes('-rollout-')) {
+				this.logger.debug(`${this.logPrefix} Skipping ${flagKey}: Rollout decision in Edge Mode`);
+				continue;
+			}
+			
+			// Build minimal decision object for cookies
 			trimmed[flagKey] = {
 				flagKey: decision.flagKey,
-				enabled: decision.enabled,
 				variationKey: decision.variationKey,
-				variables: decision.variables,
+				ruleKey: decision.ruleKey || '',
+				enabled: decision.enabled
 			};
+			
+			// Only include variables if:
+			// 1. Not in Edge Mode (GET requests should be compact)
+			// 2. excludeVariables is not set
+			// 3. Variables object is not empty
+			if (!isEdgeMode && !excludeVariables && decision.variables && Object.keys(decision.variables).length > 0) {
+				trimmed[flagKey].variables = decision.variables;
+			}
 
-			// Add experiment key if available
-			if (decision.experimentKey) {
+			// Only include experimentKey for non-Edge Mode if it exists
+			if (!isEdgeMode && decision.experimentKey) {
 				trimmed[flagKey].experimentKey = decision.experimentKey;
 			}
-
-			// Add rule key if available
-			if (decision.ruleKey) {
-				trimmed[flagKey].ruleKey = decision.ruleKey;
-			}
 		}
+		
+		this.logger.debug(`${this.logPrefix} Trimmed ${Object.keys(decisions).length} decisions to ${Object.keys(trimmed).length} for cookies`);
 
 		return trimmed;
 	}
@@ -2423,12 +2544,13 @@ export class RequestHandler implements IRequestHandler {
 	 * @param config - Configuration options
 	 * @param responseHeaders - Existing response headers to augment
 	 */
-	private addCookiesToResponse(
+	private async addCookiesToResponse(
 		userContext: OptimizelyUserContext | Record<string, any>,
 		decisions: Record<string, OptimizelyDecision>,
 		config: Record<string, any>,
-		responseHeaders: Record<string, string>
-	): void {
+		responseHeaders: Record<string, string | string[]>,
+		requestAdapter?: IRequestAdapter
+	): Promise<void> {
 		// Skip if cookies are disabled
 		if (config.setResponseCookies === false) {
 			this.logger.debug(`${this.logPrefix} Skipping cookie generation (setResponseCookies is false)`);
@@ -2456,8 +2578,16 @@ export class RequestHandler implements IRequestHandler {
 				path: config.cookiePath || '/',
 			};
 
-			// Add visitor ID cookie if userContext is the correct type
+			// Always add visitor ID cookie - it's critical for tracking
+			// Extract visitor ID from either userContext or config
+			let visitorId: string | null = null;
 			if (this.isUserContext(userContext) && userContext.userId) {
+				visitorId = userContext.userId;
+			} else if (config.userId) {
+				visitorId = config.userId;
+			}
+			
+			if (visitorId) {
 				const visitorIdCookieOptions = {
 					...cookieOptions,
 					cookieName: visitorIdCookieName,
@@ -2465,14 +2595,68 @@ export class RequestHandler implements IRequestHandler {
 				};
 
 				const visitorIdCookie = this.cookieService.createVisitorIdCookie(
-					userContext.userId,
+					visitorId,
 					this.cookieService.applyCookieOptionsFromConfig(visitorIdCookieOptions, config)
 				);
 				cookies.push(visitorIdCookie);
+				this.logger.debug(`${this.logPrefix} Added visitor ID cookie for: ${visitorId}`);
+			} else {
+				this.logger.warn(`${this.logPrefix} No visitor ID available for cookie - userContext.userId: ${(userContext as any)?.userId}, config.userId: ${config.userId}`);
 			}
 
-			// Add decisions cookie if we have decisions - USE TRIMMED DECISIONS HERE
-			if (Object.keys(decisions).length > 0) {
+			// CRITICAL: Merge with existing cookie decisions and reconcile with active flags
+			// This ensures sticky bucketing works across page navigation
+			let finalDecisions = decisions;
+			
+			// Get existing decisions from cookies (only if requestAdapter is available)
+			const existingDecisions = requestAdapter 
+				? this.getDecisionsFromCookies(requestAdapter, config) || {}
+				: {};
+			
+			// DEBUG: Log what we got from cookies and what new decisions we have
+			this.logger.info(
+				`${this.logPrefix} Cookie merge debug - Existing cookie flags: [${Object.keys(existingDecisions).join(', ')}], ` +
+				`New decision flags: [${Object.keys(decisions).join(', ')}]`
+			);
+			
+			// Only reconcile if we have existing decisions (optimization to avoid unnecessary getOptimizelyConfig calls)
+			let validCount = Object.keys(existingDecisions).length; // Default to all existing if no reconciliation
+			if (Object.keys(existingDecisions).length > 0) {
+				// Get active flags from the SDK to reconcile (this is cached for 60 minutes)
+				const activeFlags = await this.getActiveFlagsFromSDK(config.sdkKey);
+				
+				// Reconcile existing decisions - remove any that are no longer in the datafile
+				const validExistingDecisions: Record<string, OptimizelyDecision> = {};
+				for (const [flagKey, decision] of Object.entries(existingDecisions)) {
+					if (activeFlags.includes(flagKey)) {
+						validExistingDecisions[flagKey] = decision;
+						this.logger.debug(`${this.logPrefix} Preserving valid existing decision for flag: ${flagKey}`);
+					} else {
+						this.logger.debug(`${this.logPrefix} Removing stale decision for archived/paused flag: ${flagKey}`);
+					}
+				}
+				
+				validCount = Object.keys(validExistingDecisions).length;
+				
+				// Merge new decisions with valid existing ones
+				// New decisions take precedence over existing ones for the same flag
+				finalDecisions = {
+					...validExistingDecisions,  // Start with valid existing decisions
+					...decisions                 // Override with new decisions
+				};
+			}
+			
+			this.logger.info(
+				`${this.logPrefix} Cookie reconciliation: ` +
+				`${Object.keys(existingDecisions).length} existing, ` +
+				`${validCount} valid, ` +
+				`${Object.keys(decisions).length} new, ` +
+				`${Object.keys(finalDecisions).length} final. ` +
+				`Final flags: [${Object.keys(finalDecisions).join(', ')}]`
+			);
+
+			// Add decisions cookie if we have any decisions (new or existing)
+			if (Object.keys(finalDecisions).length > 0) {
 				const decisionsCookieOptions = {
 					...cookieOptions,
 					cookieName: decisionsCookieName,
@@ -2480,10 +2664,10 @@ export class RequestHandler implements IRequestHandler {
 				};
 
 				// Create trimmed decisions for the cookie to reduce size
-				const trimmedDecisions = this.createTrimmedDecisions(decisions, config);
+				const trimmedDecisions = this.createTrimmedDecisions(finalDecisions, config);
 
 				const decisionsCookie = this.cookieService.createDecisionsCookie(
-					trimmedDecisions, // Use trimmed version instead of full decisions
+					trimmedDecisions, // Use trimmed and merged decisions
 					this.cookieService.applyCookieOptionsFromConfig(decisionsCookieOptions, config)
 				);
 				cookies.push(decisionsCookie);
@@ -2493,23 +2677,24 @@ export class RequestHandler implements IRequestHandler {
 			if (cookies.length > 0) {
 				const cookieHeaders = this.cookieService.createSetCookieHeaders(cookies);
 				
-				// Check if there are already cookie headers set
+				// CRITICAL: Set-Cookie headers must be an array for multiple cookies
+				// Most modern HTTP servers handle arrays correctly
+				// Joining with \n causes only the first cookie to be sent!
 				if (responseHeaders['Set-Cookie']) {
-					// If Set-Cookie is already a string, convert to array and add new cookies
+					// If Set-Cookie already exists, merge as array
 					if (typeof responseHeaders['Set-Cookie'] === 'string') {
-						responseHeaders['Set-Cookie'] = [responseHeaders['Set-Cookie'], ...cookieHeaders].join('\n');
+						responseHeaders['Set-Cookie'] = [responseHeaders['Set-Cookie'], ...cookieHeaders];
 					} else if (Array.isArray(responseHeaders['Set-Cookie'])) {
-						// If already an array, just concatenate
-						responseHeaders['Set-Cookie'] = [...responseHeaders['Set-Cookie'], ...cookieHeaders].join('\n');
+						responseHeaders['Set-Cookie'] = [...responseHeaders['Set-Cookie'], ...cookieHeaders];
 					} else {
-						// Otherwise just set it
-						responseHeaders['Set-Cookie'] = cookieHeaders.join('\n');
+						responseHeaders['Set-Cookie'] = cookieHeaders;
 					}
 				} else {
-					responseHeaders['Set-Cookie'] = cookieHeaders.join('\n');
+					// Set as array if multiple cookies, string if single
+					responseHeaders['Set-Cookie'] = cookieHeaders.length === 1 ? cookieHeaders[0] : cookieHeaders;
 				}
 				
-				this.logger.debug(`${this.logPrefix} Added ${cookies.length} cookies to response using cookie service`);
+				this.logger.debug(`${this.logPrefix} Added ${cookies.length} cookies to response: ${cookieHeaders.map(c => c.split('=')[0]).join(', ')}`);
 			}
 		} else {
 			// FALLBACK IMPLEMENTATION when cookie service is not available
@@ -2517,8 +2702,15 @@ export class RequestHandler implements IRequestHandler {
 			
 			const cookies = [];
 			
-			// Add visitor ID cookie if we have a user ID from userContext
+			// Always add visitor ID cookie - it's critical for tracking
+			let visitorId: string | null = null;
 			if (this.isUserContext(userContext) && userContext.userId) {
+				visitorId = userContext.userId;
+			} else if (config.userId) {
+				visitorId = config.userId;
+			}
+			
+			if (visitorId) {
 				// Use the variable defined above
 				const cookieTTL = config.visitorIdCookieTTL || 86400 * 365; // 1 year default
 				const cookiePath = config.cookiePath || '/';
@@ -2532,14 +2724,62 @@ export class RequestHandler implements IRequestHandler {
 				expiryDate.setTime(expiryDate.getTime() + (cookieTTL * 1000));
 				
 				// Create cookie string
-				const visitorIdCookie = `${visitorIdCookieName}=${userContext.userId}; Expires=${expiryDate.toUTCString()}; Path=${cookiePath}${cookieDomain}${secure}${httpOnly}${sameSite}`;
+				const visitorIdCookie = `${visitorIdCookieName}=${visitorId}; Expires=${expiryDate.toUTCString()}; Path=${cookiePath}${cookieDomain}${secure}${httpOnly}${sameSite}`;
 				cookies.push(visitorIdCookie);
 				
-				this.logger.debug(`${this.logPrefix} Created fallback visitor ID cookie: ${visitorIdCookie}`);
+				this.logger.debug(`${this.logPrefix} Created fallback visitor ID cookie for: ${visitorId}`);
 			}
 			
-			// Add decisions cookie if we have decisions
-			if (Object.keys(decisions).length > 0) {
+			// CRITICAL: Merge with existing cookie decisions and reconcile with active flags (fallback implementation)
+			let finalDecisions = decisions;
+			
+			// Get existing decisions from cookies (only if requestAdapter is available)
+			const existingDecisions = requestAdapter 
+				? this.getDecisionsFromCookies(requestAdapter, config) || {}
+				: {};
+			
+			// DEBUG: Log what we got from cookies and what new decisions we have
+			this.logger.info(
+				`${this.logPrefix} [Fallback] Cookie merge debug - Existing cookie flags: [${Object.keys(existingDecisions).join(', ')}], ` +
+				`New decision flags: [${Object.keys(decisions).join(', ')}]`
+			);
+			
+			// Only reconcile if we have existing decisions (optimization)
+			let validCount = Object.keys(existingDecisions).length; // Default to all existing if no reconciliation
+			if (Object.keys(existingDecisions).length > 0) {
+				// Get active flags from the SDK to reconcile (this is cached for 60 minutes)
+				const activeFlags = await this.getActiveFlagsFromSDK(config.sdkKey);
+				
+				// Reconcile existing decisions - remove any that are no longer in the datafile
+				const validExistingDecisions: Record<string, OptimizelyDecision> = {};
+				for (const [flagKey, decision] of Object.entries(existingDecisions)) {
+					if (activeFlags.includes(flagKey)) {
+						validExistingDecisions[flagKey] = decision;
+						this.logger.debug(`${this.logPrefix} [Fallback] Preserving valid existing decision for flag: ${flagKey}`);
+					} else {
+						this.logger.debug(`${this.logPrefix} [Fallback] Removing stale decision for archived/paused flag: ${flagKey}`);
+					}
+				}
+				
+				validCount = Object.keys(validExistingDecisions).length;
+				
+				// Merge new decisions with valid existing ones
+				finalDecisions = {
+					...validExistingDecisions,  // Start with valid existing decisions
+					...decisions                 // Override with new decisions
+				};
+			}
+			
+			this.logger.info(
+				`${this.logPrefix} [Fallback] Cookie reconciliation: ` +
+				`${Object.keys(existingDecisions).length} existing, ` +
+				`${validCount} valid, ` +
+				`${Object.keys(decisions).length} new, ` +
+				`${Object.keys(finalDecisions).length} final`
+			);
+			
+			// Add decisions cookie if we have any decisions (new or existing)
+			if (Object.keys(finalDecisions).length > 0) {
 				// Use the variable defined above
 				const cookieTTL = config.decisionsCookieTTL || 600; // 10 minutes default
 				const cookiePath = config.cookiePath || '/';
@@ -2549,7 +2789,7 @@ export class RequestHandler implements IRequestHandler {
 				const sameSite = '; SameSite=Lax';
 				
 				// Create trimmed decisions for the cookie to reduce size
-				const trimmedDecisions = this.createTrimmedDecisions(decisions, config);
+				const trimmedDecisions = this.createTrimmedDecisions(finalDecisions, config);
 				const decisionsValue = encodeURIComponent(JSON.stringify(trimmedDecisions));
 				
 				// Calculate expiration date
@@ -2565,8 +2805,10 @@ export class RequestHandler implements IRequestHandler {
 			
 			// Set cookies in response headers
 			if (cookies.length > 0) {
-				responseHeaders['Set-Cookie'] = cookies.join('\n');
-				this.logger.debug(`${this.logPrefix} Added ${cookies.length} cookies to response using fallback implementation`);
+				// CRITICAL: Set-Cookie headers must be an array for multiple cookies
+				// Joining with \n causes only the first cookie to be sent!
+				responseHeaders['Set-Cookie'] = cookies.length === 1 ? cookies[0] : cookies;
+				this.logger.debug(`${this.logPrefix} Added ${cookies.length} cookies to response using fallback implementation: ${cookies.map(c => c.split('=')[0]).join(', ')}`);
 			}
 		}
 	}
@@ -2578,6 +2820,37 @@ export class RequestHandler implements IRequestHandler {
 	 */
 	private isUserContext(obj: any): obj is OptimizelyUserContext {
 		return obj && typeof obj === 'object' && 'userId' in obj && typeof obj.userId === 'string';
+	}
+
+	/**
+	 * Gets the list of active flags from the SDK's datafile
+	 * @param sdkKey - The SDK key to get the configuration for
+	 * @returns Array of active flag keys
+	 */
+	private async getActiveFlagsFromSDK(sdkKey: string): Promise<string[]> {
+		try {
+			if (!this.decisionService) {
+				this.logger.warn(`${this.logPrefix} No decision service available to get active flags`);
+				return [];
+			}
+
+			// Get the Optimizely config which contains all feature flags
+			const optimizelyConfig = await this.decisionService.getOptimizelyConfig?.(sdkKey);
+			
+			if (!optimizelyConfig || !optimizelyConfig.featuresMap) {
+				this.logger.warn(`${this.logPrefix} Unable to get Optimizely config or featuresMap`);
+				return [];
+			}
+
+			// Extract all active flag keys from the featuresMap
+			const activeFlags = Object.keys(optimizelyConfig.featuresMap);
+			this.logger.debug(`${this.logPrefix} Found ${activeFlags.length} active flags in datafile`);
+			
+			return activeFlags;
+		} catch (error) {
+			this.logger.error(`${this.logPrefix} Error getting active flags from SDK:`, error);
+			return [];
+		}
 	}
 
 	/**
@@ -2613,7 +2886,7 @@ export class RequestHandler implements IRequestHandler {
 	 */
 	private addCustomHeadersFromConfig(
 		config: Record<string, any>,
-		responseHeaders: Record<string, string>
+		responseHeaders: Record<string, string | string[]>
 	): void {
 		// Skip if response headers are disabled
 		if (config.responseHeadersAndCookies === false) {
@@ -2671,11 +2944,11 @@ export class RequestHandler implements IRequestHandler {
 	 * @param config - Configuration options
 	 * @returns Response headers
 	 */
-	private createResponseHeaders(
+	private async createResponseHeaders(
 		userContext: OptimizelyUserContext,
 		decisions: Record<string, OptimizelyDecision>,
 		config: Record<string, any>
-	): Record<string, string> {
+	): Promise<Record<string, string | string[]>> {
 		// CRITICAL FIX: Normalize config flags for consistent behavior using correct property names
 		// Ensure cookies and headers settings are consistent - if one is true, the other should be too
 		if (config.setResponseCookies === true && config.setResponseHeaders !== true) {
@@ -2688,7 +2961,7 @@ export class RequestHandler implements IRequestHandler {
 		);
 		
 		// Create base headers
-		const responseHeaders: Record<string, string> = {};
+		const responseHeaders: Record<string, string | string[]> = {};
 
 		// Always try to add decision headers (method has internal safeguards based on config)
 		try {
@@ -2706,20 +2979,26 @@ export class RequestHandler implements IRequestHandler {
 
 		// Add cookies if enabled (method has internal safeguards based on config)
 		try {
-			// Ensure exact same decisions object is passed to cookie method
-			this.addCookiesToResponse(userContext, decisions, config, responseHeaders);
+			// Ensure exact same decisions object is passed to cookie method (no requestAdapter in this context)
+			await this.addCookiesToResponse(userContext, decisions, config, responseHeaders);
 		} catch (error) {
 			this.logger.error(`${this.logPrefix} Error adding cookies to response:`, error);
 		}
 
-		// Add a debug header to show which headers were enabled
-		responseHeaders['X-Optimizely-Headers-Debug'] = JSON.stringify({
-			configFlags: {
-				setResponseHeaders: config.setResponseHeaders,
-				setResponseCookies: config.setResponseCookies
-			},
-			decisionsCount: Object.keys(decisions).length
-		});
+		// Only add debug header in development environment with size limit
+		if (this.configurationService?.getEnvironment() === 'development') {
+			const debugInfo = {
+				configFlags: {
+					setResponseHeaders: config.setResponseHeaders,
+					setResponseCookies: config.setResponseCookies
+				},
+				decisionsCount: Object.keys(decisions).length
+			};
+			const debugStr = JSON.stringify(debugInfo);
+			if (debugStr.length < 1024) { // Small limit for debug headers
+				responseHeaders['X-Optimizely-Headers-Debug'] = debugStr;
+			}
+		}
 
 		return responseHeaders;
 	}

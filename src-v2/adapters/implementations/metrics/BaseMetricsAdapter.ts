@@ -68,7 +68,7 @@ export abstract class BaseMetricsAdapter extends StandardMetricsAdapter {
     // Check if CompressionStream is available (it should be in most modern edge environments)
     if (typeof CompressionStream === 'undefined') {
       // Fallback: return uncompressed data
-      return new TextEncoder().encode(data).buffer;
+      return new TextEncoder().encode(data).buffer as ArrayBuffer;
     }
 
     const encoder = new TextEncoder();
@@ -97,7 +97,7 @@ export abstract class BaseMetricsAdapter extends StandardMetricsAdapter {
       offset += chunk.length;
     }
     
-    return result.buffer;
+    return result.buffer as ArrayBuffer;
   }
 
   /**

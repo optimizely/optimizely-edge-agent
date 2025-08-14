@@ -2,7 +2,8 @@
  * Utilities for working with Optimizely SDK configuration and datafiles
  */
 
-import * as optimizely from '@optimizely/optimizely-sdk';
+// Use lite ES module for Edge runtime compatibility
+import * as optimizely from '@optimizely/optimizely-sdk/lite';
 import { ILoggerAdapter } from '../adapters/interfaces/ILoggerAdapter';
 
 /**

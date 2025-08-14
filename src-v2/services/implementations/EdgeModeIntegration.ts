@@ -10,6 +10,7 @@ import { IMetricsAdapter } from '../../adapters/interfaces/IMetricsAdapter';
 import { OptimizelyUserContext, IDecisionService } from '../interfaces/IDecisionService';
 import { v4 as uuidv4 } from 'uuid';
 import { IConfigurationService } from '../interfaces/IConfigurationService';
+import { createFormattedResponse, fixContentTypeForHtml } from '../../utils/responseUtils';
 
 /**
  * Interface for the EdgeModeIntegration service.
@@ -19,12 +20,14 @@ export interface IEdgeModeIntegration {
    * Processes a request through the Edge Mode pipeline.
    * @param requestAdapter - The adapter for the incoming request.
    * @param userContext - The Optimizely user context for decisions.
+   * @param decisions - Pre-fetched decisions to use instead of making a new call.
    * @param requestId - Optional request ID for tracking.
    * @returns A promise resolving to an EdgeModeResult containing the output from processing.
    */
   processEdgeModeRequest(
     requestAdapter: IRequestAdapter,
     userContext: OptimizelyUserContext,
+    decisions: Record<string, any>,
     requestId?: string
   ): Promise<EdgeModeResult>;
 }
@@ -56,8 +59,9 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
   private configService: IConfigurationService;
   // DEV ENVIRONMENT CONSTANTS - For local development support
   private readonly localHostnames = ['127.0.0.1', 'localhost'];
-  private readonly localPorts = ['8787', '']; // '' when default port is implied
-  private readonly devProxyBaseUrl = 'https://edgeagent.demo.optimizely.com';
+  private readonly localPorts = ['8787', '9797', '']; // '' when default port is implied, 9797 for Vercel dev
+  private devProxyBaseUrl = 'https://edgeagent.demo.optimizely.com';
+  private readonly debugHeaders = ['x-optimizely-debug-local', 'x-optimizely-test-local', 'x-edge-debug'];
 
   /**
    * Creates a new EdgeModeIntegration instance.
@@ -82,7 +86,8 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
     logger: ILoggerAdapter,
     decisionService: IDecisionService,
     configService: IConfigurationService,
-    metrics?: IMetricsAdapter
+    metrics?: IMetricsAdapter,
+    devProxyBaseUrl?: string
   ) {
     // Validate required dependencies
     if (!urlMatcher || !edgeModeHandler || !contentFetcher || 
@@ -101,7 +106,12 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
     this.metrics = metrics || null;
     this.configService = configService;
 
-    this.logger.info(`${this.logPrefix} Initialized with all required components`);
+    // Override dev proxy URL if provided
+    if (devProxyBaseUrl) {
+      this.devProxyBaseUrl = devProxyBaseUrl;
+    }
+
+    this.logger.info(`${this.logPrefix} Initialized with all required components, dev proxy URL: ${this.devProxyBaseUrl}`);
 
     if (this.metrics) {
       this.logger.info(`${this.logPrefix} Metrics tracking enabled`);
@@ -112,12 +122,14 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
    * Processes a request through the Edge Mode pipeline.
    * @param requestAdapter - The adapter for the incoming request.
    * @param userContext - The Optimizely user context for decisions.
+   * @param decisions - Pre-fetched decisions to use instead of making a new call.
    * @param requestId - Optional request ID for tracking.
    * @returns A promise resolving to an EdgeModeResult containing the output from processing.
    */
   async processEdgeModeRequest(
     requestAdapter: IRequestAdapter,
     userContext: OptimizelyUserContext,
+    decisions: Record<string, any>,
     requestId?: string
   ): Promise<EdgeModeResult> {
     // Generate a request ID if not provided
@@ -153,19 +165,52 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
       }
 
       // Step 1: Check if this request should be handled by Edge Mode
-      // This will use the DecisionService to get flag decisions with cdnVariationSettings
+      // Use the pre-fetched decisions instead of making a new call to DecisionService
+      this.logger.debug(`${this.logPrefix} Checking if request should be handled with decisions:`, {
+        decisionsKeys: Object.keys(decisions),
+        userContext: userContext,
+        url: requestAdapter.getUrl().toString()
+      });
+      
       const shouldHandleTimer = this.metrics?.startTimer('should_handle_duration');
-      const shouldHandle = await this.edgeModeHandler.shouldHandleRequest(requestAdapter, userContext);
+      const shouldHandle = await this.edgeModeHandler.shouldHandleRequestWithDecisions(requestAdapter, userContext, decisions);
       if (shouldHandleTimer) shouldHandleTimer.stop();
+      
+      this.logger.debug(`${this.logPrefix} Should handle result:`, {
+        handle: shouldHandle.handle,
+        reason: shouldHandle.reason,
+        variationSettingsCount: shouldHandle.variationSettings?.length || 0
+      });
 
       // Ensure variationSettings is not null or undefined
       if (!shouldHandle.handle || !shouldHandle.variationSettings || shouldHandle.variationSettings.length === 0) {
         this.logger.info(`${this.logPrefix} Request ${reqId} not eligible for Edge Mode: ${shouldHandle.reason || 'No variation settings available'}`);
         this.metrics?.incrementCounter('edge_mode_eligibility', 1, { eligible: 'false' });
         
+        // Check for debug headers that force local Edge Mode processing
+        const hasDebugHeader = this.debugHeaders.some(header => 
+          requestAdapter.getHeader(header) === 'true' || requestAdapter.getHeader(header) === '1'
+        );
+        
+        // Debug logging for hostname/port detection
+        const requestUrl = requestAdapter.getUrl();
+        this.logger.debug(`${this.logPrefix} Local host detection:`, {
+          hostname: requestUrl.hostname,
+          port: requestUrl.port,
+          isLocalHostname: this.localHostnames.includes(requestUrl.hostname),
+          isLocalPort: this.localPorts.includes(requestUrl.port),
+          hasDebugHeader: hasDebugHeader,
+          debugHeaders: this.debugHeaders.map(h => ({ header: h, value: requestAdapter.getHeader(h) }))
+        });
+        
+        if (hasDebugHeader) {
+          this.logger.info(`${this.logPrefix} Debug mode activated - skipping local dev proxy for local Edge Mode testing`);
+        }
+        
         // LOCAL-DEV PROXY: If running on localhost/127.* forward the request to 
-        // the demo environment instead of trying to forward to self (which would cause a loop)
-        if (this.localHostnames.includes(requestAdapter.getUrl().hostname) && 
+        // the demo environment UNLESS debug headers are present
+        if (!hasDebugHeader && 
+            this.localHostnames.includes(requestAdapter.getUrl().hostname) && 
             this.localPorts.includes(requestAdapter.getUrl().port)) {
           
           this.logger.info(`${this.logPrefix} Local-dev proxy activated - forwarding to demo environment`);
@@ -253,12 +298,17 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
           this.logger.error(`${this.logPrefix} Error in direct fetch debugging: ${String(directError)}`);
         }
         
+        // Convert headers to record for the utility function
+        const finalHeaders = fixContentTypeForHtml(forwardResponse.body, forwardResponse.headers);
+        
         return {
           type: 'STANDARD_RESPONSE',
-          response: new Response(forwardResponse.body, {
-          status: forwardResponse.status,
-          headers: forwardResponse.headers
-          })
+          response: createFormattedResponse(
+            forwardResponse.body,
+            forwardResponse.status,
+            finalHeaders,
+            'application/json'
+          )
         };
       }
 
@@ -276,8 +326,29 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         this.logger.info(`${this.logPrefix} No URL match found for request ${reqId}`);
         this.metrics?.incrementCounter('url_match_found', 1, { matched: 'false' });
         
+        // Check for debug headers that force local Edge Mode processing
+        const hasDebugHeaderForURLMatch = this.debugHeaders.some(header => 
+          requestAdapter.getHeader(header) === 'true' || requestAdapter.getHeader(header) === '1'
+        );
+        
+        // Debug logging for hostname/port detection (URL match fallback)
+        const requestUrlForMatch = requestAdapter.getUrl();
+        this.logger.debug(`${this.logPrefix} Local host detection (URL match fallback):`, {
+          hostname: requestUrlForMatch.hostname,
+          port: requestUrlForMatch.port,
+          isLocalHostname: this.localHostnames.includes(requestUrlForMatch.hostname),
+          isLocalPort: this.localPorts.includes(requestUrlForMatch.port),
+          hasDebugHeader: hasDebugHeaderForURLMatch
+        });
+        
+        if (hasDebugHeaderForURLMatch) {
+          this.logger.info(`${this.logPrefix} Debug mode activated - skipping local dev proxy for URL match fallback`);
+        }
+        
         // LOCAL-DEV PROXY: If in local development, proxy to demo environment instead of loop
-        if (this.localHostnames.includes(requestAdapter.getUrl().hostname) && 
+        // UNLESS debug headers are present
+        if (!hasDebugHeaderForURLMatch && 
+            this.localHostnames.includes(requestAdapter.getUrl().hostname) && 
             this.localPorts.includes(requestAdapter.getUrl().port)) {
           
           // Create proxy URL with the same path + query parameters
@@ -363,12 +434,17 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
           this.logger.error(`${this.logPrefix} Error in direct fetch debugging: ${String(directError)}`);
         }
         
+        // Convert headers to record for the utility function
+        const finalHeaders = fixContentTypeForHtml(forwardResponse.body, forwardResponse.headers);
+        
         return {
           type: 'STANDARD_RESPONSE',
-          response: new Response(forwardResponse.body, {
-          status: forwardResponse.status,
-          headers: forwardResponse.headers
-          })
+          response: createFormattedResponse(
+            forwardResponse.body,
+            forwardResponse.status,
+            finalHeaders,
+            'application/json'
+          )
         };
       }
 
@@ -394,6 +470,14 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
         requestAdapter
       );
       if (contentPreparationTimer) contentPreparationTimer.stop();
+      
+      // Debug log the content preparation result
+      this.logger.debug(`${this.logPrefix} Content preparation result:`, {
+        useCache: contentResult.useCache,
+        forwardToOrigin: contentResult.forwardToOrigin,
+        cacheRequestToOrigin: safeSettings.cacheRequestToOrigin,
+        forwardRequestToOrigin: safeSettings.forwardRequestToOrigin
+      });
 
       // Step 4: Handle based on content result
       if (contentResult.forwardToOrigin) {
@@ -426,21 +510,31 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
                 { contentType: 'text/html' }  // Assume HTML content type
               );
               
+              // Fix Content-Type for HTML content using the utility
+              const finalHeaders = fixContentTypeForHtml(transformResult.content, cachedResult.headers || {});
+              
               return {
                 type: 'STANDARD_RESPONSE',
-                response: new Response(transformResult.content, {
-                status: cachedResult.status || 200,
-                headers: cachedResult.headers || {}
-                })
+                response: createFormattedResponse(
+                  transformResult.content,
+                  cachedResult.status || 200,
+                  finalHeaders,
+                  'application/json'
+                )
               };
             }
             
+            // Fix Content-Type for HTML content using the utility
+            const finalHeaders = fixContentTypeForHtml(cachedResult.content, cachedResult.headers || {});
+            
             return {
               type: 'STANDARD_RESPONSE',
-              response: new Response(cachedResult.content, {
-              status: cachedResult.status || 200,
-              headers: cachedResult.headers || {}
-              })
+              response: createFormattedResponse(
+                cachedResult.content,
+                cachedResult.status || 200,
+                finalHeaders,
+                'application/json'
+              )
             };
           }
           
@@ -529,12 +623,17 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
             this.logger.info(`${this.logPrefix} Transformed content for request ${reqId}`);
           }
           
+          // Fix Content-Type for HTML content using the utility
+          const finalHeaders = fixContentTypeForHtml(responseBody, forwardResponse.headers);
+          
           return {
             type: 'STANDARD_RESPONSE',
-            response: new Response(responseBody, {
-            status: forwardResponse.status,
-            headers: forwardResponse.headers
-            })
+            response: createFormattedResponse(
+              responseBody,
+              forwardResponse.status,
+              finalHeaders,
+              'application/json'
+            )
           };
         } catch (error) {
           this.logger.error(`${this.logPrefix} Error forwarding request ${reqId}:`, error);
@@ -615,21 +714,31 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
               { contentType: 'text/html' }
             );
             
+            // Fix Content-Type for HTML content using the utility
+            const finalHeaders = fixContentTypeForHtml(transformResult.content, cachedResult.headers || {});
+            
             return {
               type: 'STANDARD_RESPONSE',
-              response: new Response(transformResult.content, {
-              status: cachedResult.status || 200,
-              headers: cachedResult.headers || {}
-              })
+              response: createFormattedResponse(
+                transformResult.content,
+                cachedResult.status || 200,
+                finalHeaders,
+                'application/json'
+              )
             };
           }
           
+          // Fix Content-Type for HTML content using the utility
+          const finalHeaders = fixContentTypeForHtml(cachedResult.content, cachedResult.headers || {});
+          
           return {
             type: 'STANDARD_RESPONSE',
-            response: new Response(cachedResult.content, {
-            status: cachedResult.status || 200,
-            headers: cachedResult.headers || {}
-            })
+            response: createFormattedResponse(
+              cachedResult.content,
+              cachedResult.status || 200,
+              finalHeaders,
+              'application/json'
+            )
           };
         }
         
@@ -657,6 +766,15 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
           );
           if (fetchTimer) fetchTimer.stop();
           
+          // Get the body content from the response adapter
+          const bodyContent = contentResponse.response.getBody();
+          
+          this.logger.info(`${this.logPrefix} ContentFetcher returned body`, {
+            bodyLength: bodyContent.length,
+            first100: bodyContent.substring(0, 100),
+            hasContent: bodyContent.length > 0
+          });
+          
           // Cache the content if enabled
           if (contentResult.useCache) {
             const cacheKey = this.cacheManager.generateCacheKey(
@@ -672,7 +790,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
             await this.cacheManager.set(
               cacheKey,
               {
-                content: contentResponse.response.getBody(),
+                content: bodyContent,
                 headers: this.convertHeadersToRecord(contentResponse.response.getHeaders()),
                 status: contentResponse.response.getStatus()
               },
@@ -683,7 +801,7 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
           }
           
           // Apply any transformations if transformContent exists
-          let finalContent = contentResponse.response.getBody();
+          let finalContent = bodyContent;
           if (safeSettings.transformContent) {
             const transformTimer = this.metrics?.startTimer('transform_duration');
             const transformResult = await this.contentTransformer.transformWithFunction(
@@ -696,12 +814,20 @@ export class EdgeModeIntegration implements IEdgeModeIntegration {
             this.logger.info(`${this.logPrefix} Transformed direct content for request ${reqId}`);
           }
           
+          // Convert headers and fix Content-Type for HTML content using the utility
+          const responseHeaders = this.convertHeadersToRecord(contentResponse.response.getHeaders());
+          const finalHeaders = fixContentTypeForHtml(finalContent, responseHeaders);
+          
+          this.logger.debug(`${this.logPrefix} Final headers for direct content:`, JSON.stringify(finalHeaders, null, 2));
+          
           return {
             type: 'STANDARD_RESPONSE',
-            response: new Response(finalContent, {
-            status: contentResponse.response.getStatus(),
-            headers: this.convertHeadersToRecord(contentResponse.response.getHeaders())
-            })
+            response: createFormattedResponse(
+              finalContent,
+              contentResponse.response.getStatus(),
+              finalHeaders,
+              'application/json'
+            )
           };
         } catch (error) {
           this.logger.error(`${this.logPrefix} Error fetching direct content for ${reqId}:`, error);

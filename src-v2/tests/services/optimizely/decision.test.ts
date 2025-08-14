@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as optimizelySdk from '@optimizely/optimizely-sdk'; // Use alias for clarity
+import * as optimizelySdk from '@optimizely/optimizely-sdk/dist/optimizely.lite.es'; // Use alias for clarity
 // Import actual SDK types for mocking
 import {
   Client as OptimizelyClient,
@@ -8,7 +8,7 @@ import {
   OptimizelyDecideOption,
   UserAttributes,
   EventTags
-} from '@optimizely/optimizely-sdk';
+} from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 
 // Define reusable mock objects
 const mockDecision: OptimizelyDecision = {

@@ -17,9 +17,9 @@ export class RequestForwarder implements IRequestForwarder {
    * @param logger Logger adapter
    * @param fetch Optional fetch implementation (defaults to global fetch)
    */
-  constructor(logger: ILoggerAdapter, fetch?: typeof global.fetch) {
+  constructor(logger: ILoggerAdapter, fetch?: typeof globalThis.fetch) {
     this.logger = logger;
-    this.fetch = fetch ? fetch.bind(globalThis) : global.fetch.bind(globalThis);
+    this.fetch = fetch ? fetch.bind(globalThis) : globalThis.fetch.bind(globalThis);
   }
   
   /**

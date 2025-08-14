@@ -386,6 +386,8 @@ npm run test:vercel
 ## Next Steps
 
 - [Develop Custom Adapters](./adapter-development.md) - Build your own platform adapter
+- [Testing Adapters Guide](./testing-adapters.md) - Comprehensive testing strategies
+- [Edge Mode Testing Guide](./edge-mode-testing-guide.md) - Testing Edge Mode across platforms
 - [Cloudflare Guide](./cloudflare-adapter.md) - Deep dive into Cloudflare
 - [Fastly Guide](./fastly-adapter.md) - Master Fastly Compute@Edge
 - [Vercel Guide](./vercel-adapter.md) - Optimize for Vercel

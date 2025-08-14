@@ -6,7 +6,7 @@ import { IRequestAdapter } from "../../adapters/interfaces/IRequestAdapter";
  */
 export interface ResponseResult { // Replace with actual type or use standard Response
   status: number;
-  headers: Record<string, string>;
+  headers: Record<string, string | string[]>; // Allow arrays for Set-Cookie headers
   body?: string | ReadableStream | ArrayBuffer | null;
 }
 

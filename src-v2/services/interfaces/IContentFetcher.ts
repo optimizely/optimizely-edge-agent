@@ -25,6 +25,9 @@ export interface ContentFetchOptions {
   
   /** Cache key override */
   cacheKey?: string;
+  
+  /** Whether to add cache-busting headers to bypass upstream CDN caches */
+  bustCache?: boolean;
 }
 
 /**

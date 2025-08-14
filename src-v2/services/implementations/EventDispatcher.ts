@@ -376,9 +376,10 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
   private isCloudflareEnvironment(): boolean {
     try {
       // Check for Cloudflare specific globals
-      return typeof globalThis.caches !== 'undefined' && 
+      const globalAny = globalThis as any;
+      return typeof globalAny.caches !== 'undefined' && 
              // Cloudflare Workers have a global 'caches' object
-             typeof globalThis.addEventListener === 'function' &&
+             typeof globalAny.addEventListener === 'function' &&
              // Try to access a Cloudflare-specific property from the environment
              (this.envAdapter.getVariable('CF_WORKER') !== undefined ||
               this.envAdapter.getVariable('CLOUDFLARE_WORKER') !== undefined);
@@ -395,10 +396,7 @@ export class EventDispatcher implements IEventDispatcher, IEventService {
     try {
       // Check for Vercel specific environment variables
       return (this.envAdapter.getVariable('VERCEL') === '1' || 
-              this.envAdapter.getVariable('VERCEL_ENV') !== undefined ||
-              typeof process !== 'undefined' && 
-              typeof (process as any).env !== 'undefined' && 
-              ((process as any).env.VERCEL === '1' || (process as any).env.VERCEL_ENV !== undefined));
+              this.envAdapter.getVariable('VERCEL_ENV') !== undefined);
     } catch (e) {
       return false;
     }

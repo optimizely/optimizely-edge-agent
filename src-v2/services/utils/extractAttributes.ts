@@ -1,5 +1,5 @@
 import type { IRequestAdapter } from '../../adapters/interfaces/IRequestAdapter';
-import type { UserAttributes } from '@optimizely/optimizely-sdk';
+import type { UserAttributes } from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 import type { ILoggerAdapter } from '../../adapters/interfaces/ILoggerAdapter';
 
 export interface ExtractAttributesResult {

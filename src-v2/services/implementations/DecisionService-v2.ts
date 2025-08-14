@@ -7,7 +7,7 @@ import {
 import { IConfigurationService } from "../interfaces/IConfigurationService";
 import { ILoggerAdapter, LogLevel, LogContext } from "../../adapters/interfaces/ILoggerAdapter";
 import { IMetricsAdapter, MetricTags } from "../../adapters/interfaces/IMetricsAdapter";
-import * as optimizely from '@optimizely/optimizely-sdk';
+import * as optimizely from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 
 // Configure Optimizely SDK to use Node.js environment
 // This needs to happen before any other SDK operations
@@ -23,11 +23,13 @@ const nodeJSLogger = {
 optimizely.setLogger(nodeJSLogger);
 optimizely.setLogLevel(optimizely.enums.LOG_LEVEL.ERROR);
 
-// Prepare a safe environment for the Optimizely SDK to run in Cloudflare Workers
+// Prepare a safe environment for the Optimizely SDK to run in Edge Workers
 // Mock browser APIs that might be used by the SDK to prevent errors
-if (typeof globalThis.localStorage === 'undefined') {
+const globalAny = globalThis as any;
+
+if (typeof globalAny.localStorage === 'undefined') {
   // Create a mock localStorage that does nothing
-  (globalThis as any).localStorage = {
+  globalAny.localStorage = {
     getItem: () => null,
     setItem: () => {},
     removeItem: () => {},
@@ -36,8 +38,8 @@ if (typeof globalThis.localStorage === 'undefined') {
 }
 
 // Mock window for safety
-if (typeof globalThis.window === 'undefined') {
-  (globalThis as any).window = {
+if (typeof globalAny.window === 'undefined') {
+  globalAny.window = {
     // Minimal window mock for SDK compatibility
     location: { href: '' },
     addEventListener: () => {}

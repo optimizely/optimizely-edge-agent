@@ -48,13 +48,15 @@ import { ConfigurationService } from "../services/implementations/ConfigurationS
 import { IConfigurationService } from "../services/interfaces/IConfigurationService";
 import { KVUserProfileService } from "../services/storage/KVUserProfileService";
 import { OptimizelyUserProfileServiceAdapter } from "../services/storage/OptimizelyUserProfileServiceAdapter";
+import { createFormattedResponse, fixContentTypeForHtml } from "../utils/responseUtils";
 
 function getConfigKvBindingName(env: any): string {
   return env?.ENVIRONMENT === 'test' ? 'TEST_OPTIMIZELY_DATAFILES' : 'OPTLY_HYBRID_AGENT_KV';
 }
 
 function getUserProfileKvBindingName(env: any): string {
-  return env?.ENVIRONMENT === 'test' ? 'TEST_OPTLY_HYBRID_AGENT_UPS_KV' : 'OPTLY_HYBRID_AGENT_UPS_KV';
+  // Use the same binding name for both test and production since wrangler.toml uses the same name
+  return 'OPTLY_HYBRID_AGENT_UPS_KV';
 }
 
 /**
@@ -141,8 +143,9 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
   // Inject ConfigurationService back into DatafileService to resolve circular dependency
   datafileService.setConfigService(configService);
   
-  // Get SDK key from config or environment
-  const sdkKey = configService.getValue('sdkKey') || environmentAdapter.getVariable('DEFAULT_SDK_KEY') || '8mR1pGh8u2ztUP8GqjmQq';
+  // Get SDK key from environment (config service hasn't been initialized yet)
+  // The actual SDK key precedence will be handled during request processing
+  const defaultSdkKey = environmentAdapter.getVariable('DEFAULT_SDK_KEY') || '8mR1pGh8u2ztUP8GqjmQq';
   
   // Get user profile KV storage adapter
   const userProfileStorageAdapter = cloudflareFactory.createStorageAdapter(getUserProfileKvBindingName(factoryInputs.env));
@@ -155,7 +158,7 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
       keyPrefix: 'optly_ups_',
       ttl: 2592000, // 30 days in seconds
       maxCacheSize: 100,
-      sdkKey: String(sdkKey)  // Ensure it's a string
+      sdkKey: String(defaultSdkKey)  // Use default SDK key for service composition
     }
   );
   
@@ -186,21 +189,30 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     return cloudflareFactory.createResponseAdapter(request);
   };
   
-  // Create Edge Mode Handler with full implementation
+  // Get development URL rewriting configuration
+  const devContentBaseUrl = environmentAdapter.getVariable('DEV_CONTENT_BASE_URL') || 
+                           environmentAdapter.getVariable('CONTENT_BASE_URL');
+  
+  // Create Edge Mode Handler with Cloudflare-specific configuration
   const edgeModeHandler = new EdgeModeHandler(
     logger,
     cacheService,
     createResponseAdapter,
     decisionService,
-    configService
+    configService,
+    undefined, // defaultSdkKey
+    devContentBaseUrl || undefined, // devContentBaseUrl for URL rewriting
+    'cloudflare' // cdnProvider for Cloudflare-specific URL rewriting
   );
   
-  // Create Content Fetcher
+  // Create Content Fetcher with development URL rewriting support
+  
   const contentFetcher = new ContentFetcher(
     logger,
     cacheService,
     createResponseAdapter,
-    { timeout: 10000 } // Default options
+    { timeout: 10000 }, // Default options
+    devContentBaseUrl || undefined // Pass undefined if no URL is configured
   );
   
   // Create Cache Manager
@@ -233,7 +245,8 @@ function composeCloudflareApplication(factoryInputs: CloudflareAdapterFactoryInp
     logger,
     decisionService,
     configService,
-    metricsAdapter
+    metricsAdapter,
+    devContentBaseUrl || undefined
   );
   
   // Create API Router
@@ -289,12 +302,154 @@ export async function handleCloudflareWorkerRequest(
   ctx: CloudflareExecutionContext
 ): Promise<Response> {
   try {
-    // Global FEX (Feature Experimentation) bypass check
-    // If X-Optimizely-Enable-FEX header is NOT present or not set to true, bypass all Optimizely logic
-    const fexHeaderValue = request.headers.get('X-Optimizely-Enable-FEX');
-    const fexEnabled = fexHeaderValue === 'true' || fexHeaderValue === '1';
+    const url = new URL(request.url);
     
-    // If FEX is NOT enabled (header missing or not true), bypass Optimizely
+    // Health check endpoint - always returns 200 OK, bypasses all FEX gating
+    if (url.pathname === '/api/test' || url.pathname === '/test') {
+      return new Response(
+        JSON.stringify({ 
+          status: 'ok',
+          message: 'Test endpoint is working!',
+          environment: 'development',
+          routingTarget: 'v2',
+          timestamp: new Date().toISOString()
+        }),
+        { 
+          status: 200,
+          headers: { 'Content-Type': 'application/json' }
+        }
+      );
+    }
+    
+    // API endpoints bypass FEX gating entirely (datafile, decide, flagkeys, etc.)
+    const apiPathPrefix = '/api/';
+    if (url.pathname.startsWith(apiPathPrefix)) {
+      // API requests should always work regardless of FEX headers
+      console.log(`[Cloudflare Composition] API endpoint detected: ${url.pathname} - bypassing FEX gating`);
+      
+      // CRITICAL: Validate SDK Key availability before proceeding with API requests
+      const requestSdkKey = request.headers.get('X-Optimizely-SDK-Key') || 
+                           request.headers.get('x-optimizely-sdk-key') ||
+                           url.searchParams.get('sdkKey') ||
+                           url.searchParams.get('sdk_key');
+      
+      const defaultSdkKey = env?.DEFAULT_SDK_KEY;
+      const finalSdkKey = requestSdkKey || defaultSdkKey;
+      
+      // For API endpoints, if no SDK key is available, return 400 error
+      if (!finalSdkKey || finalSdkKey.trim() === '') {
+        console.warn('[Cloudflare Composition] API request: No SDK key available.');
+        return new Response(
+          JSON.stringify({ error: "SDK key is required for API endpoints." }),
+          { 
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      console.log(`[Cloudflare Composition] API request SDK key resolved: ${finalSdkKey.substring(0, 4)}... (source: ${requestSdkKey ? 'request' : 'default'})`);
+      
+      // Compose app and handle API request (no FEX gating)
+      const factoryInputs: CloudflareAdapterFactoryInputs = { request, env, ctx };
+      const app = composeCloudflareApplication(factoryInputs);
+      const requestAdapter = new CloudflareAdapterFactory(factoryInputs).createRequestAdapter();
+      const result: ResponseResult = await app.requestHandler.handleRequest(requestAdapter);
+      
+      // Flush metrics if available
+      if (app.metrics && app.metrics.flush) {
+        try {
+          await app.metrics.flush();
+        } catch (error) {
+          console.error("[Cloudflare Composition] Error flushing metrics:", error);
+        }
+      }
+      
+      // Handle response formatting (same as existing logic)
+      const validatedHeaders = new Headers();
+      let setCookieValues: string[] = [];
+      
+      if (result.headers) {
+        Object.entries(result.headers).forEach(([name, value]) => {
+          if (!name || value === undefined || value === null) {
+            return;
+          }
+          
+          try {
+            if (name.toLowerCase() === 'set-cookie') {
+              if (typeof value === 'string') {
+                const cookies = value.split('\n');
+                cookies.forEach(cookie => {
+                  if (cookie && cookie.trim()) {
+                    setCookieValues.push(cookie.trim());
+                  }
+                });
+              } else if (Array.isArray(value)) {
+                value.forEach(cookie => {
+                  if (cookie && cookie.trim()) {
+                    setCookieValues.push(cookie.trim());
+                  }
+                });
+              }
+            } else {
+              const stringValue = String(value).trim();
+              if (stringValue) {
+                validatedHeaders.set(name, stringValue);
+              }
+            }
+          } catch (headerError) {
+            // Silently handle header setting errors
+          }
+        });
+        
+        if (setCookieValues.length > 0) {
+          setCookieValues.forEach(cookie => {
+            try {
+              validatedHeaders.append('Set-Cookie', cookie);
+            } catch (cookieError) {
+              // Silently handle cookie appending errors
+            }
+          });
+        }
+      }
+      
+      const headersRecord: Record<string, string | string[]> = {};
+      validatedHeaders.forEach((value, key) => {
+        if (key.toLowerCase() !== 'set-cookie') {
+          headersRecord[key] = value;
+        }
+      });
+      
+      if (setCookieValues.length > 0) {
+        headersRecord['Set-Cookie'] = setCookieValues.length === 1 ? setCookieValues[0] : setCookieValues;
+      }
+      
+      const bodyContent = result.body || '';
+      const bodyForHtmlCheck = typeof bodyContent === 'string' ? bodyContent : '';
+      const finalHeaders = fixContentTypeForHtml(bodyForHtmlCheck, headersRecord);
+      
+      return createFormattedResponse(
+        bodyContent,
+        result.status,
+        finalHeaders,
+        'application/json'
+      );
+    }
+    
+    // Global FEX (Feature Experimentation) bypass check for non-API requests (Edge Mode)
+    // Check both header and query parameters for enabling FEX
+    const fexHeaderValue = request.headers.get('X-Optimizely-Enable-FEX');
+    
+    // Check query parameters for enable_fex, enable_optimizely, or optimizely_enabled
+    const fexQueryParam = url.searchParams.get('enable_fex') || 
+                          url.searchParams.get('enable_optimizely') ||
+                          url.searchParams.get('optimizely_enabled');
+    
+    // FEX is enabled if header is true/1 OR query param is true/1
+    const fexEnabled = (fexHeaderValue === 'true' || fexHeaderValue === '1') ||
+                       (fexQueryParam === 'true' || fexQueryParam === '1');
+    
+    // If FEX is NOT enabled (neither header nor query param), bypass Optimizely
     if (!fexEnabled) {
       // For POST requests: Return disabled message
       if (request.method === 'POST') {
@@ -307,11 +462,32 @@ export async function handleCloudflareWorkerRequest(
         );
       }
       
-      // For GET requests: Check for loop detection using existing header
+      // For GET requests: Fetch from default origin (control variation)
+      const defaultOriginUrl = env?.DEFAULT_ORIGIN_URL;
+      
+      if (!defaultOriginUrl) {
+        // No default origin configured, return a simple message
+        return new Response(
+          "Optimizely Edge Agent is disabled. No default origin configured.",
+          { 
+            status: 503,
+            headers: { 
+              'Content-Type': 'text/plain',
+              'X-Optimizely-Bypass': 'true',
+              'X-Optimizely-Reason': 'no-default-origin'
+            }
+          }
+        );
+      }
+      
+      // Construct the target URL using the default origin
+      const requestUrl = new URL(request.url);
+      const targetUrl = new URL(requestUrl.pathname + requestUrl.search, defaultOriginUrl);
+      
+      // Check for loop detection
       const forwardedBy = request.headers.get('x-forwarded-by');
       const isLoopDetected = forwardedBy && forwardedBy.toLowerCase() === 'edgeagent';
       
-      // If we detect a loop, return a static response instead of continuing the loop
       if (isLoopDetected) {
         return new Response(
           "Optimizely Edge Agent bypassed. Loop detected and broken.",
@@ -325,26 +501,125 @@ export async function handleCloudflareWorkerRequest(
         );
       }
       
-      // No loop detected - continue with pass-through but add EdgeAgent header
-      
-      // Clone the request and modify headers
+      // Clone headers and add loop detection
       const newHeaders = new Headers(request.headers);
-      
-      // 1. Add X-Forwarded-By header to utilize existing loop detection
       newHeaders.set('X-Forwarded-By', 'EdgeAgent');
-      
-      // 2. Remove the FEX header to prevent the origin from also doing a bypass
       newHeaders.delete('X-Optimizely-Enable-FEX');
       
-      // Create a new request with the modified headers
-      const cleanRequest = new Request(request, {
-        headers: newHeaders
+      // Fetch from the default origin
+      const originRequest = new Request(targetUrl.toString(), {
+        method: request.method,
+        headers: newHeaders,
+        body: request.body,
+        redirect: 'follow'
       });
       
-      return fetch(cleanRequest);
+      const originResponse = await fetch(originRequest);
+      
+      // Return the origin response with an additional header to indicate bypass
+      const responseHeaders = new Headers(originResponse.headers);
+      responseHeaders.set('X-Optimizely-Bypass', 'true');
+      responseHeaders.set('X-Optimizely-Origin', defaultOriginUrl);
+      
+      return new Response(originResponse.body, {
+        status: originResponse.status,
+        statusText: originResponse.statusText,
+        headers: responseHeaders
+      });
     }
 
     // FEX is enabled - proceed with normal Optimizely processing
+
+    // CRITICAL: Validate SDK Key availability before proceeding
+    // Check request headers/params for SDK key first, then fall back to environment
+    const requestSdkKey = request.headers.get('X-Optimizely-SDK-Key') || 
+                         request.headers.get('x-optimizely-sdk-key') ||
+                         new URL(request.url).searchParams.get('sdkKey') ||
+                         new URL(request.url).searchParams.get('sdk_key');
+    
+    const defaultSdkKey = env?.DEFAULT_SDK_KEY;
+    const finalSdkKey = requestSdkKey || defaultSdkKey;
+    
+    // CRITICAL PROTECTION: If no SDK key is available, behave as if FEX is disabled
+    if (!finalSdkKey || finalSdkKey.trim() === '') {
+      console.warn('[Cloudflare Composition] CRITICAL: No SDK key available (request or default). Disabling FEX processing.');
+      
+      // For POST requests: Return error message
+      if (request.method === 'POST') {
+        return new Response(
+          JSON.stringify({ error: "No SDK key available." }),
+          { 
+            status: 400,
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+      }
+      
+      // For GET requests: Fetch from default origin (control variation)
+      const defaultOriginUrl = env?.DEFAULT_ORIGIN_URL;
+      
+      if (!defaultOriginUrl) {
+        return new Response(
+          "Optimizely Edge Agent: No SDK key and no default origin configured.",
+          { 
+            status: 503,
+            headers: { 
+              'Content-Type': 'text/plain',
+              'X-Optimizely-Bypass': 'true',
+              'X-Optimizely-Reason': 'no-sdk-key-no-origin'
+            }
+          }
+        );
+      }
+      
+      // Check for loop detection
+      const forwardedBy = request.headers.get('x-forwarded-by');
+      const isLoopDetected = forwardedBy && forwardedBy.toLowerCase() === 'edgeagent';
+      
+      if (isLoopDetected) {
+        return new Response(
+          "Optimizely Edge Agent bypassed. No SDK key available.",
+          { 
+            status: 200,
+            headers: { 
+              'Content-Type': 'text/plain',
+              'X-Optimizely-Bypass': 'true',
+              'X-Optimizely-Reason': 'no-sdk-key'
+            }
+          }
+        );
+      }
+      
+      // Construct target URL and fetch from default origin
+      const requestUrl = new URL(request.url);
+      const targetUrl = new URL(requestUrl.pathname + requestUrl.search, defaultOriginUrl);
+      
+      const newHeaders = new Headers(request.headers);
+      newHeaders.set('X-Forwarded-By', 'EdgeAgent');
+      newHeaders.delete('X-Optimizely-Enable-FEX');
+      
+      const originRequest = new Request(targetUrl.toString(), {
+        method: request.method,
+        headers: newHeaders,
+        body: request.body,
+        redirect: 'follow'
+      });
+      
+      const originResponse = await fetch(originRequest);
+      
+      const responseHeaders = new Headers(originResponse.headers);
+      responseHeaders.set('X-Optimizely-Bypass', 'true');
+      responseHeaders.set('X-Optimizely-Reason', 'no-sdk-key');
+      responseHeaders.set('X-Optimizely-Origin', defaultOriginUrl);
+      
+      return new Response(originResponse.body, {
+        status: originResponse.status,
+        statusText: originResponse.statusText,
+        headers: responseHeaders
+      });
+    }
+
+    console.log(`[Cloudflare Composition] SDK key resolved: ${finalSdkKey.substring(0, 4)}... (source: ${requestSdkKey ? 'request' : 'default'})`);
 
     // 1. Compose the application
     const factoryInputs: CloudflareAdapterFactoryInputs = { request, env, ctx };
@@ -367,12 +642,11 @@ export async function handleCloudflareWorkerRequest(
 
     // 5. Validate headers to prevent TypeError
     const validatedHeaders = new Headers();
+    // Move setCookieValues declaration outside the if block so it's accessible later
+    let setCookieValues: string[] = [];
     
     if (result.headers) {
       // Skip logging original headers as they may be large
-      
-      // Special handling for Set-Cookie headers
-      let setCookieValues: string[] = [];
       
       // Validate each header
       Object.entries(result.headers).forEach(([name, value]) => {
@@ -391,6 +665,13 @@ export async function handleCloudflareWorkerRequest(
               cookies.forEach(cookie => {
                 if (cookie && cookie.trim()) {
                   // Just add the cookie to the array
+                  setCookieValues.push(cookie.trim());
+                }
+              });
+            } else if (Array.isArray(value)) {
+              // Handle array of cookies (which is the proper way to send multiple cookies)
+              value.forEach(cookie => {
+                if (cookie && cookie.trim()) {
                   setCookieValues.push(cookie.trim());
                 }
               });
@@ -419,11 +700,40 @@ export async function handleCloudflareWorkerRequest(
       }
     }
 
-    // 6. Return the response with validated headers
-    return new Response(result.body, {
-      status: result.status,
-      headers: validatedHeaders
+    // 6. Convert validatedHeaders to record for the utility function
+    // Set-Cookie headers were already collected in setCookieValues array
+    const headersRecord: Record<string, string | string[]> = {};
+    
+    validatedHeaders.forEach((value, key) => {
+      // Skip Set-Cookie as we'll handle it separately
+      if (key.toLowerCase() !== 'set-cookie') {
+        headersRecord[key] = value;
+      }
     });
+    
+    // Add Set-Cookie headers from our collected array
+    if (setCookieValues.length > 0) {
+      headersRecord['Set-Cookie'] = setCookieValues.length === 1 ? setCookieValues[0] : setCookieValues;
+    }
+
+    // 7. Pass body directly to createFormattedResponse - it will handle stringification
+    // Don't pre-stringify objects here to avoid double-encoding
+    const bodyContent = result.body || '';
+    
+    // Only check for HTML content if body is already a string
+    const bodyForHtmlCheck = typeof bodyContent === 'string' ? bodyContent : '';
+    const finalHeaders = fixContentTypeForHtml(bodyForHtmlCheck, headersRecord);
+    
+    console.log('[Cloudflare Composition] Creating response with headers:', JSON.stringify(finalHeaders, null, 2));
+
+    // 8. Return the response using the original AbstractResponse.js pattern
+    // createFormattedResponse will handle JSON.stringify based on content type
+    return createFormattedResponse(
+      bodyContent,  // Pass raw body - createFormattedResponse will stringify if needed
+      result.status,
+      finalHeaders,
+      'application/json' // Default content type
+    );
   } catch (error) {
     // Handle any errors that occurred during processing
     console.error("[Cloudflare Composition] Error handling request:", error);

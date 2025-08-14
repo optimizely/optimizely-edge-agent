@@ -188,6 +188,18 @@ export class ApiRouter {
     const url = requestAdapter.getUrl();
     const path = url.pathname;
     
+    // Health check endpoint - bypasses all FEX gating
+    if (path === '/api/test' || path === `${this.apiPathPrefix}test`) {
+      this.logger.info(`${this.logPrefix} Health check endpoint requested`);
+      return this.createJsonResponse(requestId, 200, {
+        status: 'ok',
+        message: 'Test endpoint is working!',
+        environment: 'development',
+        routingTarget: 'v2',
+        timestamp: new Date().toISOString()
+      }, method);
+    }
+    
     // CRITICAL FIX: Initialize ConfigurationService with the request adapter FIRST
     // This ensures the ConfigurationService has the correct metadata before any other component uses it
     this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] ===== INITIALIZING CONFIGURATION FROM REQUEST =====`);
@@ -252,12 +264,16 @@ export class ApiRouter {
       } else if (path.endsWith(`${this.apiPathPrefix}decide-options`)) {
         result = await this.handleDecideOptionsRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}set-forced-variation`)) {
+        // DEPRECATED: Use the integrated approach via /api/decide with forcedDecisions parameter
         result = await this.handleSetForcedVariationRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}get-forced-variation`)) {
+        // DEPRECATED: Use the integrated approach via /api/decide with forcedDecisions parameter
         result = await this.handleGetForcedVariationRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}remove-forced-variation`)) {
+        // DEPRECATED: Use the integrated approach via /api/decide with forcedDecisions parameter
         result = await this.handleRemoveForcedVariationRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}remove-all-forced-decisions`)) {
+        // DEPRECATED: Use the integrated approach via /api/decide with forcedDecisions parameter
         result = await this.handleRemoveAllForcedDecisionsRequest(requestAdapter, requestId);
       } else if (path.endsWith(`${this.apiPathPrefix}debug`)) {
         // Handle debug endpoint
@@ -1293,6 +1309,7 @@ export class ApiRouter {
   /**
    * Handles requests to set a forced variation for a user.
    * 
+   * @deprecated This endpoint is deprecated. Use /api/decide with forcedDecisions parameter instead.
    * Allows setting forced decisions for testing and QA purposes.
    * Requires decision service to be available.
    * 
@@ -1309,7 +1326,7 @@ export class ApiRouter {
     
     // Only allow POST or PUT methods
     if (method !== 'POST' && method !== 'PUT') {
-      return this.createJsonResponse(requestId, 405, { error: "Method not allowed. Use POST or PUT." });
+      return this.createDeprecatedJsonResponse(requestId, 405, { error: "Method not allowed. Use POST or PUT." }, '/api/set-forced-variation', method);
     }
     
     try {
@@ -1321,10 +1338,10 @@ export class ApiRouter {
       
       if (!this.decisionService) {
         this.logger.error(`${this.logPrefix} Decision service not available`);
-        return this.createJsonResponse(requestId, 501, { 
+        return this.createDeprecatedJsonResponse(requestId, 501, { 
           error: "Decision service not available", 
           message: "Forced variations are only available when decision service is configured"
-        }, method, requestContext);
+        }, '/api/set-forced-variation', method, requestContext);
       }
       
       // Get request body
@@ -1332,10 +1349,10 @@ export class ApiRouter {
       
       if (!requestBody) {
         this.logger.warn(`${this.logPrefix} Missing request body`);
-        return this.createJsonResponse(requestId, 400, {
+        return this.createDeprecatedJsonResponse(requestId, 400, {
           error: "Missing request body",
           message: "The request must include a JSON body with the forced variation details"
-        }, method, requestContext);
+        }, '/api/set-forced-variation', method, requestContext);
       }
       
       // Extract parameters from the request body
@@ -1346,88 +1363,78 @@ export class ApiRouter {
       
       if (!finalUserId) {
         this.logger.warn(`${this.logPrefix} Missing userId or visitorId in request body`);
-        return this.createJsonResponse(requestId, 400, {
+        return this.createDeprecatedJsonResponse(requestId, 400, {
           error: "Missing userId or visitorId",
           message: "The request must include either userId or visitorId"
-        }, method, requestContext);
+        }, '/api/set-forced-variation', method, requestContext);
       }
       
       if (!flagKey) {
         this.logger.warn(`${this.logPrefix} Missing flagKey in request body`);
-        return this.createJsonResponse(requestId, 400, {
+        return this.createDeprecatedJsonResponse(requestId, 400, {
           error: "Missing flagKey",
           message: "The request must include a flagKey"
-        }, method, requestContext);
+        }, '/api/set-forced-variation', method, requestContext);
       }
       
       if (!variationKey) {
         this.logger.warn(`${this.logPrefix} Missing variationKey in request body`);
-        return this.createJsonResponse(requestId, 400, {
+        return this.createDeprecatedJsonResponse(requestId, 400, {
           error: "Missing variationKey",
           message: "The request must include a variationKey"
-        }, method, requestContext);
+        }, '/api/set-forced-variation', method, requestContext);
       }
       
-      // Check if the setForcedDecision method is available
-      if (!this.decisionService.setForcedDecision || !this.decisionService.createUserContext) {
-        this.logger.error(`${this.logPrefix} Forced decision methods not implemented in decision service`);
-        return this.createJsonResponse(requestId, 501, {
+      // Check if the setForcedVariation method is available
+      if (!this.decisionService.setForcedVariation) {
+        this.logger.error(`${this.logPrefix} setForcedVariation method not implemented in decision service`);
+        return this.createDeprecatedJsonResponse(requestId, 501, {
           error: "Not implemented",
-          message: "The decision service does not support forced decisions"
-        }, method, requestContext);
+          message: "The decision service does not support forced variations"
+        }, '/api/set-forced-variation', method, requestContext);
       }
       
       try {
-        // Create user context first
-        const optimizelyUserContext = await this.decisionService.createUserContext(finalUserId, {}, { sdkKey });
-        
-        if (!optimizelyUserContext) {
-          this.logger.error(`${this.logPrefix} Failed to create user context for forced decision`);
-          return this.createJsonResponse(requestId, 500, {
-            error: "User context creation failed",
-            message: "Unable to create Optimizely user context for the forced decision"
-          }, method, requestContext);
-        }
-        
-        // Create the forced decision context
-        // If experimentKey and ruleKey are provided, include them
-        // Otherwise, use the flagKey alone
-        const forcedDecisionContext: any = { flagKey };
-        
-        if (ruleKey && experimentKey) {
-          forcedDecisionContext.ruleKey = ruleKey;
-        }
-        
-        // Set the forced decision
-        const result = await this.decisionService.setForcedDecision(
-          optimizelyUserContext,
-          forcedDecisionContext,
-          { variationKey }
+        // Set the forced variation
+        await this.decisionService.setForcedVariation(
+          flagKey,    // experiment/flag key
+          finalUserId, // user ID
+          variationKey, // variation key
+          { sdkKey }   // options with SDK key
         );
         
-        if (result) {
-          this.logger.info(`${this.logPrefix} Successfully set forced variation for user ${finalUserId}, flag ${flagKey}, variation ${variationKey}`);
-          return this.createJsonResponse(requestId, 200, {
-            success: true,
-            userId: finalUserId,
-            flagKey,
-            variationKey,
-            ruleKey: ruleKey || null,
-            experimentKey: experimentKey || null
-          }, method, requestContext);
-        } else {
-          this.logger.error(`${this.logPrefix} Failed to set forced variation`);
-          return this.createJsonResponse(requestId, 500, {
-            error: "Failed to set forced variation",
-            message: "The decision service returned false when attempting to set the forced decision"
-          }, method, requestContext);
-        }
+        this.logger.info(`${this.logPrefix} Successfully set forced variation for user ${finalUserId}, flag ${flagKey}, variation ${variationKey}`);
+        
+        // Now immediately make a decision to use the forced variation
+        // This ensures the forced variation takes effect in the same request context
+        const userContext = {
+          userId: finalUserId,
+          attributes: requestBody?.attributes || {}
+        };
+        
+        const decideOptions = requestBody?.decideOptions || [];
+        
+        // Make the decision with the forced variation in effect
+        const decision = await this.decisionService.decide(
+          flagKey,
+          userContext,
+          { 
+            sdkKey,
+            decideOptions
+          }
+        );
+        
+        this.logger.info(`${this.logPrefix} Decision made with forced variation: ${JSON.stringify(decision)}`);
+        
+        // Return the decision result, not just a success message
+        return this.createDeprecatedJsonResponse(requestId, 200, decision, '/api/set-forced-variation', method, requestContext);
+        
       } catch (forcedError) {
-        this.logger.error(`${this.logPrefix} Error setting forced variation:`, forcedError);
-        return this.createJsonResponse(requestId, 500, {
+        this.logger.error(`${this.logPrefix} Error setting forced variation and making decision:`, forcedError);
+        return this.createDeprecatedJsonResponse(requestId, 500, {
           error: "Error setting forced variation",
           message: forcedError instanceof Error ? forcedError.message : String(forcedError)
-        }, method, requestContext);
+        }, '/api/set-forced-variation', method, requestContext);
       }
     } catch (error) {
       // Try to get context for POST requests in error case
@@ -1442,6 +1449,7 @@ export class ApiRouter {
   /**
    * Handles requests to get a forced variation for a user.
    * 
+   * @deprecated This endpoint is deprecated. Use /api/decide with forcedDecisions parameter instead.
    * Retrieves any forced decision that has been set for a user and flag combination.
    * 
    * @param requestAdapter - The request adapter
@@ -1462,7 +1470,7 @@ export class ApiRouter {
         method,
         error_type: 'method_not_allowed'
       });
-      return this.createJsonResponse(requestId, 405, { error: "Method not allowed. Use GET or POST." });
+      return this.createDeprecatedJsonResponse(requestId, 405, { error: "Method not allowed. Use GET or POST." }, '/api/get-forced-variation', method);
     }
     
     try {
@@ -2305,6 +2313,67 @@ export class ApiRouter {
       
       const attributes = requestBody?.attributes || {};
       
+      // Extract forced decision parameters with correct precedence (header > query > body)
+      let forcedVariationKey: string | null = null;
+      let forcedRuleKey: string | null = null;
+      let forcedDecisionFrom: string = '';
+      
+      // Check for forced variation in headers
+      const headerForceVariation = headers['x-optimizely-force-variation'];
+      const headerForceRule = headers['x-optimizely-force-rule'];
+      
+      if (headerForceVariation) {
+        forcedVariationKey = headerForceVariation;
+        forcedDecisionFrom = 'header';
+        if (headerForceRule) {
+          forcedRuleKey = headerForceRule;
+        }
+      } else if (urlParams.forceVariation) {
+        // Check query parameters
+        forcedVariationKey = urlParams.forceVariation;
+        forcedDecisionFrom = 'query';
+        if (urlParams.forceRule) {
+          forcedRuleKey = urlParams.forceRule;
+        }
+      } else if (requestBody?.forcedVariationKey) {
+        // Check request body
+        forcedVariationKey = requestBody.forcedVariationKey;
+        forcedDecisionFrom = 'body';
+        if (requestBody?.forcedRuleKey) {
+          forcedRuleKey = requestBody.forcedRuleKey;
+        }
+      }
+      
+      // Validate forced decision parameters if present
+      if (forcedVariationKey) {
+        // Validate that forcedVariationKey is not empty
+        if (typeof forcedVariationKey !== 'string' || forcedVariationKey.trim() === '') {
+          this.logger.warn(`${this.logPrefix} Invalid forced variation key: must be a non-empty string`);
+          return this.createJsonResponse(requestId, 400, {
+            error: "Invalid forced variation key",
+            message: "forcedVariationKey must be a non-empty string",
+            source: forcedDecisionFrom
+          }, method, requestContext);
+        }
+        
+        // Validate that if forcedRuleKey is provided, it's also a valid string
+        if (forcedRuleKey !== null && (typeof forcedRuleKey !== 'string' || forcedRuleKey.trim() === '')) {
+          this.logger.warn(`${this.logPrefix} Invalid forced rule key: must be a non-empty string or null`);
+          return this.createJsonResponse(requestId, 400, {
+            error: "Invalid forced rule key", 
+            message: "forcedRuleKey must be a non-empty string or null",
+            source: forcedDecisionFrom
+          }, method, requestContext);
+        }
+        
+        this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Forced decision parameters validated and detected:`, {
+          flagKey,
+          forcedVariationKey,
+          forcedRuleKey: forcedRuleKey || 'none',
+          source: forcedDecisionFrom
+        });
+      }
+      
       // Determine SDK Key and its source with correct precedence (header > query > body)
       let sdkKey: string | null = null;
       let actualSdkKeyFrom: string = '';
@@ -2366,7 +2435,7 @@ export class ApiRouter {
         
         // Extract forced decisions from configuration and prepare user context
         const config = this.configService.getConfig();
-        let userContextForcedDecisions: Record<string, { variationKey: string }> = {};
+        let userContextForcedDecisions: Record<string, { variationKey: string; ruleKey?: string }> = {};
         
         if (config.forcedDecisions) {
           // Convert configuration forced decisions to the format expected by DecisionService
@@ -2392,6 +2461,36 @@ export class ApiRouter {
               flags: Object.keys(userContextForcedDecisions),
               decisions: userContextForcedDecisions
             });
+          }
+        }
+        
+        // Add request-level forced decision parameters (highest precedence)
+        if (forcedVariationKey && flagKey) {
+          try {
+            const forcedDecision: { variationKey: string; ruleKey?: string } = { 
+              variationKey: forcedVariationKey 
+            };
+            if (forcedRuleKey) {
+              forcedDecision.ruleKey = forcedRuleKey;
+            }
+            
+            userContextForcedDecisions[flagKey] = forcedDecision;
+            
+            this.logger.info(`${this.logPrefix} [REQUEST:${requestId}] Applied request-level forced decision (overrides config):`, {
+              flagKey,
+              forcedVariationKey,
+              forcedRuleKey: forcedRuleKey || 'none',
+              source: forcedDecisionFrom
+            });
+          } catch (forcedDecisionError) {
+            this.logger.error(`${this.logPrefix} [REQUEST:${requestId}] Error applying forced decision:`, forcedDecisionError);
+            return this.createJsonResponse(requestId, 400, {
+              error: "Failed to apply forced decision",
+              message: forcedDecisionError instanceof Error ? forcedDecisionError.message : "Unknown error applying forced decision",
+              flagKey,
+              forcedVariationKey,
+              source: forcedDecisionFrom
+            }, method, requestContext);
           }
         }
         
@@ -2744,7 +2843,7 @@ export class ApiRouter {
           
           if (!flagKeys || flagKeys.length === 0) {
             this.logger.warn(`${this.logPrefix} No flag keys found for SDK key ${this.hashSensitiveValue(sdkKey)}`);
-            return this.createJsonResponse(requestId, 200, { decisions: [] }, method, requestContext);
+            return this.createJsonResponse(requestId, 200, [], method, requestContext);
           }
           
           this.logger.debug(`${this.logPrefix} Found ${flagKeys.length} flag keys for SDK key ${this.hashSensitiveValue(sdkKey)}`);
@@ -2793,7 +2892,14 @@ export class ApiRouter {
           }
           
           // Get decisions for all flags (pass decide options to SDK)
-          const allDecisions = await this.decisionService.decideAll(userContext, decideOptionsArr, { sdkKey });
+          const allDecisions = await this.decisionService.decideAll(
+            userContext, 
+            undefined,  // No specific flag keys - get all flags
+            { 
+              sdkKey, 
+              decideOptions: decideOptionsArr as any  // Pass decide options in the options object
+            }
+          );
           
           // Convert the map returned by SDK into an array for response formatting
           let decisions = Object.values(allDecisions || {}).map(decision => {
@@ -2830,7 +2936,8 @@ export class ApiRouter {
             decisions = decisions.filter((d: any) => d && d.enabled === true);
           }
           
-          const response = { decisions };
+          // Return just the array for API compatibility
+          const response = decisions;
           
           // Add decisions to the context for headers/cookies
           if (requestContext && decisions.length > 0) {
@@ -3190,7 +3297,7 @@ export class ApiRouter {
         }
         
         this.logger.debug(`${this.logPrefix} Returning ${decisions.length} decisions`);
-        return this.createJsonResponse(requestId, 200, { decisions }, method, requestContext);
+        return this.createJsonResponse(requestId, 200, decisions, method, requestContext);
       } catch (error) {
         this.logger.error(`${this.logPrefix} Error getting decisions for keys:`, error);
         return this.createJsonResponse(requestId, 500, {
@@ -3647,6 +3754,56 @@ export class ApiRouter {
   }
 
   /**
+   * Creates a JSON response for deprecated endpoints with proper deprecation headers.
+   * 
+   * @param requestId - The unique request ID
+   * @param status - The HTTP status code
+   * @param body - The response body object
+   * @param endpointName - The name of the deprecated endpoint
+   * @param method - The HTTP method of the request
+   * @param requestContext - The request context containing metadata
+   * @returns The ResponseResult with formatted response including deprecation headers
+   * @private
+   */
+  private createDeprecatedJsonResponse(
+    requestId: string, 
+    status: number, 
+    body: any, 
+    endpointName: string,
+    method?: string, 
+    requestContext?: any
+  ): ResponseResult {
+    // Log deprecation warning
+    this.logger.warn(`${this.logPrefix} DEPRECATED ENDPOINT USED: ${endpointName}. Please migrate to the integrated approach using /api/decide with forcedDecisions parameter.`);
+    
+    // Create the response using the standard method
+    const response = this.createJsonResponse(requestId, status, body, method, requestContext);
+    
+    // Add deprecation headers
+    response.headers['X-Deprecated'] = 'true';
+    response.headers['X-Deprecation-Notice'] = 'This endpoint is deprecated. Use /api/decide with forcedDecisions parameter instead.';
+    response.headers['Sunset'] = 'Wed, 31 Dec 2025 23:59:59 GMT'; // Set a sunset date
+    
+    // Add deprecation warning to the response body if it's an object
+    if (typeof response.body === 'string') {
+      try {
+        const parsedBody = JSON.parse(response.body);
+        parsedBody._deprecation = {
+          deprecated: true,
+          message: 'This endpoint is deprecated. Please use /api/decide with forcedDecisions parameter for forced variations.',
+          sunset: '2025-12-31',
+          migration_guide: 'https://docs.optimizely.com/edge-agent/forced-variations-migration'
+        };
+        response.body = JSON.stringify(parsedBody);
+      } catch (e) {
+        // If we can't parse the body, leave it as is
+      }
+    }
+    
+    return response;
+  }
+
+  /**
    * Creates a JSON response with proper headers and metadata.
    * 
    * This method handles:
@@ -3692,48 +3849,62 @@ export class ApiRouter {
     if (isDebugEndpoint || this.configService.getEnableDebugHeaders()) {
       this.logger.info(`${this.logPrefix} Adding debug headers to response (requestContext=${!!requestContext})`);
       
+      // Maximum header size to prevent crashes (8KB is safe for most servers)
+      const MAX_HEADER_SIZE = 8192;
+      
       if (requestContext) {
-        // Add debug headers to responses
-        headers['X-Optimizely-Debug-Config'] = JSON.stringify({
+        // Add minimal debug config header with size limit
+        const debugConfig = {
           setResponseHeaders: requestContext.setResponseHeaders,
           setResponseCookies: requestContext.setResponseCookies,
           userId: (requestContext.userId || requestContext.visitorId) 
             ? `${(requestContext.userId || requestContext.visitorId).substring(0, 8)}...` 
             : null,
           decisions: !!requestContext.decisions
-        });
+        };
         
-        // Add debug header for decision format
-        if (requestContext.decisions) {
-          const sampleDecision = Array.isArray(requestContext.decisions) && requestContext.decisions.length > 0 
-            ? requestContext.decisions[0] 
-            : requestContext.decisions;
-          
-          headers['X-Optimizely-Debug-Decision-Format'] = JSON.stringify({
-            type: typeof requestContext.decisions,
-            isArray: Array.isArray(requestContext.decisions),
-            length: Array.isArray(requestContext.decisions) ? requestContext.decisions.length : null,
-            hasKeys: Array.isArray(requestContext.decisions) && requestContext.decisions.length > 0 
-              ? Object.keys(requestContext.decisions[0]) 
-              : (typeof requestContext.decisions === 'object' ? Object.keys(requestContext.decisions) : null)
+        const debugConfigStr = JSON.stringify(debugConfig);
+        if (debugConfigStr.length < MAX_HEADER_SIZE) {
+          headers['X-Optimizely-Debug-Config'] = debugConfigStr;
+        } else {
+          // If even minimal config is too large, just indicate presence
+          headers['X-Optimizely-Debug-Config'] = JSON.stringify({ 
+            truncated: true, 
+            decisions: !!requestContext.decisions 
           });
         }
         
-        // Add a debug version of the decisions header
-        const decisionsHeaderName = this.configService.getDecisionsHeaderName();
-        if (!headers[decisionsHeaderName]) {
-          if (requestContext.decisions) {
-            // Add real decisions (for debugging only)
-            const decisionsValue = typeof requestContext.decisions === 'string' 
-              ? requestContext.decisions 
-              : JSON.stringify(requestContext.decisions);
-            headers[decisionsHeaderName] = decisionsValue;
-            this.logger.info(`${this.logPrefix} DEBUG: Adding ${decisionsHeaderName} header (from context.decisions) for debugging`);
-          } else {
-            // Add empty decisions debug header
-            headers[decisionsHeaderName] = JSON.stringify({ debug: "No decisions in context" });
-            this.logger.info(`${this.logPrefix} DEBUG: Adding empty ${decisionsHeaderName} header for debugging`);
+        // Add minimal decision format header only if decisions exist
+        if (requestContext.decisions) {
+          const decisionFormat = {
+            type: typeof requestContext.decisions,
+            isArray: Array.isArray(requestContext.decisions),
+            length: Array.isArray(requestContext.decisions) ? requestContext.decisions.length : null,
+            // Limit keys to first 5 to prevent header overflow
+            hasKeys: Array.isArray(requestContext.decisions) && requestContext.decisions.length > 0 
+              ? Object.keys(requestContext.decisions[0]).slice(0, 5)
+              : (typeof requestContext.decisions === 'object' ? Object.keys(requestContext.decisions).slice(0, 5) : null)
+          };
+          
+          const formatStr = JSON.stringify(decisionFormat);
+          if (formatStr.length < MAX_HEADER_SIZE) {
+            headers['X-Optimizely-Debug-Decision-Format'] = formatStr;
           }
+        }
+        
+        // IMPORTANT: Do NOT add full decisions to headers in debug mode
+        // This can cause header size overflow and server crashes
+        // Decisions should only be added when explicitly needed and with size limits
+        const decisionsHeaderName = this.configService.getDecisionsHeaderName();
+        if (!headers[decisionsHeaderName] && requestContext.decisions) {
+          // Only add a truncated version for debugging
+          const truncatedDecisions = { 
+            debug: true,
+            count: Array.isArray(requestContext.decisions) ? requestContext.decisions.length : 1,
+            truncated: true 
+          };
+          headers[decisionsHeaderName] = JSON.stringify(truncatedDecisions);
+          this.logger.info(`${this.logPrefix} DEBUG: Adding truncated ${decisionsHeaderName} header for safety`);
         }
       }
     }
@@ -3785,10 +3956,20 @@ export class ApiRouter {
           ? requestContext.decisions 
           : JSON.stringify(requestContext.decisions);
         
-        // No encoding - use the value directly
-        const decisionsCookie = `${decisionsCookieName}=${decisionsValue}; Path=/; Max-Age=86400`;
-        cookieHeaders.push(decisionsCookie);
-        this.logger.debug(`${this.logPrefix} setResponseCookies=true: Set-Cookie header added for ${decisionsCookieName}.`);
+        // CRITICAL: Check cookie size to prevent issues (4KB is typical cookie limit)
+        const MAX_COOKIE_SIZE = 4096;
+        if (decisionsValue.length < MAX_COOKIE_SIZE) {
+          // No encoding - use the value directly
+          const decisionsCookie = `${decisionsCookieName}=${decisionsValue}; Path=/; Max-Age=86400`;
+          cookieHeaders.push(decisionsCookie);
+          this.logger.debug(`${this.logPrefix} setResponseCookies=true: Set-Cookie header added for ${decisionsCookieName} (${decisionsValue.length} bytes).`);
+        } else {
+          // If decisions are too large for a cookie, add a truncated indicator
+          const truncatedIndicator = JSON.stringify({ truncated: true, size: decisionsValue.length });
+          const decisionsCookie = `${decisionsCookieName}=${truncatedIndicator}; Path=/; Max-Age=86400`;
+          cookieHeaders.push(decisionsCookie);
+          this.logger.warn(`${this.logPrefix} Decisions cookie truncated due to size (${decisionsValue.length} bytes > ${MAX_COOKIE_SIZE} bytes)`);
+        }
       }
     }
 
@@ -3811,8 +3992,22 @@ export class ApiRouter {
         const decisionsValue = typeof requestContext.decisions === 'string' 
           ? requestContext.decisions 
           : JSON.stringify(requestContext.decisions);
-        headers[decisionsHeaderName] = decisionsValue;
-        this.logger.debug(`${this.logPrefix} setResponseHeaders=true: Added ${decisionsHeaderName} header with value: ${decisionsValue}`);
+        
+        // CRITICAL: Check header size to prevent server crashes
+        const MAX_HEADER_SIZE = 8192; // 8KB limit for safety
+        if (decisionsValue.length < MAX_HEADER_SIZE) {
+          headers[decisionsHeaderName] = decisionsValue;
+          this.logger.debug(`${this.logPrefix} setResponseHeaders=true: Added ${decisionsHeaderName} header (${decisionsValue.length} bytes)`);
+        } else {
+          // If decisions are too large, add a truncated summary instead
+          const truncatedDecisions = {
+            truncated: true,
+            originalSize: decisionsValue.length,
+            message: "Decisions too large for header. Use response body instead."
+          };
+          headers[decisionsHeaderName] = JSON.stringify(truncatedDecisions);
+          this.logger.warn(`${this.logPrefix} Decisions header truncated due to size (${decisionsValue.length} bytes > ${MAX_HEADER_SIZE} bytes)`);
+        }
       }
     }
 
@@ -3837,7 +4032,7 @@ export class ApiRouter {
 
     return {
       status,
-      body: JSON.stringify(body),
+      body: body, // Don't stringify here - let createFormattedResponse handle it
       headers
     };
   }
@@ -4157,9 +4352,19 @@ export class ApiRouter {
     if (Array.isArray(bodyRaw)) bodyRaw.forEach((o: string) => opts.add(o.toUpperCase()));
     else if (typeof bodyRaw === 'string') bodyRaw.split(',').forEach(o => opts.add(o.trim().toUpperCase()));
 
+    // Body field for enabledFlagsOnly alias
+    if (requestBody?.enabledFlagsOnly === true || requestBody?.enabledFlagsOnly === 'true') {
+      opts.add('ENABLED_FLAGS_ONLY');
+    }
+
     // Query param decideOptions=csv
     if (urlParams.decideOptions) {
       urlParams.decideOptions.split(',').forEach((o: string) => opts.add(o.trim().toUpperCase()));
+    }
+
+    // Query param for enabledFlagsOnly alias
+    if (urlParams.enabledFlagsOnly === 'true' || urlParams.enabledFlagsOnly === true) {
+      opts.add('ENABLED_FLAGS_ONLY');
     }
 
     // Headers
@@ -4177,6 +4382,15 @@ export class ApiRouter {
       } else if (lower.startsWith('x-optimizely-decide-options-')) {
         const optName = key.substring('X-Optimizely-Decide-Options-'.length).toUpperCase();
         opts.add(optName);
+      } else if (lower === 'x-optimizely-enabled-flags-only' && (value === 'true' || value === '1')) {
+        // Support for X-Optimizely-Enabled-Flags-Only header alias
+        opts.add('ENABLED_FLAGS_ONLY');
+      } else if (lower === 'x-optimizely-include-reasons' && (value === 'true' || value === '1')) {
+        // Support for X-Optimizely-Include-Reasons header alias  
+        opts.add('INCLUDE_REASONS');
+      } else if (lower === 'x-optimizely-exclude-variables' && (value === 'true' || value === '1')) {
+        // Support for X-Optimizely-Exclude-Variables header alias
+        opts.add('EXCLUDE_VARIABLES');
       }
     });
 
@@ -4219,7 +4433,7 @@ export class ApiRouter {
     this.logger.debug(`${this.logPrefix} [REQUEST:${requestId}] Processing config query with params:`, params);
     
     // Get response size limit from environment or use 0 (unlimited)
-    const responseSizeLimit = parseInt(process.env.OPTIMIZELY_CONFIG_RESPONSE_SIZE_LIMIT || '0', 10);
+    const responseSizeLimit = 0; // Default: unlimited
     
     // Handle metadata (include by default unless explicitly excluded)
     if (params.metadata !== 'false') {

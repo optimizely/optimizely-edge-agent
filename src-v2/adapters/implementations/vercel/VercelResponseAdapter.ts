@@ -21,7 +21,18 @@ export class VercelResponseAdapter implements IResponseAdapter {
    * @param value - The value of the header.
    */
   setHeader(name: string, value: string): void {
-    this.headers.set(name, value);
+    // Handle Set-Cookie headers specially - they should be appended, not replaced
+    if (name.toLowerCase() === 'set-cookie') {
+      // If the value contains newlines, split and append each cookie separately
+      const cookieValues = value.split('\n');
+      for (const cookieValue of cookieValues) {
+        if (cookieValue.trim()) {
+          this.headers.append('Set-Cookie', cookieValue.trim());
+        }
+      }
+    } else {
+      this.headers.set(name, value);
+    }
   }
 
   /**

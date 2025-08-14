@@ -1,0 +1,32 @@
+{
+  "name": "optly-edge-agent-vercel",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": "18.x"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.vercel.json",
+    "dev": "echo 'Run vercel dev --listen 5000 directly'",
+    "deploy": "vercel deploy",
+    "deploy:production": "vercel deploy --prod",
+    "format": "prettier --loglevel warn --write \"{src,src-v2}/**/*.{jsx,js,ts}\"",
+    "test": "vitest",
+    "test:integration": "ts-node src-v2/tests/run-integration-tests.ts"
+  },
+  "dependencies": {
+    "@optimizely/optimizely-sdk": "^5.3.4",
+    "@vercel/kv": "^1.0.1",
+    "@vercel/edge-config": "^1.0.0",
+    "node-fetch": "^2.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.11",
+    "@types/node-fetch": "^2.6.2",
+    "@vercel/node": "^3.0.7",
+    "prettier": "^3.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

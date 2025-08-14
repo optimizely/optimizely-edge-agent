@@ -18,6 +18,7 @@ import { IEnvironmentAdapter } from "../adapters/interfaces/IEnvironmentAdapter"
 import { ILoggerAdapter } from "../adapters/interfaces/ILoggerAdapter";
 import { IStorageAdapter } from "../adapters/interfaces/IStorageAdapter";
 import { IRequestAdapter } from "../adapters/interfaces/IRequestAdapter";
+import { createFormattedResponse, fixContentTypeForHtml } from "../utils/responseUtils";
 import { CacheService } from "../services/implementations/CacheService";
 import { ICacheService } from "../services/interfaces/ICacheService";
 import { DatafileService } from "../services/implementations/DatafileService";
@@ -135,11 +136,19 @@ export async function handleFastlyComputeRequest(
     // 3. Handle the request using the composed RequestHandler
     const result: ResponseResult = await app.requestHandler.handleRequest(requestAdapter);
 
-    // 4. Return the response
-    return new Response(result.body, {
-      status: result.status,
-      headers: result.headers
-    });
+    // 4. Ensure body is a string and fix Content-Type for HTML content
+    const bodyString = typeof result.body === 'string' ? result.body : String(result.body || '');
+    const finalHeaders = fixContentTypeForHtml(bodyString, result.headers || {});
+    
+    console.log('[Fastly Composition] Creating response with headers:', JSON.stringify(finalHeaders, null, 2));
+
+    // 5. Return the response using the utility function for proper content type handling
+    return createFormattedResponse(
+      bodyString,
+      result.status,
+      finalHeaders,
+      'application/json' // Default content type
+    );
   } catch (error) {
     // Handle any errors that occurred during processing
     console.error("[Fastly Composition] Error handling request:", error);

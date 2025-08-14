@@ -41,6 +41,7 @@ export class EdgeModeHandler implements IEdgeModeHandler {
   private readonly logPrefix = '[EdgeModeHandler]';
   private decisionService: IDecisionService;
   private configService: IConfigurationService;
+  private defaultSdkKey?: string;
   
   // Metrics counters for monitoring
   private metrics = {
@@ -69,13 +70,18 @@ export class EdgeModeHandler implements IEdgeModeHandler {
    * @param cacheService Cache service for storing responses
    * @param createResponseAdapter Factory function to create response adapters
    * @param decisionService Decision service for fetching feature flag decisions
+   * @param configService Configuration service
+   * @param defaultSdkKey Optional default SDK key to use when none is provided
    */
   constructor(
     logger: ILoggerAdapter, 
     cacheService: ICacheService,
     createResponseAdapter: ResponseAdapterFactory,
     decisionService: IDecisionService,
-    configService: IConfigurationService
+    configService: IConfigurationService,
+    defaultSdkKey?: string,
+    devContentBaseUrl?: string,
+    cdnProvider?: string
   ) {
     this.logger = logger;
     this.urlMatcher = new URLMatcher(logger);
@@ -83,7 +89,13 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     this.createResponseAdapter = createResponseAdapter;
     this.decisionService = decisionService;
     this.configService = configService;
+    this.defaultSdkKey = defaultSdkKey;
+    this.devContentBaseUrl = devContentBaseUrl;
+    this.cdnProvider = cdnProvider;
   }
+  
+  private devContentBaseUrl?: string;
+  private cdnProvider?: string;
   
   /**
    * Validates CDN variation settings for required properties and proper formatting
@@ -190,6 +202,16 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       } else {
         // Otherwise assume it's already an object
         settings = cdnVariationSettingsRaw as CDNVariationSettings;
+        
+        // Debug: Log the structure before unwrapping
+        this.logger.debug(`${this.logPrefix} Raw settings structure for flag ${decision.flagKey}:`, JSON.stringify(settings));
+        
+        // Handle nested cdnVariationSettings structure
+        if (settings && (settings as any).cdnVariationSettings) {
+          this.logger.debug(`${this.logPrefix} Detected nested cdnVariationSettings structure for flag ${decision.flagKey}, unwrapping`);
+          settings = (settings as any).cdnVariationSettings;
+          this.logger.debug(`${this.logPrefix} After unwrapping for flag ${decision.flagKey}:`, JSON.stringify(settings));
+        }
       }
       
       // Validate the settings - even if validation fails, we might be able to use them partially
@@ -235,17 +257,30 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       // Process each decision in the decisions map
       for (const [flagKey, decision] of Object.entries(decisions)) {
         processedCount++;
+        console.log(`[EdgeModeHandler] DEBUG: Processing flag ${flagKey}, enabled: ${decision.enabled}`);
         
-        // Skip if not enabled - quick check to avoid unnecessary processing
-        if (!decision.enabled) {
+        // Special handling for "off" variation with enabled:false
+        // The SDK returns enabled:false for control variations, but "off" variations can still have valid CDN settings
+        const isOffVariationWithCdnSettings = !decision.enabled && 
+          decision.variationKey === 'off' && 
+          decision.variables?.cdnVariationSettings;
+        
+        if (!decision.enabled && !isOffVariationWithCdnSettings) {
           this.logger.debug(`${this.logPrefix} Skipping disabled flag: ${flagKey}`);
           continue;
+        }
+        
+        if (isOffVariationWithCdnSettings) {
+          this.logger.debug(`${this.logPrefix} Flag ${flagKey} has enabled:false with "off" variation - treating as enabled for Edge Mode`);
         }
         
         enabledCount++;
         
         // Early check if cdnVariationSettings exists before attempting parsing
+        console.log(`[EdgeModeHandler] DEBUG: Flag ${flagKey} variables:`, decision.variables ? 'present' : 'missing');
+        console.log(`[EdgeModeHandler] DEBUG: Flag ${flagKey} cdnVariationSettings:`, decision.variables?.cdnVariationSettings ? 'present' : 'missing');
         if (!decision.variables || !decision.variables.cdnVariationSettings) {
+          console.log(`[EdgeModeHandler] DEBUG: Flag ${flagKey} skipped - no CDN settings`);
           continue;
         }
         
@@ -299,11 +334,13 @@ export class EdgeModeHandler implements IEdgeModeHandler {
     // Extract SDK key from request headers or query parameters
     const url = request.getUrl();
     const urlParams = new URLSearchParams(url.search);
-    const sdkKey = request.getHeader('X-Optimizely-SDK-Key') || urlParams.get('sdkKey') || undefined;
+    const sdkKey = request.getHeader('X-Optimizely-SDK-Key') || urlParams.get('sdkKey') || this.defaultSdkKey || undefined;
     
     // Log SDK key being used (partially masked for security)
     if (sdkKey) {
       this.logger.debug(`${this.logPrefix} Using SDK Key: ${sdkKey.substring(0, 4)}...`);
+    } else {
+      this.logger.warn(`${this.logPrefix} No SDK key available for Edge Mode decisions`);
     }
     
     this.logger.debug(`${this.logPrefix} Checking if request should be handled: ${url.toString()}`);
@@ -338,7 +375,10 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       }
       
       // Extract all cdnVariationSettings from decisions
+      console.log('[EdgeModeHandler] DEBUG: decisions object:', JSON.stringify(decisions, null, 2));
+      console.log('[EdgeModeHandler] DEBUG: decisions keys:', Object.keys(decisions));
       const variationSettings = this.extractAllCdnVariationSettings(decisions);
+      console.log('[EdgeModeHandler] DEBUG: extracted variationSettings:', variationSettings.length, 'settings');
       
       // Track decision processing time
       const decisionProcessingTime = Date.now() - startTime;
@@ -405,6 +445,99 @@ export class EdgeModeHandler implements IEdgeModeHandler {
       };
     } catch (error) {
       this.logger.error(`${this.logPrefix} Error in shouldHandleRequest:`, error);
+      this.metrics.errors++;
+      return {
+        handle: false,
+        reason: `Error determining if request should be handled: ${error instanceof Error ? error.message : String(error)}`,
+        variationSettings: []
+      };
+    }
+  }
+
+  /**
+   * Determines if the request should be handled by Edge Mode using pre-fetched decisions
+   * @param request The request to check
+   * @param userContext User context for decision making
+   * @param decisions Pre-fetched decisions to use instead of making a new call
+   * @returns Promise resolving to decision result with handle flag and reason
+   */
+  public async shouldHandleRequestWithDecisions(
+    request: IRequestAdapter,
+    userContext: OptimizelyUserContext,
+    decisions: Record<string, any>
+  ): Promise<ShouldHandleResult> {
+    const url = request.getUrl();
+    const startTime = Date.now();
+
+    try {
+      // Remove debug logs and use the passed decisions directly
+      console.log('[EdgeModeHandler] DEBUG: Using pre-fetched decisions:', Object.keys(decisions));
+      
+      // Extract all cdnVariationSettings from the pre-fetched decisions
+      const variationSettings = this.extractAllCdnVariationSettings(decisions);
+      console.log('[EdgeModeHandler] DEBUG: extracted variationSettings:', variationSettings.length, 'settings');
+      
+      // Track decision processing time
+      const decisionProcessingTime = Date.now() - startTime;
+      this.metrics.processingTimes.decisions.push(decisionProcessingTime);
+      
+      if (variationSettings.length === 0) {
+        this.logger.debug(`${this.logPrefix} No valid cdnVariationSettings found in pre-fetched decisions`);
+        return {
+          handle: false,
+          reason: "No valid cdnVariationSettings found",
+          variationSettings: []
+        };
+      }
+    
+      // Log each extracted cdnVariationSettings for debugging
+      variationSettings.forEach((settings, index) => {
+        this.logger.debug(`${this.logPrefix} Variation setting ${index + 1}:`, JSON.stringify({
+          flagKey: settings._flagKey,
+          variationKey: settings._variationKey,
+          cdnExperimentURL: settings.cdnExperimentURL,
+          cdnResponseURL: settings.cdnResponseURL
+        }));
+      });
+      
+      // Find a matching configuration for the request URL
+      const startUrlMatchTime = Date.now();
+      const matchingConfig = this.findMatchingConfig(url.toString(), variationSettings);
+      const urlMatchingTime = Date.now() - startUrlMatchTime;
+      this.metrics.processingTimes.urlMatching.push(urlMatchingTime);
+      
+      if (matchingConfig) {
+        this.logger.debug(`${this.logPrefix} Found matching configuration for URL`, JSON.stringify({
+          url: url.toString(),
+          matchingPattern: matchingConfig.pathRegex || matchingConfig.cdnExperimentURL,
+          flagKey: matchingConfig._flagKey,
+          variationKey: matchingConfig._variationKey,
+          cdnResponseURL: matchingConfig.cdnResponseURL,
+          forwardToOrigin: matchingConfig.forwardRequestToOrigin
+        }));
+        
+        // Record flag/variation activation for metrics when we find a match
+        if (matchingConfig._flagKey) {
+          this.recordActivation(matchingConfig._flagKey, matchingConfig._variationKey);
+        }
+        
+        this.metrics.edgeModeEligible++;
+        
+        return {
+          handle: true,
+          reason: "Matching URL pattern found",
+          variationSettings: [matchingConfig]
+        };
+      } else {
+        this.logger.debug(`${this.logPrefix} No matching URL pattern found`, { url: url.toString() });
+        return {
+          handle: false,
+          reason: "No matching URL pattern found in cdnVariationSettings",
+          variationSettings: variationSettings
+        };
+      }
+    } catch (error) {
+      this.logger.error(`${this.logPrefix} Error in shouldHandleRequestWithDecisions:`, error);
       this.metrics.errors++;
       return {
         handle: false,
@@ -863,8 +996,57 @@ export class EdgeModeHandler implements IEdgeModeHandler {
         return response;
       }
       
-      // Fetch the content
-      const fetchResponse = await fetch(cdnResponseURL);
+      // Fetch the content with URL rewriting support
+      let fetchUrl = cdnResponseURL;
+      
+      // Apply URL rewriting for development environments if DEV_CONTENT_BASE_URL is set
+      if (this.devContentBaseUrl) {
+        try {
+          const originalUrl = new URL(cdnResponseURL);
+          
+          // Apply URL rewriting for development
+          // Only rewrite localhost and development test domains
+          // DON'T rewrite external URLs like GitHub Pages, CDNs, production sites, etc.
+          const shouldRewrite = (originalUrl.hostname === 'localhost' || 
+                                originalUrl.hostname === '127.0.0.1' ||
+                                originalUrl.hostname === 'edgeagent.demo.optimizely.com') &&
+                               !originalUrl.hostname.includes('github.io') &&
+                               !originalUrl.hostname.includes('cdn.optimizely.com');
+            
+          if (shouldRewrite) {
+            // Create a new URL using the dev content base URL
+            const devUrl = new URL(this.devContentBaseUrl);
+            
+            // Preserve the original path and search parameters
+            devUrl.pathname = originalUrl.pathname;
+            devUrl.search = originalUrl.search;
+            
+            fetchUrl = devUrl.toString();
+            
+            this.logger.debug('EdgeModeHandler: URL rewritten for development', {
+              originalUrl: cdnResponseURL,
+              rewrittenUrl: fetchUrl
+            });
+          }
+        } catch (error) {
+          this.logger.warn('EdgeModeHandler: Failed to rewrite URL for development', {
+            url: cdnResponseURL,
+            error: error instanceof Error ? error.message : String(error)
+          });
+          // Continue with original URL if rewriting fails
+        }
+      }
+      
+      this.logger.info('EdgeModeHandler: About to fetch URL', { fetchUrl });
+      
+      const fetchResponse = await fetch(fetchUrl);
+      
+      this.logger.info('EdgeModeHandler: Fetch response received', { 
+        status: fetchResponse.status,
+        statusText: fetchResponse.statusText,
+        url: fetchResponse.url,
+        originalUrl: cdnResponseURL
+      });
       
       if (!fetchResponse.ok) {
         throw new Error(`Failed to fetch content: ${fetchResponse.status} ${fetchResponse.statusText}`);
@@ -1081,8 +1263,47 @@ export class EdgeModeHandler implements IEdgeModeHandler {
         (fetchOptions.headers as Record<string, string>)['X-Optimizely-Edge-Agent'] = 'v2';
       }
       
+      // Apply URL rewriting for development environments if needed
+      let fetchUrl = url.toString();
+      if (this.devContentBaseUrl) {
+        try {
+          const originalUrl = new URL(fetchUrl);
+          
+          // Apply URL rewriting for development
+          // Only rewrite localhost and development test domains
+          // DON'T rewrite external URLs like GitHub Pages, CDNs, production sites, etc.
+          const shouldRewrite = (originalUrl.hostname === 'localhost' || 
+                                originalUrl.hostname === '127.0.0.1' ||
+                                originalUrl.hostname === 'edgeagent.demo.optimizely.com') &&
+                               !originalUrl.hostname.includes('github.io') &&
+                               !originalUrl.hostname.includes('cdn.optimizely.com');
+            
+          if (shouldRewrite) {
+            // Create a new URL using the dev content base URL
+            const devUrl = new URL(this.devContentBaseUrl);
+            
+            // Preserve the original path and search parameters
+            devUrl.pathname = originalUrl.pathname;
+            devUrl.search = originalUrl.search;
+            
+            fetchUrl = devUrl.toString();
+            
+            this.logger.debug('EdgeModeHandler: Origin URL rewritten for development', {
+              originalUrl: url.toString(),
+              rewrittenUrl: fetchUrl
+            });
+          }
+        } catch (error) {
+          this.logger.warn('EdgeModeHandler: Failed to rewrite origin URL for development', {
+            url: url.toString(),
+            error: error instanceof Error ? error.message : String(error)
+          });
+          // Continue with original URL if rewriting fails
+        }
+      }
+      
       // Fetch from origin
-      const fetchResponse = await fetch(url.toString(), fetchOptions);
+      const fetchResponse = await fetch(fetchUrl, fetchOptions);
       
       // Create and populate response adapter
       const response = this.createResponseAdapter(request);

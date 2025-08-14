@@ -1,0 +1,25 @@
+# Ignore source files - we only need built files and API
+src-v2/
+*.ts
+!api/
+node_modules/
+.git/
+.gitignore
+docs/
+docs-*/
+test-*/
+scripts/
+*.md
+*.ps1
+*.sh
+wrangler.toml*
+tsconfig*.json
+vitest.config.ts
+critical-testing-project/
+final-tests-validation/
+documentation*/
+ai-*/
+rex-tracker*/
+tmp/
+.yarn/
+.pnp.*

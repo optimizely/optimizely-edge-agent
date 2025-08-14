@@ -23,7 +23,7 @@ export class FlagStorageService implements IFlagStorageService {
   private logger: ILoggerAdapter;
   private memoryCache: Map<string, { value: any, expiry: number }>;
   private cacheEnabled: boolean;
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: any = null;
   private isCleanupRunning: boolean = false;
   
   /**

@@ -39,10 +39,39 @@ export class URLMatcher implements IURLMatcher {
       return noMatchResult;
     }
     
+    // DEBUG FLAG: Check for force-edge-mode query parameter
+    try {
+      let parsedUrl: URL;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        parsedUrl = new URL(`https://${url}`);
+      } else {
+        parsedUrl = new URL(url);
+      }
+      
+      if (parsedUrl.searchParams.has('force-edge-mode')) {
+        this.logger.debug('URLMatcher: DEBUG - force-edge-mode parameter detected, using first available CDN settings');
+        
+        // Find the first settings that has cdnExperimentURL or cdnResponseURL
+        for (const settings of variationSettings) {
+          if (settings.cdnExperimentURL || settings.cdnResponseURL) {
+            this.logger.debug('URLMatcher: DEBUG - Using first available CDN settings', { settings });
+            return {
+              matched: true,
+              settings
+            };
+          }
+        }
+      }
+    } catch (e) {
+      // If URL parsing fails, continue with normal matching
+      this.logger.warn('URLMatcher: Failed to parse URL for debug flag check', { url, error: e });
+    }
+    
     // Loop through all settings to find a match
     for (const settings of variationSettings) {
-      if (!settings.cdnExperimentURL) {
-        this.logger.warn('URLMatcher: CDN variation settings missing cdnExperimentURL', { settings });
+      // Check if we have either cdnExperimentURL or pathRegex
+      if (!settings.cdnExperimentURL && !settings.pathRegex) {
+        this.logger.warn('URLMatcher: CDN variation settings missing both cdnExperimentURL and pathRegex', { settings });
         continue;
       }
       
@@ -102,7 +131,38 @@ export class URLMatcher implements IURLMatcher {
       return this.matchesRegexPattern(url, pattern, options.ignoreCase);
     }
 
-    // Otherwise, do both path and query parameter matching
+    // DEVELOPMENT ENHANCEMENT: Check for development/local environments
+    // If we're running on localhost/127.0.0.1, try path-only matching first
+    const isDevelopment = this.isLocalDevelopment(parsedUrl);
+    
+    if (isDevelopment) {
+      this.logger.debug('URLMatcher: Development environment detected, trying path-only matching', { 
+        url: parsedUrl.toString(), 
+        pattern 
+      });
+      
+      // Try path-only matching for development
+      const pathOnlyMatches = this.matchesPathOnly(url, pattern);
+      if (pathOnlyMatches) {
+        this.logger.debug('URLMatcher: Path-only match found in development mode', { 
+          urlPath: parsedUrl.pathname, 
+          pattern 
+        });
+        
+        // Still check query params if required
+        if (options.requiredQueryParams?.length || options.ignoreQueryParams?.length) {
+          return this.matchesQueryParams(
+            url, 
+            options.requiredQueryParams, 
+            options.ignoreQueryParams
+          );
+        }
+        
+        return true;
+      }
+    }
+
+    // Otherwise, do both path and query parameter matching (original behavior)
     const pathMatches = this.matchesPath(url, pattern, options.isRegex);
     if (!pathMatches) {
       return false;
@@ -174,9 +234,22 @@ export class URLMatcher implements IURLMatcher {
         return false;
       }
     } else {
-      // For non-regex matching, normalize the pattern as well
-      const normalizedPattern = this.normalizePath(pathPattern);
-      return urlPath === normalizedPattern;
+      // Handle special wildcard patterns
+      if (pathPattern === '/*') {
+        // Match any path
+        return true;
+      } else if (pathPattern === '/') {
+        // Match only homepage (root path)
+        return urlPath === '/';
+      } else if (pathPattern.endsWith('/*')) {
+        // Match path prefix (e.g., "/products/*" matches "/products/123")
+        const prefix = this.normalizePath(pathPattern.slice(0, -2)); // Remove /*
+        return urlPath === prefix || urlPath.startsWith(prefix + '/');
+      } else {
+        // For non-wildcard patterns, do exact matching
+        const normalizedPattern = this.normalizePath(pathPattern);
+        return urlPath === normalizedPattern;
+      }
     }
   }
 
@@ -215,11 +288,14 @@ export class URLMatcher implements IURLMatcher {
       return false;
     }
 
-    // Get all query parameters from the URL
-    const urlParams = new Set(
-      Array.from(parsedUrl.searchParams.keys())
-        .filter(param => !ignoreParams.includes(param))
-    );
+    // Get all query parameters from the URL using forEach for Web Worker compatibility
+    const urlParamNames: string[] = [];
+    parsedUrl.searchParams.forEach((value: string, key: string) => {
+      if (!ignoreParams.includes(key)) {
+        urlParamNames.push(key);
+      }
+    });
+    const urlParams = new Set(urlParamNames);
 
     // Check if all required parameters are present
     for (const param of requiredParams) {
@@ -229,5 +305,98 @@ export class URLMatcher implements IURLMatcher {
     }
 
     return true;
+  }
+
+  /**
+   * Checks if the URL is from a local development environment
+   * @param parsedUrl The parsed URL object
+   * @returns true if this is a local development environment
+   */
+  private isLocalDevelopment(parsedUrl: URL): boolean {
+    const hostname = parsedUrl.hostname.toLowerCase();
+    const port = parsedUrl.port;
+    
+    // Check for common local development hostnames
+    const localHostnames = ['localhost', '127.0.0.1', '0.0.0.0'];
+    const isLocalHostname = localHostnames.includes(hostname);
+    
+    // Check for common development ports
+    const devPorts = ['3000', '3001', '5000', '8000', '8080', '8787', '9000'];
+    const isDevPort = devPorts.includes(port) || port === '';
+    
+    return isLocalHostname && isDevPort;
+  }
+
+  /**
+   * Performs path-only matching for development environments
+   * Extracts the path from the pattern URL and compares it to the request path
+   * @param url The request URL to match
+   * @param pattern The pattern URL (may include full domain)
+   * @returns true if the paths match
+   */
+  private matchesPathOnly(url: string, pattern: string): boolean {
+    try {
+      // Parse request URL
+      let requestUrl: URL;
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        requestUrl = new URL(`https://${url}`);
+      } else {
+        requestUrl = new URL(url);
+      }
+      
+      // Parse pattern URL to extract path
+      let patternPath: string;
+      if (!pattern.startsWith('http://') && !pattern.startsWith('https://')) {
+        // If pattern is just a path, use it directly
+        if (pattern.startsWith('/')) {
+          patternPath = pattern;
+        } else {
+          // If pattern doesn't start with /, treat as domain + path
+          const patternUrl = new URL(`https://${pattern}`);
+          patternPath = patternUrl.pathname;
+        }
+      } else {
+        const patternUrl = new URL(pattern);
+        patternPath = patternUrl.pathname;
+      }
+      
+      const requestPath = this.normalizePath(requestUrl.pathname);
+      
+      // Handle wildcard patterns
+      if (patternPath === '/*') {
+        // Match any path
+        this.logger.debug('URLMatcher: Wildcard /* matches all paths', { requestPath });
+        return true;
+      } else if (patternPath === '/') {
+        // Match only homepage
+        const matches = requestPath === '/';
+        this.logger.debug('URLMatcher: Homepage pattern / matching', { requestPath, matches });
+        return matches;
+      } else if (patternPath.endsWith('/*')) {
+        // Match path prefix
+        const prefix = this.normalizePath(patternPath.slice(0, -2));
+        const matches = requestPath === prefix || requestPath.startsWith(prefix + '/');
+        this.logger.debug('URLMatcher: Prefix pattern matching', { 
+          pattern: patternPath,
+          prefix,
+          requestPath, 
+          matches 
+        });
+        return matches;
+      } else {
+        // Exact match
+        const normalizedPattern = this.normalizePath(patternPath);
+        const matches = requestPath === normalizedPattern;
+        this.logger.debug('URLMatcher: Exact path matching', { 
+          requestPath, 
+          normalizedPattern,
+          matches
+        });
+        return matches;
+      }
+    } catch (e) {
+      this.logger.warn(`URLMatcher: Error in path-only matching: ${e}`);
+      return false;
+    }
   }
 } 

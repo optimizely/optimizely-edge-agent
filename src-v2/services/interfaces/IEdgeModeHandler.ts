@@ -128,6 +128,20 @@ export interface IEdgeModeHandler {
     request: IRequestAdapter,
     userContext: OptimizelyUserContext
   ): Promise<ShouldHandleResult>;
+
+  /**
+   * Determines if a request should be handled by Edge Mode using pre-fetched decisions
+   * 
+   * @param request The request to check
+   * @param userContext User context for decision making
+   * @param decisions Pre-fetched decisions to use instead of making a new call
+   * @returns Promise resolving to decision result with handle flag and reason
+   */
+  shouldHandleRequestWithDecisions(
+    request: IRequestAdapter,
+    userContext: OptimizelyUserContext,
+    decisions: Record<string, any>
+  ): Promise<ShouldHandleResult>;
   
   /**
    * Prepares content for a request based on CDN variation settings

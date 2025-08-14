@@ -1,0 +1,109 @@
+{
+  "suites": {
+    "quick": {
+      "name": "Quick Validation",
+      "description": "Basic smoke tests for rapid validation",
+      "tests": [
+        "agent.health",
+        "agent.decide.basic",
+        "edge.forced.basic"
+      ],
+      "timeout": 30000
+    },
+    "agent-core": {
+      "name": "Agent Mode Core",
+      "description": "Core API endpoint testing",
+      "tests": [
+        "agent.health",
+        "agent.decide.all-sources",
+        "agent.decide-all.basic",
+        "agent.decide-for-keys.basic",
+        "agent.track.basic",
+        "agent.datafile.basic",
+        "agent.flagkeys.basic"
+      ],
+      "timeout": 60000
+    },
+    "agent-matrix": {
+      "name": "Agent Parameter Matrix",
+      "description": "Comprehensive parameter combination testing",
+      "tests": [
+        "agent.matrix.sdk-sources",
+        "agent.matrix.user-sources",
+        "agent.matrix.attribute-sources",
+        "agent.matrix.option-sources",
+        "agent.matrix.precedence"
+      ],
+      "timeout": 300000
+    },
+    "edge-core": {
+      "name": "Edge Mode Core",
+      "description": "Core edge mode functionality",
+      "tests": [
+        "edge.forced.on",
+        "edge.forced.off",
+        "edge.cache.hit",
+        "edge.forward.origin",
+        "edge.cookies.reconciliation"
+      ],
+      "timeout": 120000
+    },
+    "edge-matrix": {
+      "name": "Edge Mode Matrix",
+      "description": "Comprehensive edge mode combinations",
+      "tests": [
+        "edge.matrix.headers",
+        "edge.matrix.cookies",
+        "edge.matrix.cache",
+        "edge.matrix.forwarding"
+      ],
+      "timeout": 300000
+    },
+    "adapter-specific": {
+      "name": "Adapter-Specific Tests",
+      "description": "Tests specific to the current adapter",
+      "tests": [
+        "adapter.storage",
+        "adapter.cache",
+        "adapter.metrics",
+        "adapter.specific-features"
+      ],
+      "timeout": 180000
+    },
+    "full": {
+      "name": "Full Test Suite",
+      "description": "Complete test coverage",
+      "tests": ["*"],
+      "timeout": 600000
+    },
+    "regression": {
+      "name": "Regression Suite",
+      "description": "Tests for known issues and fixes",
+      "tests": [
+        "regression.header-values",
+        "regression.cookie-format",
+        "regression.cache-keys",
+        "regression.forced-decisions"
+      ],
+      "timeout": 120000
+    },
+    "edge-mode-final": {
+      "name": "Edge Mode Final Tests",
+      "description": "Comprehensive Edge Mode testing with edge_mode_final_test flag",
+      "tests": [
+        "edge.final.setup",
+        "edge.final.forced.control",
+        "edge.final.forced.a",
+        "edge.final.forced.b",
+        "edge.final.stickiness",
+        "edge.final.cache.performance",
+        "edge.final.attributes",
+        "edge.final.cookie.persistence",
+        "edge.final.content.validation",
+        "edge.final.fallback"
+      ],
+      "timeout": 180000
+    }
+  },
+  "defaultSuite": "quick"
+}

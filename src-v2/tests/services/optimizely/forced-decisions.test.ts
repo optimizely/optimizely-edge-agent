@@ -146,7 +146,7 @@ vi.mock('@optimizely/optimizely-sdk', () => {
 });
 
 // Import all dependencies after vi.mock
-import * as optimizely from '@optimizely/optimizely-sdk';
+import * as optimizely from '@optimizely/optimizely-sdk/dist/optimizely.lite.es';
 import { DecisionService } from '../../../services/implementations/DecisionService';
 import { MockLogger } from './mocks/MockLogger';
 import { OptimizelyUserContext } from '../../../services/interfaces/IDecisionService';

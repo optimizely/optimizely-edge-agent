@@ -59,7 +59,9 @@ Make a decision for a single feature flag. Both GET and POST methods are support
 |-----------|------|---------|-------------|
 | `attributes` | object | • Header: `X-Optimizely-Attributes` (URL-encoded JSON)<br>• Query: `?attributes={"key":"value"}`<br>• Body: `{ "attributes": {...} }` | User attributes for targeting |
 | `decideOptions` | string[] | • Header: `X-Optimizely-Decide-Options`<br>• Query: `?decideOptions=INCLUDE_REASONS,EXCLUDE_VARIABLES`<br>• Body: `{ "decideOptions": [...] }` | Array of decision options |
-| `forcedDecisions` | object/array | • Header: `X-Optimizely-Forced-Decisions` (JSON)<br>• Query: `?forced_decisions={"flag1":{"variationKey":"on"}}`<br>• Body: `{ "forcedDecisions": {...} }` | Force specific variations for testing |
+| `forcedVariationKey` | string | • Header: `X-Optimizely-Force-Variation`<br>• Query: `?forceVariation=treatment`<br>• Body: `{ "forcedVariationKey": "treatment" }` | Force specific variation for this request |
+| `forcedRuleKey` | string | • Header: `X-Optimizely-Force-Rule`<br>• Query: `?forceRule=experiment_123`<br>• Body: `{ "forcedRuleKey": "experiment_123" }` | Force specific rule/experiment for this request |
+| `forcedDecisions` | object/array | • Header: `X-Optimizely-Forced-Decisions` (JSON)<br>• Query: `?forced_decisions={"flag1":{"variationKey":"on"}}`<br>• Body: `{ "forcedDecisions": {...} }` | Force multiple variations for testing (legacy) |
 | `trimmedDecisions` | boolean | • Header: `X-Optimizely-Trimmed-Decisions`<br>• Query: `?trimmedDecisions=true`<br>• Body: `{ "trimmedDecisions": true }` | Return minimal response format |
 | `overrideVisitorId` | boolean | • Header: `X-Optimizely-Override-Visitor-Id`<br>• Query: `?overrideVisitorId=true`<br>• Body: `{ "overrideVisitorId": true }` | Generate new visitor ID |
 
@@ -84,6 +86,10 @@ Parameters are resolved in this order (first found wins):
 1. **HTTP Headers** (highest priority)
 2. **URL Query Parameters**
 3. **Request Body** (lowest priority)
+
+**Note**: For forced decisions specifically:
+- `X-Optimizely-Force-Variation` header > `forceVariation` query param > `forcedVariationKey` body param
+- Forced decisions are applied for the current request only and do not persist
 
 ### Decision Options
 
@@ -222,9 +228,46 @@ trimmedDecisions=true" \
 
 ### Forced Decisions for Testing
 
-Force specific variations for testing, QA, or debugging purposes.
+Force specific variations for testing, QA, or debugging purposes. The Edge Agent supports multiple ways to force variations:
 
-#### Object Format
+#### Direct Parameters (Recommended - NEW)
+Use the simplified `forcedVariationKey` parameter directly in your request:
+
+```bash
+# Force via request body
+curl -X POST "https://your-deployment/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001",
+    "forcedVariationKey": "express_checkout"
+  }'
+
+# Force via headers (highest precedence)
+curl -X POST "https://your-deployment/api/decide" \
+  -H "Content-Type: application/json" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key" \
+  -H "X-Optimizely-Force-Variation: express_checkout" \
+  -d '{
+    "flagKey": "checkout_flow",
+    "userId": "qa_tester_001"
+  }'
+
+# Force via query parameters (for GET requests)
+curl -X GET "https://your-deployment/api/decide?\
+flagKey=checkout_flow&\
+userId=qa_tester_001&\
+forceVariation=express_checkout" \
+  -H "X-Optimizely-Enable-FEX: true" \
+  -H "X-Optimizely-SDK-Key: your-sdk-key"
+```
+
+#### Legacy Object Format
+For backward compatibility, you can still use the object format:
+
 ```bash
 # Force a single flag to a specific variation
 curl -X POST "https://your-deployment/api/decide" \

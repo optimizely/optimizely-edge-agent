@@ -147,3 +147,5 @@ ai-workflow-workspace/extensions/
 */.ai-workflow-state.json
 ai-workflow-workspace/readme.md
 **/.claude/settings.local.json
+
+.vercel

@@ -117,24 +117,88 @@ export function createSetCookieHeader(cookies: Cookie[]): string[] {
 }
 
 /**
- * Serializes cookie decisions for storage in a cookie
+ * Serializes cookie decisions for storage in a cookie using compact format.
+ * Matches v1 implementation: flagKey:variationKey:ruleKey joined with &
  * 
  * @param decisions - The decisions object to serialize
- * @returns The serialized decisions string
+ * @returns The serialized decisions string (URL-encoded)
  */
 export function serializeDecisions(decisions: Record<string, any>): string {
-  return JSON.stringify(decisions);
+  // Use compact format like v1: flagKey:variationKey:ruleKey joined with &
+  const compactArray: string[] = [];
+  
+  for (const [flagKey, decision] of Object.entries(decisions)) {
+    // Skip invalid or disabled decisions
+    if (!decision || typeof decision !== 'object') continue;
+    
+    // For Edge Mode (GET requests), only include enabled flags with valid variations
+    // This matches v1 behavior in getSerializedArray()
+    if (decision.enabled === false) continue;
+    
+    // Only include decisions that have a variation key
+    if (!decision.variationKey) continue;
+    
+    // Skip rollout decisions for GET requests (matching v1 behavior)
+    if (decision.ruleKey && decision.ruleKey.includes('-rollout-')) continue;
+    
+    // Build compact format: flagKey:variationKey:ruleKey
+    const ruleKey = decision.ruleKey || '';
+    compactArray.push(`${flagKey}:${decision.variationKey}:${ruleKey}`);
+  }
+  
+  // Join with & delimiter - no base64 encoding, just return the plain string
+  // URL encoding will be handled by createCookie() when setting the cookie value
+  return compactArray.join('&');
 }
 
 /**
- * Deserializes cookie decisions from a cookie value
+ * Deserializes cookie decisions from a cookie value.
+ * Handles both new compact format and legacy JSON format for backwards compatibility.
  * 
  * @param serializedValue - The serialized decisions string
  * @returns The deserialized decisions object, or null if invalid
  */
 export function deserializeDecisions(serializedValue: string): Record<string, any> | null {
   try {
-    return JSON.parse(atob(serializedValue));
+    // First decode from URL encoding (handled by browser/parseCookie automatically)
+    let decoded = decodeURIComponent(serializedValue);
+    
+    // Check if it's JSON (legacy format)
+    if (decoded.startsWith('{') || decoded.startsWith('[')) {
+      // Legacy JSON format
+      return JSON.parse(decoded);
+    }
+    
+    // Check for base64 encoded legacy format (for backwards compatibility)
+    try {
+      const base64Decoded = atob(decoded);
+      if (base64Decoded.startsWith('{') || base64Decoded.startsWith('[')) {
+        return JSON.parse(base64Decoded);
+      }
+      // Could be base64 encoded compact format from older version
+      decoded = base64Decoded;
+    } catch {
+      // Not base64, continue with decoded value
+    }
+    
+    // New compact format: flagKey:variationKey:ruleKey&flagKey2:variationKey2:ruleKey2
+    const decisions: Record<string, any> = {};
+    const items = decoded.split('&');
+    
+    for (const item of items) {
+      const parts = item.split(':');
+      if (parts.length >= 2) {
+        const [flagKey, variationKey, ruleKey = ''] = parts;
+        decisions[flagKey] = {
+          flagKey,
+          variationKey,
+          ruleKey,
+          enabled: true // Compact format only stores enabled flags
+        };
+      }
+    }
+    
+    return Object.keys(decisions).length > 0 ? decisions : null;
   } catch (error) {
     return null;
   }

@@ -13,6 +13,7 @@ import { IRequestAdapter } from '../../adapters/interfaces/IRequestAdapter';
 import { KVUserProfileService } from '../../services/storage/KVUserProfileService';
 import { OptimizelyUserProfileServiceAdapter } from '../../services/storage/OptimizelyUserProfileServiceAdapter';
 import { IMetricsAdapter } from '../../adapters/interfaces/IMetricsAdapter';
+import { MockLoggerAdapter } from '../test-utils/MockLoggerAdapter';
 
 /**
  * Integration tests for cookie-based sticky bucketing.
@@ -43,12 +44,7 @@ describe('Cookie-Based Sticky Bucketing Integration Tests', () => {
 
   // Create a minimal environment with the required components
   const testEnv = {
-    logger: {
-      debug: () => {},
-      info: () => {},
-      warn: () => {},
-      error: () => {}
-    } as unknown as ILoggerAdapter,
+    logger: new MockLoggerAdapter() as ILoggerAdapter,
     
     // Implement a simple in-memory storage adapter
     storageImpl: new Map<string, any>(),
@@ -158,7 +154,7 @@ describe('Cookie-Based Sticky Bucketing Integration Tests', () => {
     cookieService = new CookieService(testEnv.logger);
     
     const cacheService = new CacheService(testEnv.storage, testEnv.logger);
-    const configurationService = new ConfigurationService(testEnv.logger);
+    const configurationService = new ConfigurationService(mockDatafileService as any, testEnv.logger);
     const eventService = new EventDispatcher(testEnv.logger, testEnv.environment);
     const flagStorageService = {
       getFlags: async () => ({}),
@@ -326,7 +322,7 @@ describe('Cookie-Based Sticky Bucketing Integration Tests', () => {
         storeFlags: async () => {},
         deleteFlags: async () => {}
       } as any,
-      new ConfigurationService(testEnv.logger)
+      new ConfigurationService(mockDatafileService as any, testEnv.logger)
     );
     
     // First request establishes the user profile

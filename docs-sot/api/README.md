@@ -138,11 +138,13 @@ Manage variations (GET returns 501 Not Implemented).
 ### 🔧 Admin Endpoints
 Administrative operations for testing and debugging.
 
-#### Forced Variations
-- [POST/PUT /api/set-forced-variation](./admin/forced-variations.md#set)
-- [GET/POST /api/get-forced-variation](./admin/forced-variations.md#get)
-- [POST/DELETE /api/remove-forced-variation](./admin/forced-variations.md#remove)
-- [POST/DELETE /api/remove-all-forced-decisions](./admin/forced-variations.md#remove-all)
+#### Forced Variations (Deprecated)
+> **⚠️ These endpoints are deprecated.** Use `/api/decide` with `forcedDecisions` parameter instead.
+
+- [POST/PUT /api/set-forced-variation](./admin/forced-variations.md#set) ⚠️ **DEPRECATED**
+- [GET/POST /api/get-forced-variation](./admin/forced-variations.md#get) ⚠️ **DEPRECATED**
+- [POST/DELETE /api/remove-forced-variation](./admin/forced-variations.md#remove) ⚠️ **DEPRECATED**
+- [POST/DELETE /api/remove-all-forced-decisions](./admin/forced-variations.md#remove-all) ⚠️ **DEPRECATED**
 
 #### System Operations
 - [POST /api/debug](./admin/debug.md) - Debug information

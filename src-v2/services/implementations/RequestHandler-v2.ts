@@ -81,15 +81,26 @@ export class RequestHandlerV2 implements IRequestHandler {
       this.requestTriggeringEnabled = cleanupConfig.requestTriggeringEnabled !== false;
     }
 
-    // Create service availability metrics
+    // Create service availability metrics - consolidated into a single metric
     if (this.metrics) {
-      this.recordServiceAvailability('decision_service', true);
-      this.recordServiceAvailability('event_service', true);
-      this.recordServiceAvailability('cache_service', true);
-      this.recordServiceAvailability('edge_mode_integration', !!edgeModeIntegration);
-      this.recordServiceAvailability('cookie_service', !!cookieService);
-      this.recordServiceAvailability('flag_storage', !!flagStorage);
-      this.recordServiceAvailability('configuration_service', !!configurationService);
+      const services = {
+        decision_service: 1,
+        event_service: 1,
+        cache_service: 1,
+        edge_mode_integration: edgeModeIntegration ? 1 : 0,
+        cookie_service: cookieService ? 1 : 0,
+        flag_storage: flagStorage ? 1 : 0,
+        configuration_service: configurationService ? 1 : 0
+      };
+      
+      // Count total available services (single metric instead of 7)
+      const availableCount = Object.values(services).filter(v => v === 1).length;
+      this.metrics.setGauge('services_available_count', availableCount, { 
+        total: Object.keys(services).length 
+      });
+      
+      // Log detailed status for debugging without creating metrics
+      this.logger.debug('Service availability status:', services);
       
       // Add cleanup configuration metrics
       if (this.flagStorage && this.requestTriggeringEnabled) {
@@ -118,16 +129,6 @@ export class RequestHandlerV2 implements IRequestHandler {
     });
   }
 
-  /**
-   * Records service availability metric.
-   * @param serviceName - Name of the service
-   * @param isAvailable - Whether the service is available
-   */
-  private recordServiceAvailability(serviceName: string, isAvailable: boolean): void {
-    if (this.metrics) {
-      this.metrics.setGauge('service_available', isAvailable ? 1 : 0, { service: serviceName });
-    }
-  }
 
   /**
    * Handles an incoming request.
